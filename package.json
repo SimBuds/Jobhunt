@@ -4,10 +4,15 @@
   "description": "",
   "main": "cli.js",
   "bin": {
-    "job-apply-agent": "./cli.js"
+    "job-agent": "./cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "scan": "node cli.js scan",
+    "apply": "node cli.js apply",
+    "report": "node cli.js report",
+    "convert": "node cli.js convert",
+    "list": "node cli.js list",
+    "status": "node cli.js status"
   },
   "keywords": [],
   "author": "",

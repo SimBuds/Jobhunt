@@ -2,72 +2,127 @@
 
 **AI-assisted personal job search operating system.**
 
-Discover, score, tailor, and apply — with a human in the loop for every submission. Everything runs locally; no job or resume data leaves your machine.
+Discover, score, tailor, and apply — with a human in the loop for every submission. Everything runs locally; no resume or job data leaves your machine.
 
 This is *not* an auto-apply bot. You click submit.
 
-## Workflow
+## Commands at a glance
 
 ```bash
-job-agent scan              # discover + score jobs into pipeline.json
-job-agent apply             # guided apply on the highest-fit unapplied role
-job-agent digest            # weekly CLI summary
+npm run convert -- resume.pdf     # (first-run) build base-resume.json
+npm run scan                      # discover + score into applications/pipeline.json
+npm run apply                     # pick from the top-10 menu or apply-to-all
+npm run report                    # weekly summary
+npm run list                      # tracked applications
+npm run status -- 1 interview     # update an application's status
 ```
 
-Supporting commands:
+All commands also work as `node cli.js <cmd>` directly. `npm run` passes flags through after `--`:
 
 ```bash
-job-agent import-resume resume.pdf   # convert PDF/DOCX -> base-resume.json
-job-agent list                       # show tracked applications
-job-agent status <id> <new_status>   # update status (interview, offer, rejected)
+npm run apply -- --fast
+npm run scan -- --sources api,linkedin,indeed
 ```
+
+## First run
+
+1. Drop your resume into the project root as `resume.pdf` or `resume.docx`.
+2. Run `npm run convert`. It auto-detects the file, extracts text (via `pdf-parse` / `mammoth`), and calls `qwen2.5-coder:7b` to structure it into [base-resume.json](base-resume.json). It will never invent data — missing fields become empty strings/arrays. Any existing `base-resume.json` is backed up before overwrite.
+3. Review `base-resume.json` and fill in anything the LLM missed. The tailor can only reorder and reword *existing* bullets — the richer your base resume, the better the output.
+
+If you run `scan` or `apply` with no `base-resume.json`, the CLI auto-detects a resume file and offers to convert it for you.
 
 ## Commands
 
 ### `scan` — discover + score
 
-Pulls live postings from the Greenhouse and Lever public job APIs for companies listed in [data/companies.json](data/companies.json). Filters to software/engineering roles in Toronto / GTA / Remote Canada. Scores every posting against your [base-resume.json](base-resume.json) and writes the ranked pipeline to `applications/pipeline.json`.
+Pulls live postings and writes them ranked into `applications/pipeline.json`. Re-runs are safe: dedupes by URL, preserves `applied`/`status`/`notes`, and marks postings missing >14 days as `stale`.
 
-Re-running is safe — it dedupes by URL, preserves `applied`/`status`/`notes` on existing entries, and marks postings that disappear for more than 14 days as `stale`.
+**Sources** (comma-separated via `--sources`, default `api`):
 
-Scoring is deterministic (no LLM) across: keyword overlap, stack overlap, title/seniority fit, education relevance, ATS keyword density. Missing keywords are surfaced in each entry's `notes`.
+| Source | Type | ToS | Notes |
+|---|---|---|---|
+| `api` | Greenhouse + Lever public APIs | Safe | Fast, reliable. Watchlist in [data/companies.json](data/companies.json). |
+| `jobbank` | Government of Canada (jobbank.gc.ca) | Safe | Public board. Deep coverage of Ontario roles incl. part-time/contract. |
+| `civicjobs` | CivicJobs.ca | Mostly safe | Municipal + broader public-sector roles. |
+| `linkedin` | LinkedIn guest search | Grey | Stealth Chromium. May rate-limit. |
+| `indeed` | Indeed.ca | Grey | Stealth Chromium. Frequently CAPTCHA-challenges. |
+| `workopolis` | Workopolis.com | Grey | Site was wound down in 2018 — often returns zero. |
+| `all` | Shortcut | — | Runs every scraper above in sequence. |
 
-Edit [data/companies.json](data/companies.json) to tune the company watchlist:
+All searches are centered on **Toronto, ON with a 100km radius** (covers Mississauga, Hamilton, Kitchener-Waterloo, Barrie, Oshawa, Niagara, etc.) and cover full-time / part-time / contract / internship / hybrid / remote / on-site.
+
+```bash
+npm run scan                                      # API only (default, safest)
+npm run scan -- --sources api,jobbank,civicjobs   # safe scrapers added
+npm run scan -- --sources all                     # everything, one browser at a time
+```
+
+> ⚠ **LinkedIn / Indeed / Workopolis scraping may violate their ToS.** Your IP can be rate-limited, CAPTCHA-challenged, or blocked. The agent uses realistic UA, jittered delays, guest endpoints only, and caps each source at 3 queries × 25 results per run — it *will* break eventually. Job Bank and CivicJobs are public and have no such concerns.
+
+Scoring is deterministic (no LLM) across: keyword overlap, tech-stack overlap, title/seniority fit, education relevance, ATS keyword density. Senior titles are penalized 50% to surface junior/intern/mid roles first. Missing keywords are written into each entry's `notes`.
+
+Tune queries in [data/companies.json](data/companies.json):
 
 ```json
 {
   "greenhouse": ["shopify", "cohere", "wealthsimple"],
-  "lever": ["ritual", "kepler"]
+  "lever": ["ritual", "kepler"],
+  "linkedin_queries": ["software engineer", "frontend developer"],
+  "indeed_queries":   ["software engineer", "backend developer"]
 }
 ```
 
-### `apply` — guided apply flow
+### `apply` — guided apply
 
-With no arguments, picks the highest-fit unapplied role from the pipeline and confirms before proceeding. Pass `--url <url>` to target a specific posting.
+```bash
+npm run apply
+```
 
-The flow:
+Prints the top 10 unapplied jobs and asks:
 
-1. **Scrape** the job description ([src/scrape.js](src/scrape.js))
-2. **Analyze** with `qwen2.5-coder:7b` — extracts structured JSON ([src/analyze.js](src/analyze.js))
-3. **Tailor** resume: rewrite summary, reorder existing bullets toward the JD ([src/tailor.js](src/tailor.js)). Never invents experience.
-4. **Cover letter**: ~250 words in the matching tone ([src/coverletter.js](src/coverletter.js))
-5. **Render** `resume-{company}-{date}.pdf` and `coverletter-{company}-{date}.pdf` ([src/render.js](src/render.js))
-6. **Log** to SQLite ([src/track.js](src/track.js))
-7. **Autofill** — launches Chromium, pre-fills contact fields for Greenhouse / Lever / Ashby / SmartRecruiters / Workday ([src/autofill.js](src/autofill.js)). **You review and click submit.**
-8. **Close the browser window** when done. The CLI then prompts:
-   - *Did you complete and submit the application? (y/n)*
-   - *What adjustments were needed / prevented submission?*
-9. Feedback is appended to [feedback.md](feedback.md) and the pipeline entry is updated.
+```
+Top unapplied roles:
+
+   1.  93% — hootsuite — Junior Software Developer, Frontend [greenhouse]
+   2.  78% — kepler — Embedded Software Test Automation Designer [lever]
+   ...
+  10.  72% — hootsuite — Co-op/Intern, Internal AI Operations [greenhouse]
+
+   a. Apply to all listed above (one at a time, with confirm)
+   q. Cancel
+
+Choose [1-10, a, q]:
+```
+
+- **Number**: runs the full flow for that one job.
+- **a**: loops through all 10. Before each job you're asked `Proceed with this one? (y/n/q)` — `y` runs the flow, `n` skips, `q` cancels the batch.
+- **q**: exit.
+
+Each apply flow:
+
+1. Scrape the posting
+2. Analyze with `qwen2.5-coder:7b`
+3. Tailor resume (rewrite summary, reorder existing bullets — never invents experience)
+4. Draft cover letter (~250 words, matching tone)
+5. Render PDFs to `output/`
+6. Log to SQLite + update pipeline
+7. Launch Chromium with autofilled contact fields — **you** review and click submit
+8. Close the browser → CLI prompts *"Did you submit? (y/n)"* then *"Any adjustments or issues?"* → append to `feedback.md`, mark the pipeline entry
 
 Flags:
 
-- `--url <url>` — apply to a specific URL instead of the pipeline top
-- `--no-autofill` — skip browser, just produce PDFs and log
+- `--url <url>` — skip the menu, apply to a specific URL
+- `--no-autofill` — skip the browser step (just produce PDFs and log)
 - `--fast` — use `qwen3.5:4b` for writing steps
 
-### `digest` — weekly summary
+### `report` — weekly summary
 
-```text
+```bash
+npm run report
+```
+
+```
 This Week
 
   12 strong matches found
@@ -78,24 +133,28 @@ This Week
   Next target: Wealthsimple SWE Intern (88%)
 ```
 
-Reads from `applications/pipeline.json`, `feedback.md`, and the SQLite log.
-
-### `import-resume` — bootstrap base-resume.json
+### `convert` — resume → base-resume.json
 
 ```bash
-node cli.js import-resume resume.pdf
-node cli.js import-resume resume.docx
+npm run convert                   # auto-detects resume.pdf / resume.docx
+npm run convert -- resume.pdf     # explicit path
+npm run convert -- -y resume.pdf  # skip the confirmation prompt
 ```
 
-Extracts text (via `pdf-parse` or `mammoth`), then asks `qwen2.5-coder:7b` to convert it into the `base-resume.json` schema. Never invents data — missing fields become empty strings/arrays. Existing `base-resume.json` is backed up before overwrite.
+Supports `.pdf`, `.docx`, `.txt`, `.md`. Shows a preview of what it extracted and asks before overwriting. Clear errors if the file can't be read, the model isn't pulled, or Ollama isn't running.
 
-Pass `-y` to skip the confirmation prompt.
+### `list` / `status`
+
+```bash
+npm run list
+npm run status -- 3 interview
+```
 
 ## Models
 
 | Model | Role | Used by |
 |---|---|---|
-| `qwen2.5-coder:7b` | Structured JSON extraction | analyze, import-resume |
+| `qwen2.5-coder:7b` | Structured JSON extraction | analyze, convert |
 | `gemma4:e2b` | Resume tailoring + cover letter (default) | tailor, coverletter |
 | `qwen3.5:4b` | Fast fallback for writing (`--fast`) | tailor, coverletter |
 
@@ -110,7 +169,7 @@ All LLM calls stream with a 45s stall watchdog and 5-minute hard cap. Ollama hos
   ollama pull gemma4:e2b
   ollama pull qwen3.5:4b   # optional, only for --fast
   ```
-- **Playwright browsers** (only for autofill):
+- **Playwright browsers** (for autofill + LinkedIn/Indeed scan):
   ```bash
   npx playwright install chromium
   ```
@@ -121,49 +180,41 @@ All LLM calls stream with a 45s stall watchdog and 5-minute hard cap. Ollama hos
 npm install
 ```
 
-Then populate your resume — either by hand-editing [base-resume.json](base-resume.json) or by running:
-
-```bash
-node cli.js import-resume path/to/your-resume.pdf
-```
-
-The tailor reorders and rewords existing bullets — it does **not** invent experience — so the more detailed your base resume, the better the output.
-
 ## Supported ATS platforms
 
-| Platform | Scrape | Autofill | Scan (via API) |
+| Platform | Scrape (apply) | Autofill | Scan source |
 |---|---|---|---|
-| Greenhouse | Yes | Yes | Yes |
-| Lever | Yes | Yes | Yes |
-| Workday | Yes | Best-effort | No (no public API) |
-| Ashby | Yes | Yes | No |
-| SmartRecruiters | Yes | Yes | No |
-| iCIMS | Yes | No | No |
-| LinkedIn | Yes | No | No |
-| Other career pages | Best-effort | No | No |
+| Greenhouse | Yes | Yes | API |
+| Lever | Yes | Yes | API |
+| LinkedIn | Yes | No | Stealth browser (opt-in) |
+| Indeed | Yes | No | Stealth browser (opt-in) |
+| Workday | Yes | Best-effort | — |
+| Ashby | Yes | Yes | — |
+| SmartRecruiters | Yes | Yes | — |
+| iCIMS | Yes | No | — |
 
-**Workday autofill** is best-effort: the form spans multiple pages and usually requires sign-in. The agent fills what's visible on the landing page.
-
-**Scan** only covers Greenhouse + Lever APIs (compliant, no ToS issues). For companies on other ATSs, use `apply --url <url>` directly.
+Workday autofill is best-effort — the form spans multiple pages and usually requires sign-in first. The agent fills what's visible on the landing page.
 
 ## Output
 
 - PDFs: `output/resume-{company}-{date}.pdf`, `output/coverletter-{company}-{date}.pdf`
 - Pipeline: `applications/pipeline.json`
 - Feedback log: `feedback.md`
-- History: `data/applications.db` (SQLite) — schema: `applications(id, company, role, url, applied_at, status, resume_path, coverletter_path, notes)`
+- History: `data/applications.db` (SQLite)
 
 ## Safety rails
 
-- **Never** auto-submits — you click the final submit button in the browser
+- **Never** auto-submits — you click the submit button
 - **Never** bypasses CAPTCHA or logins
-- **Never** invents experience, metrics, or projects in tailoring
-- **Never** scrapes LinkedIn / Indeed search results (ToS compliance)
+- **Never** invents experience, metrics, or projects
+- **LinkedIn/Indeed scraping is ToS-grey** — opt-in, rate-limited, best-effort
 
 ## Troubleshooting
 
-- **Browser hangs open after submit** — close the Chromium window; the CLI will immediately prompt for feedback.
-- **`fetch failed` / `Fetch timed out`** — the target site blocked the request. Scrape has a 20s timeout. Open the URL manually if persistent.
-- **`Failed to extract JSON from tailor response`** — the writing model returned prose. Re-run; if it persists, warm the model (`ollama run gemma4:e2b`).
-- **`model not found`** — `ollama pull` the model listed in the error.
-- **Scan finds 0 jobs** — the configured company slugs might be wrong. Verify at `https://boards.greenhouse.io/<slug>` or `https://jobs.lever.co/<slug>`.
+- **LinkedIn/Indeed scan returns zero jobs** — you've been rate-limited. Wait a few hours or skip those sources. The CLI prints a warning and falls back to API results.
+- **Indeed CAPTCHA page opens** — solve it manually in the open browser; future runs from that IP may work for a while.
+- **Browser hangs open after submit** — close the Chromium window; the CLI immediately prompts for feedback.
+- **`fetch failed` / `timed out`** — target site blocked the request. Scrape has a 20s timeout. Open the URL manually if persistent.
+- **`Could not read PDF`** — export the resume as `.docx` or `.txt` and re-run `convert`.
+- **`model not found`** — `ollama pull` the model in the error.
+- **`Could not reach Ollama`** — start it with `ollama serve`.

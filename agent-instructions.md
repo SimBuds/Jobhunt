@@ -1,428 +1,227 @@
 # agent-instructions.md
 
-## Goal
+Guide for human + AI agents working on `job-agent`. Read this before making non-trivial changes.
 
-Transform `job-agent` into a streamlined AI-assisted personal job search operating system built for 2026 hiring best practices.
+## What this project is
 
-This project must be:
+An AI-assisted personal job search operating system. Local-first, human-in-the-loop. Runs on the user's machine against local Ollama models. Helps discover, rank, tailor, and apply — the user always clicks the final submit button.
 
-- human-in-the-loop
-- legally compliant
-- recruiter-safe
-- ATS-optimized
-- portfolio-quality
-- practical for weekly personal use
+Portfolio framing: *"AI-Assisted Personal Job Search Operating System"* — never *"AI auto-applies to jobs"*.
 
-This is NOT an auto-apply bot.
+## Non-negotiable rules
 
-This IS a guided application system that helps discover, prioritize, tailor, and apply efficiently while keeping the user in full control of final submission.
+### MUST
 
----
+- require manual final review and manual submit for every application
+- preserve truthfulness in tailoring (rewording + reordering existing bullets only)
+- maintain application logs (SQLite) and feedback log (`feedback.md`)
+- prioritize Toronto / GTA / Hybrid Toronto / Remote Canada developer roles
+- keep local-only — no telemetry, no external LLM calls, no cloud storage
+- stay clean enough for public portfolio demonstration
+- print clear, actionable errors (path, reason, what to do next)
 
-# Required CLI Experience
-
-```bash
-job-agent scan
-job-agent apply
-job-agent digest
-```
-
-The workflow must be streamlined.
-
-Do NOT separate scoring into a separate command.
-
-`scan` must include automatic fit scoring.
-
----
-
-# Non-Negotiable Rules
-
-## MUST
-
-- require manual final review before submission
-- require manual final submit by user
-- support ATS-safe resume tailoring
-- maintain application logs
-- maintain feedback loop for continuous improvement
-- prioritize Toronto + Remote Canada developer roles
-- be clean enough for public portfolio demonstration
-- follow 2026 hiring best practices
-
-## MUST NOT
+### MUST NOT
 
 - auto-submit applications
-- bypass CAPTCHA
-- violate platform Terms of Service
-- perform credential abuse
-- spam mass applications
-- fabricate experience or qualifications
-- use deceptive automation
+- bypass CAPTCHA, logins, or other access controls
+- fabricate experience, metrics, or projects in resume/cover letter output
+- spam mass applications (apply-all is capped at 10 and requires per-job confirm)
+- swallow errors silently — surface them with useful context
+- add external API dependencies without explicit user sign-off
+
+## Current architecture
+
+### Commands ([cli.js](cli.js))
+
+| Command | Purpose |
+|---|---|
+| `convert [file]` | `.pdf`/`.docx`/`.txt` → `base-resume.json`. Auto-detects resume files at project root. |
+| `scan` | Discover + score jobs into `applications/pipeline.json`. `--sources api,linkedin,indeed`. |
+| `apply` | Menu of top-10 unapplied jobs. Pick one / apply-all / cancel. `--url <url>` for direct. |
+| `report` | Weekly CLI summary. |
+| `list` | Tracked applications from SQLite. |
+| `status <id> <new>` | Update an application's status. |
+
+Every command has an `npm run` alias in `package.json`.
+
+### Module map ([src/](src/))
+
+- [scrape.js](src/scrape.js) — platform-aware JD extraction (cheerio + 20s timeout + 24h cache)
+- [analyze.js](src/analyze.js) — `qwen2.5-coder:7b` → structured JSON (requirements/keywords/company/role/tone)
+- [tailor.js](src/tailor.js) — `gemma4:e2b` rewrites summary + reorders bullets. Owns `base-resume.json` loading.
+- [coverletter.js](src/coverletter.js) — ~250-word draft, matches analyzed tone
+- [render.js](src/render.js) — pdf-lib → PDFs in `output/`
+- [track.js](src/track.js) — SQLite, dedupe by URL
+- [autofill.js](src/autofill.js) — Playwright headful, fills Greenhouse/Lever/Ashby/SmartRecruiters/Workday
+- [scan.js](src/scan.js) — Greenhouse + Lever APIs, normalization, dedup against existing pipeline, stale-marking
+- [score.js](src/score.js) — deterministic fit score (keyword/stack/title/education/ATS factors). No LLM.
+- [convert.js](src/convert.js) — PDF/DOCX → base-resume.json via LLM
+- [report.js](src/report.js) — CLI dashboard
+- [feedback.js](src/feedback.js) — append-only `feedback.md`
+- [prompt.js](src/prompt.js) — `ask` / `askYesNo` readline wrappers
+- [companies.js](src/companies.js) — load `data/companies.json`
+- [sources/browser-search.js](src/sources/browser-search.js) — stealth Playwright launcher (UA spoof, webdriver removal, jitter)
+- [sources/linkedin.js](src/sources/linkedin.js) — LinkedIn guest-search parser
+- [sources/indeed.js](src/sources/indeed.js) — Indeed search parser
+- [_stream.js](src/_stream.js) — Ollama stream watchdog (45s stall, 5min max) + retry
+
+### Data files
+
+- `base-resume.json` — source of truth, project root. Never invented by code.
+- `data/companies.json` — Greenhouse/Lever slugs + LinkedIn/Indeed queries
+- `data/applications.db` — SQLite history
+- `applications/pipeline.json` — scored discovery output
+- `feedback.md` — post-apply notes (append-only)
+- `output/*.pdf` — rendered resumes + cover letters
+
+### Models
+
+| Model | Role |
+|---|---|
+| `qwen2.5-coder:7b` | JSON extraction (analyze, convert) |
+| `gemma4:e2b` | Writing (tailor, cover letter) |
+| `qwen3.5:4b` | Fast fallback with `--fast` |
+
+All calls stream with watchdog. Ollama at `http://127.0.0.1:11434`.
+
+## QA checklist
+
+Run before shipping changes. Each item is a smoke test — not exhaustive.
+
+### Setup sanity
+
+- [ ] `node cli.js --help` — all six commands listed
+- [ ] `npm run scan --help` (or `-- --help`) — shows flags
+- [ ] `ollama list` includes `qwen2.5-coder:7b`, `gemma4:e2b`
+- [ ] `base-resume.json` exists at project root and parses as valid JSON
+
+### Convert
+
+- [ ] `npm run convert -- nonexistent.pdf` → `Error: File not found: ...` (clean, no stack)
+- [ ] `npm run convert -- resume.doc` → clear "save as .docx" error
+- [ ] `npm run convert -- resume.pdf` → extracts text, structures, shows preview, prompts to confirm, writes backup
+- [ ] Existing `base-resume.json` is backed up before overwrite
+- [ ] With `ollama` stopped → *"Could not reach Ollama at 127.0.0.1:11434"*
+- [ ] With a scanned-image PDF → *"No text could be extracted"*
+
+### Scan
+
+- [ ] `npm run scan` (API only, default) completes in < 30s
+- [ ] `applications/pipeline.json` exists with ranked jobs, no duplicates
+- [ ] Re-run preserves `applied`/`status`/`notes` on existing entries
+- [ ] Jobs missing for > 14 days are marked `stale`
+- [ ] Senior titles are ranked below junior/intern despite keyword overlap
+- [ ] `npm run scan -- --sources api,linkedin,indeed` — ToS warning prints; Chromium opens; results tagged `ats_platform: "linkedin"`/`"indeed"`
+- [ ] On LinkedIn/Indeed block → warning printed, API results still populate, no crash
+
+### Apply
+
+- [ ] `npm run apply` (empty pipeline) → *"Nothing to apply to"* message
+- [ ] `npm run apply` shows top-10 menu with score, company, role, ATS platform
+- [ ] Menu accepts `1`–`10` → runs full flow
+- [ ] Menu accepts `a` → iterates; each job confirms `y`/`n`/`q`
+- [ ] `q` during apply-all cancels cleanly (no orphaned browser)
+- [ ] Menu accepts `q` at top level → exits
+- [ ] Invalid input → clean error, exit
+- [ ] After browser close → terminal prompts *"Did you submit?"* and *"What adjustments?"*
+- [ ] `feedback.md` gets a dated block with submit status + notes
+- [ ] Pipeline entry's `applied` + `status` updated; SQLite status updated
+- [ ] `--url <url>` bypasses menu
+- [ ] `--no-autofill` skips browser, still prompts feedback (no — feedback only fires after autofill; see "Known gaps")
 
----
+### Report / list / status
 
-# Command 1 — Scan
+- [ ] `npm run report` prints the six-line summary
+- [ ] `npm run list` shows tracked applications in reverse chronological order
+- [ ] `npm run status -- 1 interview` updates status
 
-## Command
+### Safety rails
 
-```bash
-job-agent scan
-```
+- [ ] Tailor output preserves every experience entry's `company` and `dates` unchanged
+- [ ] Tailor never invents new experience entries or skills
+- [ ] Autofill never clicks a Submit/Apply button (verify by reading [src/autofill.js](src/autofill.js))
+- [ ] LinkedIn/Indeed scrapers never authenticate (guest endpoints only)
 
-## Purpose
+### Regression
 
-Discover strong-fit jobs and automatically score them during the same run.
+- [ ] `data/base-resume.json` migration: move `base-resume.json` to `data/`, run `scan` → auto-copies back to root
 
-This should function as a weekly discovery + ranking engine.
+## Known gaps / future features
 
-No separate scoring command should exist.
+Priority-ordered. Each is scoped enough to be a single PR.
 
----
+### Near-term
 
-## Sources
+1. **Feedback on `--no-autofill` runs** — currently the feedback prompt only fires after `autofill()`. When `--no-autofill` is set, we skip the prompt. Should fire anyway. ([cli.js](cli.js) — `runApplyFlow`)
+2. **Resume tracker** — current tailor writes PDFs named by company+date, but we don't track which tailored version maps to which application. Add a `resume_hash` column.
+3. **Resume versioning** — allow multiple base resumes (e.g. `base-resume.frontend.json`, `base-resume.backend.json`) and pick one via `--profile <name>`.
+4. **Company blacklist** — `data/blacklist.json` skipping specific slugs in scan.
+5. **Company priority list** — `data/priorities.json` boosting specific slugs' fit scores.
+6. **Cleaner apply-all UX** — add `--limit N`, `--min-score N`, and a dry-run mode that lists what would be applied without opening browsers.
 
-Prioritize:
+### Medium-term
 
-- LinkedIn Jobs
-- Indeed
-- Greenhouse boards
-- Lever boards
-- startup company career pages
-- Canadian startup job boards
-- Toronto tech company career pages
+7. **ATS coverage expansion** — Workday multi-page autofill (currently best-effort on landing page only).
+8. **Role filter tuning in scan.js** — current regex over-matches (e.g. `"Graphic Designer"` slipped through). Move to a small deny-list.
+9. **Interview tracker** — table for interview events, reminders, prep notes.
+10. **Referral tracker** — who referred you, when, which company.
+11. **Recruiter CRM** — lightweight table of recruiter contacts tied to applications.
+12. **Networking tracker** — log coffee chats, follow-up reminders.
 
-Only use compliant browser-assisted discovery.
+### Long-term / speculative
 
-No aggressive scraping behavior.
+13. **Structured logging** — replace `process.stderr.write` with a leveled logger; write to `data/logs/`.
+14. **Config file** — `config.json` for Ollama host, model choices, timeouts, default writing model.
+15. **Analytics** — rendering charts of application volume, reply rate, score distribution.
+16. **Fit-score learning loop** — use `feedback.md` outcomes (replies, interviews) to tune scoring weights.
 
----
+## Agent working rules
 
-## Role Filters
+When an agent (human or AI) modifies this codebase:
 
-Focus on:
+### Don't
 
-- software engineer
-- software developer
-- frontend engineer
-- backend engineer
-- full stack developer
-- new grad roles
-- internship roles
-- junior developer roles
-- early career engineering roles
+- Don't add backend calls to external LLM providers (OpenAI, Anthropic, etc.). Local only.
+- Don't introduce a database other than SQLite. Don't migrate to an ORM.
+- Don't add a UI framework. CLI only.
+- Don't write code that could auto-submit, bypass CAPTCHA, or authenticate to LinkedIn/Indeed.
+- Don't add features that fabricate resume content. Tailor reorders and rewords; nothing more.
+- Don't add dependencies without checking bundle impact and offline availability.
 
-Location priority:
+### Do
 
-- Toronto
-- GTA
-- Hybrid Toronto
-- Remote Canada
+- Prefer editing existing modules over creating new ones. The architecture is intentionally flat.
+- Match the existing style: ES modules, top-of-file imports, small pure functions, no decorators.
+- Keep LLM prompts in the module that calls them (don't centralize prompts into a registry).
+- Use [src/_stream.js](src/_stream.js) helpers for every Ollama call — don't bypass the watchdog.
+- Use [src/prompt.js](src/prompt.js) for interactive input — don't add a new readline path.
+- Update `data/companies.json` schema cautiously; `src/companies.js` is the single loader.
+- When changing the pipeline.json schema, keep old entries readable (scan.js already preserves `applied`/`status`/`notes` across shape changes).
+- When touching autofill, test the close-wait path — a previous bug caused the CLI to hang forever after browser close ([src/autofill.js](src/autofill.js#L160-L168)).
+- Verify PDF extraction against `pdf-parse` v2's `new PDFParse({data}).getText()` API — the v1 `lib/pdf-parse.js` import is gone.
 
----
+### Style
 
-## Automatic Scoring Requirements
+- No emojis in user-facing output unless the user explicitly asks.
+- Error messages: *what happened*, *why*, *what to do next*. One line when possible.
+- Comments only for non-obvious invariants. Don't narrate what code does.
+- No `try/catch` that swallows the error silently. Every catch either logs or rethrows.
 
-Each discovered job must be scored immediately against the user’s resume.
+### When adding a new CLI command
 
-### Scoring Factors
+1. Add action to [cli.js](cli.js) using `commander`.
+2. Add an `npm run <cmd>` alias to [package.json](package.json).
+3. Document in [README.md](README.md) under "Commands".
+4. Add QA checklist items to this file.
 
-Evaluate:
-
-- resume keyword match
-- technical stack overlap
-- project relevance
-- internship relevance
-- ATS keyword strength
-- education relevance
-- experience expectation alignment
-- realistic interview viability
-
-### Required Output
-
-Example:
-
-```text
-92% fit — Shopify — Backend Intern
-88% fit — Wealthsimple — SWE Intern
-71% fit — Skip — Senior Staff Engineer
-```
-
-### Required Behavior
-
-- high-fit roles prioritized first
-- low-fit roles clearly marked to skip
-- explain missing keywords
-- explain why score was assigned
-- recommend resume improvements when useful
-
----
-
-## Output File
-
-Store results in:
-
-```text
-applications/pipeline.json
-```
-
-## Required Schema
-
-```json
-{
-  "company": "",
-  "role": "",
-  "url": "",
-  "location": "",
-  "salary": "",
-  "tech_stack": [],
-  "ats_platform": "",
-  "date_discovered": "",
-  "fit_score": 0,
-  "priority": "high",
-  "applied": false,
-  "status": "new",
-  "notes": ""
-}
-```
-
-## Required Data Rules
-
-- deduplicate jobs
-- avoid repeated listings
-- track stale listings
-- support repeat weekly scans safely
-
----
-
-# Command 2 — Apply
-
-## Command
-
-```bash
-job-agent apply
-```
-
-## Purpose
-
-Create a streamlined guided apply queue using best-fit unapplied roles first.
-
-This should optimize quality over quantity.
-
----
-
-## Required Flow
-
-### Step 1
-
-Select highest-priority unapplied job.
-
-### Step 2
-
-Generate ATS-safe tailored resume.
-
-### Step 3
-
-Generate tailored cover letter only if required.
-
-### Step 4
-
-Launch Playwright browser.
-
-### Step 5
-
-Autofill safe application fields only.
-
-### Step 6
-
-Pause for user review.
-
-### Step 7
-
-User manually clicks final submit.
-
-### Step 8
-
-After browser closes, ask:
-
-1. Did you complete and submit the application? (yes/no)
-2. Follow-up:
-   - if yes → what adjustments were needed?
-   - if no → what prevented submission?
-
-### Step 9
-
-Append feedback to:
-
-```text
-~/agent-instructions/feedback.md
-```
-
----
-
-## Required Safety
-
-- never click final submit automatically
-- never perform hidden submissions
-- never attempt CAPTCHA bypass
-- user must remain fully in control
-
-This is mandatory.
-
----
-
-# Command 3 — Digest
-
-## Command
-
-```bash
-job-agent digest
-```
-
-## Purpose
-
-Provide a simple CLI dashboard summary only.
-
-Do NOT build email exports.
-
-Do NOT build Notion exports.
-
-Keep this streamlined.
-
----
-
-## Example Output
-
-```text
-This Week
-
-12 strong matches found
-5 applications submitted
-3 resume adjustments needed
-2 jobs worth skipping
-Top target: Shopify Backend Intern (92%)
-Next target: Wealthsimple SWE Intern (88%)
-```
-
-This should be fast and useful.
-
-No unnecessary reporting complexity.
-
----
-
-# Resume Tailoring Rules
-
-## Critical Requirement
-
-Tailoring must optimize for ATS and recruiter clarity.
-
-Not keyword stuffing.
-
----
-
-## Required Best Practices
-
-- preserve truthfulness
-- reorder strongest bullets first
-- emphasize measurable impact
-- match employer terminology
-- improve project relevance
-- optimize recruiter readability
-- keep formatting ATS-safe
-- prioritize strongest developer projects
-- align to 2026 hiring expectations
-
----
-
-## Never Do
-
-- fake experience
-- fake metrics
-- fake projects
-- dishonest keyword stuffing
-- unreadable AI-generated language
-- low-quality generic cover letters
-
----
-
-# 2026 Hiring Best Practices
-
-The system must optimize for:
-
-- focused high-quality applications
-- fewer stronger applications over mass applying
-- role relevance over quantity
-- ATS keyword precision
-- recruiter clarity
-- measurable project impact
-- visible ownership and product thinking
-- strong technical project presentation
-
-Avoid outdated “spray and pray” application behavior.
-
-Quality-first is required.
-
----
-
-# Portfolio Positioning
-
-## Website Framing
-
-Never describe this project as:
-
-“AI auto applies to jobs”
-
-Use:
-
-## AI-Assisted Personal Job Search Operating System
-
-This should demonstrate:
-
-- responsible AI engineering
-- workflow automation
-- human-in-the-loop systems
-- practical product design
-- measurable hiring optimization
-- strong engineering judgment
-
-This framing is significantly stronger for recruiters.
-
----
-
-# Recommended Technical Improvements
-
-Prioritize:
-
-- stronger structured logging
-- config file support
-- retry-safe browser flows
-- failure recovery
-- duplicate detection
-- company blacklist support
-- company priority list
-- resume version tracking
-- cleaner CLI UX
-- application analytics
-
-Future optional:
-
-- interview tracking
-- recruiter CRM
-- referral tracking
-- networking tracker
-- recruiter follow-up reminders
-
-Only after core workflow is excellent.
-
----
-
-# Delivery Standard
+## Delivery standard
 
 This project should be strong enough that:
 
-1. it is genuinely useful every week
-2. it improves real hiring outcomes
-3. it is strong enough for portfolio review
-4. it demonstrates strong engineering thinking
-5. it solves an actual painful workflow problem
+1. it is genuinely useful to the user every week
+2. it improves real hiring outcomes (measurable via `feedback.md` + `list`)
+3. it holds up under portfolio review by a senior engineer
+4. it demonstrates judgment about where AI helps vs. where humans decide
+5. it solves an actual, painful workflow problem — not a toy demo
 
 Build toward that standard only.
-

@@ -6,7 +6,6 @@
     "1password",
     "clio",
     "faire",
-    "ada",
     "hootsuite",
     "vidyard",
     "nuvei",
@@ -15,8 +14,12 @@
   "lever": [
     "ritual",
     "kepler",
-    "blockstream",
     "attentive",
     "shopmonkey"
-  ]
+  ],
+  "linkedin_queries":   ["software engineer", "frontend developer", "backend developer"],
+  "indeed_queries":     ["software engineer", "frontend developer", "backend developer"],
+  "jobbank_queries":    ["software developer", "web developer", "full stack developer"],
+  "civicjobs_queries":  ["developer", "software", "web"],
+  "workopolis_queries": ["software developer", "web developer", "frontend"]
 }

@@ -2,7 +2,7 @@ import { readPipeline } from './scan.js';
 import { readFeedbackSince } from './feedback.js';
 import { listApplications } from './track.js';
 
-export async function digest() {
+export async function report() {
   const pipeline = await readPipeline();
   const feedback = await readFeedbackSince(7);
   const apps = listApplications();
