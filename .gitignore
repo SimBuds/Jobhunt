@@ -1,7 +1,12 @@
 node_modules/
 package-lock.json
-output/
 
 .vscode/
 .claude/
 .cursor/
+
+output/
+data/
+data/base-resume.json* 
+
+agent-instructions.md
