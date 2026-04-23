@@ -133,6 +133,7 @@ export async function autofill(url, resumePath) {
   const resume = await loadBaseResume();
   const platform = detectPlatform(url);
   const filler = FILLERS[platform];
+  let filled = false;
 
   if (!filler) {
     console.log(`Autofill has no template for "${platform}". Opening page without autofill.`);
@@ -146,6 +147,7 @@ export async function autofill(url, resumePath) {
   if (filler) {
     try {
       await filler(page, resume, resumePath);
+      filled = true;
     } catch (err) {
       console.log(`Autofill error (non-fatal): ${err.message}`);
     }
@@ -156,7 +158,11 @@ export async function autofill(url, resumePath) {
   console.log('Close the browser window when done.\n');
 
   await new Promise(resolve => {
-    context.on('close', resolve);
-    browser.on('disconnected', resolve);
+    const done = () => resolve();
+    browser.once('disconnected', done);
+    context.once('close', done);
   });
+  try { await browser.close(); } catch {}
+
+  return { platform, filled };
 }
