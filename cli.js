@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { access } from 'node:fs/promises';
 import { scrape } from './src/scrape.js';
 import { analyze } from './src/analyze.js';
-import { tailor } from './src/tailor.js';
+import { tailor, RESUME_PATH } from './src/tailor.js';
 import { generateCoverLetter } from './src/coverletter.js';
 import { render } from './src/render.js';
 import { autofill } from './src/autofill.js';
 import { logApplication, listApplications, updateStatus } from './src/track.js';
-import { scan } from './src/scan.js';
-import { digest } from './src/digest.js';
-import { importResume } from './src/import-resume.js';
-import { readPipeline, writePipeline } from './src/scan.js';
+import { scan, readPipeline, writePipeline } from './src/scan.js';
+import { report } from './src/report.js';
+import { convertResume, autoDetectResumeFile } from './src/convert.js';
 import { ask, askYesNo } from './src/prompt.js';
 import { appendFeedback } from './src/feedback.js';
 
@@ -20,7 +20,27 @@ const program = new Command();
 program
   .name('job-agent')
   .description('AI-assisted personal job search operating system')
-  .version('2.0.0');
+  .version('2.1.0');
+
+async function ensureBaseResume() {
+  try {
+    await access(RESUME_PATH);
+    return true;
+  } catch {}
+  const detected = await autoDetectResumeFile();
+  if (detected) {
+    console.log(`\nNo base-resume.json yet. Found "${detected.split('/').pop()}" at project root.`);
+    if (await askYesNo('Convert it to base-resume.json now?')) {
+      await convertResume(detected, { yes: false });
+      try { await access(RESUME_PATH); return true; } catch { return false; }
+    }
+    console.log('OK — run `node cli.js convert <file>` when you\'re ready.');
+    return false;
+  }
+  console.log('\nNo base-resume.json and no resume.pdf/.docx found at project root.');
+  console.log('Run: node cli.js convert <path-to-resume>');
+  return false;
+}
 
 async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
   console.log('Scraping job posting...');
@@ -88,21 +108,40 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
     }
   }
 
-  if (submitted) {
-    updateStatus(appId, 'submitted');
-  } else {
-    updateStatus(appId, 'attempted');
-  }
+  updateStatus(appId, submitted ? 'submitted' : 'attempted');
 
   console.log('\nDone. Feedback saved to feedback.md');
+  return { submitted };
+}
+
+async function pickCandidates(limit = 10) {
+  const pipeline = await readPipeline();
+  return pipeline
+    .filter(j => !j.applied && j.status !== 'stale')
+    .sort((a, b) => b.fit_score - a.fit_score)
+    .slice(0, limit);
+}
+
+function printMenu(candidates) {
+  console.log('\nTop unapplied roles:\n');
+  candidates.forEach((j, i) => {
+    console.log(
+      `  ${String(i + 1).padStart(2)}. ${String(j.fit_score).padStart(3)}% — ${j.company} — ${j.role} [${j.ats_platform}]`
+    );
+  });
+  console.log('\n   a. Apply to all listed above (one at a time, with confirm)');
+  console.log('   q. Cancel\n');
 }
 
 program
   .command('scan')
-  .description('Discover + auto-score jobs from configured Greenhouse/Lever boards')
-  .action(async () => {
+  .description('Discover + auto-score jobs into applications/pipeline.json')
+  .option('--sources <list>', 'Comma-separated: api,linkedin,indeed,jobbank,civicjobs,workopolis,all', 'api')
+  .action(async (opts) => {
     try {
-      await scan();
+      if (!(await ensureBaseResume())) return;
+      const sources = opts.sources.split(',').map(s => s.trim()).filter(Boolean);
+      await scan({ sources });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -111,39 +150,70 @@ program
 
 program
   .command('apply')
-  .description('Guided apply flow: picks highest-fit unapplied job, or a specific --url')
-  .option('--url <url>', 'Apply to a specific URL instead of the pipeline top')
+  .description('Guided apply: pick a job from the pipeline menu, or use --url')
+  .option('--url <url>', 'Apply to a specific URL instead of the pipeline menu')
   .option('--no-autofill', 'Skip browser autofill')
   .option('--fast', 'Use qwen3.5:4b for writing steps')
   .action(async (opts) => {
     const writingModel = opts.fast ? 'qwen3.5:4b' : 'gemma4:e2b';
+    const noAutofill = !opts.autofill;
     try {
-      let url = opts.url;
-      let fromPipeline = false;
-      if (!url) {
-        const pipeline = await readPipeline();
-        const candidate = pipeline
-          .filter(j => !j.applied && j.status !== 'stale')
-          .sort((a, b) => b.fit_score - a.fit_score)[0];
-        if (!candidate) {
-          console.log('Nothing to apply to. Run `job-agent scan` first, or pass --url.');
-          return;
-        }
-        url = candidate.url;
-        fromPipeline = true;
-        console.log(`Next target: ${candidate.company} — ${candidate.role} (${candidate.fit_score}% fit)`);
-        console.log(`URL: ${url}\n`);
-        if (!(await askYesNo('Proceed?'))) {
-          console.log('Cancelled.');
-          return;
-        }
+      if (!(await ensureBaseResume())) return;
+
+      if (opts.url) {
+        await runApplyFlow({ url: opts.url, writingModel, noAutofill, pipelineEntry: false });
+        return;
       }
-      await runApplyFlow({
-        url,
-        writingModel,
-        noAutofill: !opts.autofill,
-        pipelineEntry: fromPipeline,
-      });
+
+      const candidates = await pickCandidates(10);
+      if (!candidates.length) {
+        console.log('Nothing to apply to. Run `node cli.js scan` first.');
+        return;
+      }
+
+      printMenu(candidates);
+      const choice = (await ask(`Choose [1-${candidates.length}, a, q]:`)).toLowerCase().trim();
+
+      if (!choice || choice === 'q') {
+        console.log('Cancelled.');
+        return;
+      }
+
+      if (choice === 'a') {
+        for (let i = 0; i < candidates.length; i++) {
+          const fresh = await readPipeline();
+          const entry = fresh.find(j => j.url === candidates[i].url);
+          if (entry?.applied) {
+            console.log(`\nSkipping #${i + 1}: already applied.`);
+            continue;
+          }
+          const j = candidates[i];
+          console.log(`\n=== Job ${i + 1} of ${candidates.length} ===`);
+          console.log(`${j.fit_score}% — ${j.company} — ${j.role}`);
+          console.log(`URL: ${j.url}`);
+          const ans = (await ask('Proceed with this one? (y/n to skip/q to cancel batch):')).toLowerCase().trim();
+          if (ans === 'q') { console.log('Batch cancelled.'); break; }
+          if (ans !== 'y' && ans !== 'yes') { console.log('Skipped.'); continue; }
+          try {
+            await runApplyFlow({ url: j.url, writingModel, noAutofill, pipelineEntry: true });
+          } catch (err) {
+            console.error(`Error applying to ${j.company}: ${err.message}`);
+            const cont = await askYesNo('Continue with the next job in the batch?');
+            if (!cont) break;
+          }
+        }
+        console.log('\nBatch complete.');
+        return;
+      }
+
+      const n = parseInt(choice, 10);
+      if (!Number.isInteger(n) || n < 1 || n > candidates.length) {
+        console.log(`Invalid choice "${choice}".`);
+        return;
+      }
+      const picked = candidates[n - 1];
+      console.log(`\nSelected: ${picked.company} — ${picked.role} (${picked.fit_score}%)\n`);
+      await runApplyFlow({ url: picked.url, writingModel, noAutofill, pipelineEntry: true });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -151,11 +221,11 @@ program
   });
 
 program
-  .command('digest')
+  .command('report')
   .description('Weekly CLI summary of pipeline + applications')
   .action(async () => {
     try {
-      await digest();
+      await report();
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -163,13 +233,23 @@ program
   });
 
 program
-  .command('import-resume')
-  .description('Convert resume.pdf/.docx/.txt into base-resume.json')
-  .argument('<file>', 'Path to resume file (.pdf, .docx, .txt, .md)')
+  .command('convert')
+  .description('Convert resume (.pdf/.docx/.txt) into base-resume.json')
+  .argument('[file]', 'Path to resume file (auto-detects resume.pdf/.docx if omitted)')
   .option('-y, --yes', 'Skip confirmation prompt')
   .action(async (file, opts) => {
     try {
-      await importResume(file, { yes: opts.yes });
+      let target = file;
+      if (!target) {
+        target = await autoDetectResumeFile();
+        if (!target) {
+          console.log('No file given and no resume.pdf/.docx found at project root.');
+          console.log('Usage: node cli.js convert <path-to-resume>');
+          process.exit(1);
+        }
+        console.log(`Auto-detected: ${target}`);
+      }
+      await convertResume(target, { yes: opts.yes });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

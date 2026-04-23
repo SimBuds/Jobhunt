@@ -4,6 +4,11 @@ import { dirname, join } from 'node:path';
 import { loadBaseResume } from './tailor.js';
 import { loadCompanies } from './companies.js';
 import { score, priorityFor } from './score.js';
+import { searchLinkedIn } from './sources/linkedin.js';
+import { searchIndeed } from './sources/indeed.js';
+import { searchJobBank } from './sources/jobbank.js';
+import { searchCivicJobs } from './sources/civicjobs.js';
+import { searchWorkopolis } from './sources/workopolis.js';
 
 const PIPELINE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'applications');
 const PIPELINE_PATH = join(PIPELINE_DIR, 'pipeline.json');
@@ -11,8 +16,10 @@ const STALE_DAYS = 14;
 
 export { PIPELINE_PATH };
 
-const LOCATION_RE = /(toronto|gta|ontario|\bon\b|canada|remote)/i;
-const EXCLUDE_LOC_RE = /(united states|usa|u\.s\.a|uk\b|united kingdom|emea|apac|australia|india|brazil|germany)/i;
+// Toronto + ~100km radius: GTA core, Hamilton/Niagara belt, Waterloo region, Barrie corridor,
+// Durham Region, Peel, Halton. Plus Ontario-wide and remote-Canada.
+const LOCATION_RE = /(toronto|gta|ontario|\bon\b|canada|remote|mississauga|brampton|markham|vaughan|richmond hill|oakville|burlington|hamilton|kitchener|waterloo|cambridge|guelph|oshawa|pickering|ajax|whitby|aurora|newmarket|barrie|milton|halton|peel|durham|york region|niagara|st\.?\s*catharines|grimsby)/i;
+const EXCLUDE_LOC_RE = /(united states|usa|u\.s\.a|uk\b|united kingdom|emea|apac|australia|india|brazil|germany|philippines)/i;
 const ROLE_RE = /(software|frontend|front-end|front end|backend|back-end|back end|full[-\s]?stack|engineer|developer|programmer|intern|new[-\s]?grad|junior)/i;
 
 function stripHtml(s = '') {
@@ -90,22 +97,71 @@ async function loadExistingPipeline() {
   }
 }
 
-export async function scan() {
+export async function scan({ sources = ['api'] } = {}) {
   const companies = await loadCompanies();
-  if (!companies.greenhouse.length && !companies.lever.length) {
-    console.log('No companies configured. Edit data/companies.json to add Greenhouse/Lever slugs.');
+  const wantApi = sources.includes('api');
+  const wantLinkedIn = sources.includes('linkedin');
+  const wantIndeed = sources.includes('indeed');
+  const wantJobBank = sources.includes('jobbank');
+  const wantCivicJobs = sources.includes('civicjobs');
+  const wantWorkopolis = sources.includes('workopolis');
+  const wantAllScrapers = sources.includes('all');
+
+  const useLinkedIn = wantLinkedIn || wantAllScrapers;
+  const useIndeed = wantIndeed || wantAllScrapers;
+  const useJobBank = wantJobBank || wantAllScrapers;
+  const useCivicJobs = wantCivicJobs || wantAllScrapers;
+  const useWorkopolis = wantWorkopolis || wantAllScrapers;
+  const anyScraper = useLinkedIn || useIndeed || useJobBank || useCivicJobs || useWorkopolis;
+
+  if (wantApi && !anyScraper && !companies.greenhouse.length && !companies.lever.length) {
+    console.log('No companies configured. Edit data/companies.json to add Greenhouse/Lever slugs,');
+    console.log('or pass --sources all to scrape every supported board.');
     return { jobs: [], added: 0 };
+  }
+
+  if (useLinkedIn || useIndeed || useWorkopolis) {
+    console.log('\n⚠  LinkedIn/Indeed/Workopolis scraping is best-effort and may violate ToS.');
+    console.log('   A browser will open; your IP may be rate-limited or CAPTCHA-challenged.');
+    console.log('   Use sparingly.\n');
+  }
+  if (useJobBank || useCivicJobs) {
+    console.log('Scanning Job Bank / CivicJobs (public boards, rate-limited).\n');
   }
 
   const resume = await loadBaseResume();
   const existing = await loadExistingPipeline();
   const existingByUrl = new Map(existing.map(j => [j.url, j]));
 
-  const fetchTasks = [
+  const apiTasks = wantApi ? [
     ...companies.greenhouse.map(s => fetchGreenhouse(s)),
     ...companies.lever.map(s => fetchLever(s)),
+  ] : [];
+  const apiResults = (await Promise.all(apiTasks)).flat();
+
+  async function safeRun(label, fn) {
+    try { return await fn(); } catch (err) {
+      process.stderr.write(`[${label}] aborted: ${err.message}\n`);
+      return [];
+    }
+  }
+
+  // Sequential scraper runs (each launches its own browser) to avoid N concurrent
+  // Chromium instances and to keep one visible window at a time for CAPTCHA handling.
+  const linkedInResults  = useLinkedIn   ? await safeRun('linkedin',   () => searchLinkedIn(companies.linkedin_queries))     : [];
+  const indeedResults    = useIndeed     ? await safeRun('indeed',     () => searchIndeed(companies.indeed_queries))         : [];
+  const jobBankResults   = useJobBank    ? await safeRun('jobbank',    () => searchJobBank(companies.jobbank_queries))       : [];
+  const civicJobsResults = useCivicJobs  ? await safeRun('civicjobs',  () => searchCivicJobs(companies.civicjobs_queries))   : [];
+  const workopolisResults= useWorkopolis ? await safeRun('workopolis', () => searchWorkopolis(companies.workopolis_queries)) : [];
+
+  const results = [
+    ...apiResults,
+    ...linkedInResults,
+    ...indeedResults,
+    ...jobBankResults,
+    ...civicJobsResults,
+    ...workopolisResults,
   ];
-  const results = (await Promise.all(fetchTasks)).flat();
 
   const today = new Date().toISOString().slice(0, 10);
   const seenUrls = new Set();
