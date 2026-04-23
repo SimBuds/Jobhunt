@@ -1,12 +1,25 @@
-import { readFile } from 'fs/promises';
+import { readFile, copyFile, access } from 'fs/promises';
 import { Ollama } from 'ollama';
 import { streamWithWatchdog, withRetry } from './_stream.js';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 
-const RESUME_PATH = new URL('../data/base-resume.json', import.meta.url);
+const RESUME_PATH = new URL('../base-resume.json', import.meta.url);
+const LEGACY_RESUME_PATH = new URL('../data/base-resume.json', import.meta.url);
 
 let cachedResume = null;
+
+async function ensureResumeAtRoot() {
+  try {
+    await access(RESUME_PATH);
+    return;
+  } catch {}
+  try {
+    await access(LEGACY_RESUME_PATH);
+    await copyFile(LEGACY_RESUME_PATH, RESUME_PATH);
+    process.stderr.write('[resume] migrated data/base-resume.json -> base-resume.json (project root)\n');
+  } catch {}
+}
 
 function applyEnvOverrides(resume) {
   const env = process.env;
@@ -24,10 +37,17 @@ function applyEnvOverrides(resume) {
 
 export async function loadBaseResume() {
   if (cachedResume) return cachedResume;
+  await ensureResumeAtRoot();
   const raw = await readFile(RESUME_PATH, 'utf-8');
   cachedResume = applyEnvOverrides(JSON.parse(raw));
   return cachedResume;
 }
+
+export function resetResumeCache() {
+  cachedResume = null;
+}
+
+export { RESUME_PATH };
 
 function compactResume(resume) {
   return {

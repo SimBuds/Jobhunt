@@ -6,7 +6,12 @@ package-lock.json
 .cursor/
 
 output/
-data/
-data/base-resume.json* 
+data/applications.db
+data/applications.db-*
+data/scrape-cache/
 
-agent-instructions.md
+applications/
+feedback.md
+base-resume.backup-*.json
+resume.pdf
+resume.docx
