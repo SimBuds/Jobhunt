@@ -42,8 +42,7 @@ async function drawWrappedText(page, text, x, y, font, size, maxWidth, lineHeigh
 }
 
 async function renderResumePdf(resume, company) {
-  const pdf = PDFDocument.create();
-  const doc = await pdf;
+  const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 

@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import { launchStealthBrowser, jitter } from './browser-search.js';
+import { launchStealthContext, jitter, gotoWithBackoff, looksLikeLogin, looksLikeCaptcha } from './browser-search.js';
 
 const MAX_QUERIES = 3;
 const MAX_PER_QUERY = 25;
@@ -50,16 +50,24 @@ export async function searchLinkedIn(queries) {
   const clipped = queries.slice(0, MAX_QUERIES);
   if (!clipped.length) return out;
 
-  const { browser, context } = await launchStealthBrowser({ headless: false });
+  const { context, close } = await launchStealthContext({ headless: false });
   try {
     const page = await context.newPage();
     for (const q of clipped) {
       process.stderr.write(`[linkedin] searching "${q}"\n`);
       try {
-        const resp = await page.goto(buildUrl(q, 0), { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        const resp = await gotoWithBackoff(page, buildUrl(q, 0), { timeout: 20_000, label: 'linkedin' });
         const status = resp?.status() ?? 0;
-        if (status >= 400) {
-          process.stderr.write(`[linkedin] HTTP ${status} for "${q}" — likely rate-limited; stopping.\n`);
+        if (status === 429 || status >= 500) {
+          process.stderr.write(`[linkedin] HTTP ${status}; stopping.\n`);
+          break;
+        }
+        if (await looksLikeLogin(page)) {
+          process.stderr.write('[linkedin] login wall detected; skipping remaining queries. Solve it in the browser to persist cookies for next run.\n');
+          break;
+        }
+        if (await looksLikeCaptcha(page)) {
+          process.stderr.write('[linkedin] CAPTCHA detected; skipping remaining queries.\n');
           break;
         }
         const html = await page.content();
@@ -72,8 +80,7 @@ export async function searchLinkedIn(queries) {
       await jitter(4000, 8000);
     }
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await close();
   }
   return out;
 }

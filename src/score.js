@@ -14,8 +14,14 @@ const STACK_TOKENS = [
   'contentful','wordpress','liquid','tailwind','sass','webpack','vite','jest','playwright','cypress','html','css'
 ];
 
-const SENIOR_WORDS = /(senior|sr\.|staff|principal|lead|manager|director|vp|head of|architect)/i;
-const JUNIOR_WORDS = /(intern|internship|new grad|new-grad|entry|junior|jr\.|early[-\s]?career|i\b|ii\b|associate)/i;
+// Seniority signals. Ordered by specificity; tested against the full job title.
+const SENIOR_WORDS = /\b(sr\.?|senior|staff|principal|lead|manager|director|vp|head\s+of|architect|head|chief)\b/i;
+const JUNIOR_WORDS = /\b(intern|internship|new[-\s]?grad|entry[-\s]?level|junior|jr\.?|early[-\s]?career|co[-\s]?op|associate)\b/i;
+
+export function isSenior(title = '') {
+  if (JUNIOR_WORDS.test(title)) return false;
+  return SENIOR_WORDS.test(title);
+}
 
 function tokenize(text = '') {
   return (text.toLowerCase().match(/[a-z][a-z0-9+.#/-]{1,}/g) || [])
@@ -41,8 +47,13 @@ function resumeBag(resume) {
   };
 }
 
-export function score(job, resume) {
-  const jdText = `${job.title || ''} ${job.description || ''}`;
+export function score(job, resume, { seniorityPolicy = 'keep', seniorCap = 30 } = {}) {
+  const title = job.title || '';
+  const senior = isSenior(title);
+
+  if (senior && seniorityPolicy === 'filter') return null;
+
+  const jdText = `${title} ${job.description || ''}`;
   const jdTokens = tokenize(jdText);
   const jdTokenSet = new Set(jdTokens);
   const jdStack = new Set(extractStack(jdText));
@@ -54,11 +65,9 @@ export function score(job, resume) {
   const stackOverlap = [...jdStack].filter(t => r.stack.has(t));
   const stackPts = jdStack.size === 0 ? 10 : Math.min(20, (stackOverlap.length / jdStack.size) * 20);
 
-  const title = job.title || '';
   let titlePts = 10;
-  let seniorityMultiplier = 1;
   if (JUNIOR_WORDS.test(title)) titlePts = 20;
-  else if (SENIOR_WORDS.test(title)) { titlePts = 0; seniorityMultiplier = 0.5; }
+  else if (senior) titlePts = 0;
 
   const educationPts = /computer|programming|software|engineering|science/i.test(r.text) ? 10 : 5;
 
@@ -67,17 +76,24 @@ export function score(job, resume) {
     ? Math.min(10, (keywordOverlap.length / Math.max(1, jdTokens.length)) * 200)
     : 5;
 
-  const total = Math.round((keywordPts + stackPts + titlePts + educationPts + atsPts) * seniorityMultiplier);
+  let total = Math.round(keywordPts + stackPts + titlePts + educationPts + atsPts);
+  total = Math.min(100, Math.max(0, total));
+
+  if (senior && seniorityPolicy === 'handicap') {
+    total = Math.min(total, seniorCap);
+  }
 
   const missing_keywords = [...jdStack].filter(t => !r.stack.has(t)).slice(0, 8);
   const rationale =
     `keywords ${Math.round(keywordPts)}/40, stack ${Math.round(stackPts)}/20 (${stackOverlap.length}/${jdStack.size}), ` +
-    `title ${titlePts}/20, edu ${educationPts}/10, ats ${Math.round(atsPts)}/10`;
+    `title ${titlePts}/20, edu ${educationPts}/10, ats ${Math.round(atsPts)}/10` +
+    (senior ? ` [senior:${seniorityPolicy}]` : '');
 
   return {
-    score: Math.min(100, Math.max(0, total)),
+    score: total,
     missing_keywords,
     rationale,
+    senior,
   };
 }
 

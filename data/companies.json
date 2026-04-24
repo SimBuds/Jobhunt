@@ -1,21 +1,30 @@
 {
   "greenhouse": [
-    "shopify",
-    "cohere",
-    "wealthsimple",
-    "1password",
-    "clio",
-    "faire",
     "hootsuite",
-    "vidyard",
-    "nuvei",
-    "rippling"
+    "faire",
+    "ritual",
+    "leagueinc",
+    "thinkific",
+    "instacart",
+    "stripe",
+    "figma",
+    "cloudflare",
+    "datadog",
+    "vercel",
+    "netlify",
+    "airtable",
+    "asana",
+    "duolingo",
+    "scaleai",
+    "attentive",
+    "shopmonkey",
+    "paperlesspost"
   ],
   "lever": [
-    "ritual",
     "kepler",
-    "attentive",
-    "shopmonkey"
+    "plusgrade",
+    "benchsci",
+    "xero"
   ],
   "linkedin_queries":   ["software engineer", "frontend developer", "backend developer"],
   "indeed_queries":     ["software engineer", "frontend developer", "backend developer"],

@@ -1,4 +1,4 @@
-import { launchStealthBrowser, jitter } from './browser-search.js';
+import { launchStealthContext, jitter, gotoWithBackoff, looksLikeLogin, looksLikeCaptcha } from './browser-search.js';
 
 // Note: Workopolis was acquired/wound down in 2018. The site may return zero
 // results or redirect; we attempt a best-effort parse and warn if empty.
@@ -19,14 +19,19 @@ export async function searchWorkopolis(queries) {
   const clipped = queries.slice(0, MAX_QUERIES);
   if (!clipped.length) return out;
 
-  const { browser, context } = await launchStealthBrowser({ headless: false });
+  const { context, close } = await launchStealthContext({ headless: false });
   try {
     const page = await context.newPage();
     let warnedDeprecated = false;
     for (const q of clipped) {
       process.stderr.write(`[workopolis] searching "${q}"\n`);
       try {
-        await page.goto(buildUrl(q), { waitUntil: 'domcontentloaded', timeout: 25_000 });
+        const resp = await gotoWithBackoff(page, buildUrl(q), { timeout: 25_000, label: 'workopolis' });
+        if (resp?.status() === 429) break;
+        if (await looksLikeLogin(page) || await looksLikeCaptcha(page)) {
+          process.stderr.write('[workopolis] blocked by login/CAPTCHA; skipping.\n');
+          break;
+        }
         await page.waitForSelector('.JobInfo, article, .job-card, [data-testid*="job"]', { timeout: 8_000 }).catch(() => {});
 
         const cards = await page.$$eval(
@@ -68,8 +73,7 @@ export async function searchWorkopolis(queries) {
       await jitter(3000, 6000);
     }
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await close();
   }
   return out;
 }

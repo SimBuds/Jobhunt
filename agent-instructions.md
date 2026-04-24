@@ -36,7 +36,7 @@ Portfolio framing: *"AI-Assisted Personal Job Search Operating System"* — neve
 | Command | Purpose |
 |---|---|
 | `convert [file]` | `.pdf`/`.docx`/`.txt` → `base-resume.json`. Auto-detects resume files at project root. |
-| `scan` | Discover + score jobs into `applications/pipeline.json`. `--sources api,linkedin,indeed`. |
+| `scan` | Discover + score jobs into `applications/pipeline.json`. `--sources api,linkedin,indeed,jobbank,civicjobs,workopolis,all`. All searches are centered on Toronto + 100km across every work type. |
 | `apply` | Menu of top-10 unapplied jobs. Pick one / apply-all / cancel. `--url <url>` for direct. |
 | `report` | Weekly CLI summary. |
 | `list` | Tracked applications from SQLite. |
@@ -61,15 +61,20 @@ Every command has an `npm run` alias in `package.json`.
 - [prompt.js](src/prompt.js) — `ask` / `askYesNo` readline wrappers
 - [companies.js](src/companies.js) — load `data/companies.json`
 - [sources/browser-search.js](src/sources/browser-search.js) — stealth Playwright launcher (UA spoof, webdriver removal, jitter)
-- [sources/linkedin.js](src/sources/linkedin.js) — LinkedIn guest-search parser
-- [sources/indeed.js](src/sources/indeed.js) — Indeed search parser
+- [sources/linkedin.js](src/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types)
+- [sources/indeed.js](src/sources/indeed.js) — Indeed search parser (100km radius)
+- [sources/jobbank.js](src/sources/jobbank.js) — Government of Canada Job Bank parser (public, no ToS issue)
+- [sources/civicjobs.js](src/sources/civicjobs.js) — CivicJobs.ca parser (explicit opt-in only; Cloudflare-protected, returns 0 results in practice)
+- [sources/workopolis.js](src/sources/workopolis.js) — Workopolis parser (best-effort; site has been dormant since 2018)
 - [_stream.js](src/_stream.js) — Ollama stream watchdog (45s stall, 5min max) + retry
 
 ### Data files
 
 - `base-resume.json` — source of truth, project root. Never invented by code.
-- `data/companies.json` — Greenhouse/Lever slugs + LinkedIn/Indeed queries
+- `data/companies.json` — Greenhouse/Lever slugs + per-scraper query lists
+- `data/config.json` — tunable behavior (seniority policy, pipeline cap, verbose scan)
 - `data/applications.db` — SQLite history
+- `data/browser-profile/` — persistent Chromium profile for LinkedIn/Indeed cookies (gitignored)
 - `applications/pipeline.json` — scored discovery output
 - `feedback.md` — post-apply notes (append-only)
 - `output/*.pdf` — rendered resumes + cover letters
@@ -107,10 +112,14 @@ Run before shipping changes. Each item is a smoke test — not exhaustive.
 ### Scan
 
 - [ ] `npm run scan` (API only, default) completes in < 30s
-- [ ] `applications/pipeline.json` exists with ranked jobs, no duplicates
+- [ ] `applications/pipeline.json` exists with ranked jobs, no exact-URL or fuzzy-title duplicates
 - [ ] Re-run preserves `applied`/`status`/`notes` on existing entries
 - [ ] Jobs missing for > 14 days are marked `stale`
-- [ ] Senior titles are ranked below junior/intern despite keyword overlap
+- [ ] With default config (`seniority_policy: filter`), no Senior/Staff/Principal/Manager/Director/VP/Lead titles in the pipeline
+- [ ] `--seniority handicap` caps senior scores at `senior_score_cap` (default 30)
+- [ ] `--seniority keep` gives senior roles their raw scores
+- [ ] Pipeline length never exceeds `max_pipeline_size`
+- [ ] Default output is quiet (no per-company 404s); `verbose_scan: true` re-enables them
 - [ ] `npm run scan -- --sources api,linkedin,indeed` — ToS warning prints; Chromium opens; results tagged `ats_platform: "linkedin"`/`"indeed"`
 - [ ] On LinkedIn/Indeed block → warning printed, API results still populate, no crash
 
@@ -158,6 +167,8 @@ Priority-ordered. Each is scoped enough to be a single PR.
 4. **Company blacklist** — `data/blacklist.json` skipping specific slugs in scan.
 5. **Company priority list** — `data/priorities.json` boosting specific slugs' fit scores.
 6. **Cleaner apply-all UX** — add `--limit N`, `--min-score N`, and a dry-run mode that lists what would be applied without opening browsers.
+
+*Resolved in latest pass*: senior over-ranking (now policy-driven), multi-location duplicates (fuzzy dedup), noisy scan output (compact summary), preemptive anti-scrape (persistent browser profile + 429 backoff + login/CAPTCHA detection).
 
 ### Medium-term
 

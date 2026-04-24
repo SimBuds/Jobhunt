@@ -34,11 +34,11 @@ async function ensureBaseResume() {
       await convertResume(detected, { yes: false });
       try { await access(RESUME_PATH); return true; } catch { return false; }
     }
-    console.log('OK — run `node cli.js convert <file>` when you\'re ready.');
+    console.log('OK — run `npm run convert -- <file>` when you\'re ready.');
     return false;
   }
   console.log('\nNo base-resume.json and no resume.pdf/.docx found at project root.');
-  console.log('Run: node cli.js convert <path-to-resume>');
+  console.log('Run: npm run convert -- <path-to-resume>');
   return false;
 }
 
@@ -76,10 +76,9 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
   });
   console.log(`\nLogged as application #${appId}`);
 
-  let autofillResult = { platform, filled: false };
   if (!noAutofill) {
     console.log('\nLaunching browser for autofill...');
-    autofillResult = await autofill(url, resumePath);
+    await autofill(url, resumePath);
   }
 
   console.log('\n--- Application feedback ---');
@@ -114,10 +113,10 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
   return { submitted };
 }
 
-async function pickCandidates(limit = 10) {
+async function pickCandidates(limit = 10, minScore = 0) {
   const pipeline = await readPipeline();
   return pipeline
-    .filter(j => !j.applied && j.status !== 'stale')
+    .filter(j => !j.applied && j.status !== 'stale' && j.fit_score >= minScore)
     .sort((a, b) => b.fit_score - a.fit_score)
     .slice(0, limit);
 }
@@ -137,11 +136,18 @@ program
   .command('scan')
   .description('Discover + auto-score jobs into applications/pipeline.json')
   .option('--sources <list>', 'Comma-separated: api,linkedin,indeed,jobbank,civicjobs,workopolis,all', 'api')
+  .option('--seniority <policy>', 'Override config: filter | handicap | keep')
   .action(async (opts) => {
     try {
       if (!(await ensureBaseResume())) return;
       const sources = opts.sources.split(',').map(s => s.trim()).filter(Boolean);
-      await scan({ sources });
+      const seniorityOverride = opts.seniority && ['filter', 'handicap', 'keep'].includes(opts.seniority)
+        ? opts.seniority : null;
+      if (opts.seniority && !seniorityOverride) {
+        console.error(`Invalid --seniority "${opts.seniority}". Use filter, handicap, or keep.`);
+        process.exit(1);
+      }
+      await scan({ sources, seniorityOverride });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -152,6 +158,8 @@ program
   .command('apply')
   .description('Guided apply: pick a job from the pipeline menu, or use --url')
   .option('--url <url>', 'Apply to a specific URL instead of the pipeline menu')
+  .option('--limit <n>', 'Menu size (default 10)', '10')
+  .option('--min-score <n>', 'Hide candidates below this fit score', '0')
   .option('--no-autofill', 'Skip browser autofill')
   .option('--fast', 'Use qwen3.5:4b for writing steps')
   .action(async (opts) => {
@@ -165,9 +173,11 @@ program
         return;
       }
 
-      const candidates = await pickCandidates(10);
+      const limit = Number.isInteger(+opts.limit) && +opts.limit > 0 ? +opts.limit : 10;
+      const minScore = Number.isInteger(+opts.minScore) ? +opts.minScore : 0;
+      const candidates = await pickCandidates(limit, minScore);
       if (!candidates.length) {
-        console.log('Nothing to apply to. Run `node cli.js scan` first.');
+        console.log(`Nothing to apply to${minScore ? ` at >= ${minScore}% fit` : ''}. Run \`npm run scan\` first.`);
         return;
       }
 

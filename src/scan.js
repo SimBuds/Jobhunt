@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { loadBaseResume } from './tailor.js';
 import { loadCompanies } from './companies.js';
 import { score, priorityFor } from './score.js';
+import { loadConfig } from './config.js';
 import { searchLinkedIn } from './sources/linkedin.js';
 import { searchIndeed } from './sources/indeed.js';
 import { searchJobBank } from './sources/jobbank.js';
@@ -16,8 +17,7 @@ const STALE_DAYS = 14;
 
 export { PIPELINE_PATH };
 
-// Toronto + ~100km radius: GTA core, Hamilton/Niagara belt, Waterloo region, Barrie corridor,
-// Durham Region, Peel, Halton. Plus Ontario-wide and remote-Canada.
+// Toronto + ~100km radius
 const LOCATION_RE = /(toronto|gta|ontario|\bon\b|canada|remote|mississauga|brampton|markham|vaughan|richmond hill|oakville|burlington|hamilton|kitchener|waterloo|cambridge|guelph|oshawa|pickering|ajax|whitby|aurora|newmarket|barrie|milton|halton|peel|durham|york region|niagara|st\.?\s*catharines|grimsby)/i;
 const EXCLUDE_LOC_RE = /(united states|usa|u\.s\.a|uk\b|united kingdom|emea|apac|australia|india|brazil|germany|philippines)/i;
 const ROLE_RE = /(software|frontend|front-end|front end|backend|back-end|back end|full[-\s]?stack|engineer|developer|programmer|intern|new[-\s]?grad|junior)/i;
@@ -32,6 +32,16 @@ function locationOk(loc = '') {
   return LOCATION_RE.test(loc);
 }
 
+function fuzzyKey(company, role) {
+  const cleanRole = (role || '')
+    .toLowerCase()
+    .replace(/[\s\-–—,()\/]+/g, ' ')
+    .replace(/\b(remote|toronto|canada|usa?|hybrid|onsite|on[-\s]?site|gta|ontario|hq)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `${(company || '').toLowerCase().trim()}::${cleanRole}`;
+}
+
 async function fetchJson(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
@@ -44,47 +54,55 @@ async function fetchJson(url) {
   }
 }
 
-async function fetchGreenhouse(slug) {
+async function fetchGreenhouse(slug, verbose) {
   const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
   try {
     const data = await fetchJson(url);
-    return (data.jobs || []).map(j => ({
-      company: slug,
-      role: j.title,
-      url: j.absolute_url,
-      location: j.location?.name || '',
-      salary: '',
-      tech_stack: [],
-      ats_platform: 'greenhouse',
-      description: stripHtml(j.content || ''),
-    }));
+    return {
+      ok: true,
+      slug,
+      jobs: (data.jobs || []).map(j => ({
+        company: slug,
+        role: j.title,
+        url: j.absolute_url,
+        location: j.location?.name || '',
+        salary: '',
+        tech_stack: [],
+        ats_platform: 'greenhouse',
+        description: stripHtml(j.content || ''),
+      })),
+    };
   } catch (err) {
-    process.stderr.write(`[scan] greenhouse/${slug}: ${err.message}\n`);
-    return [];
+    if (verbose) process.stderr.write(`[scan] greenhouse/${slug}: ${err.message}\n`);
+    return { ok: false, slug, jobs: [] };
   }
 }
 
-async function fetchLever(slug) {
+async function fetchLever(slug, verbose) {
   const url = `https://api.lever.co/v0/postings/${slug}?mode=json`;
   try {
     const data = await fetchJson(url);
-    return (Array.isArray(data) ? data : []).map(j => ({
-      company: slug,
-      role: j.text,
-      url: j.hostedUrl,
-      location: j.categories?.location || '',
-      salary: '',
-      tech_stack: (j.categories?.team ? [j.categories.team] : []),
-      ats_platform: 'lever',
-      description: stripHtml(
-        (j.descriptionPlain || j.description || '') +
-        ' ' +
-        (j.lists || []).map(l => l.text + ' ' + stripHtml(l.content || '')).join(' ')
-      ),
-    }));
+    return {
+      ok: true,
+      slug,
+      jobs: (Array.isArray(data) ? data : []).map(j => ({
+        company: slug,
+        role: j.text,
+        url: j.hostedUrl,
+        location: j.categories?.location || '',
+        salary: '',
+        tech_stack: (j.categories?.team ? [j.categories.team] : []),
+        ats_platform: 'lever',
+        description: stripHtml(
+          (j.descriptionPlain || j.description || '') +
+          ' ' +
+          (j.lists || []).map(l => l.text + ' ' + stripHtml(l.content || '')).join(' ')
+        ),
+      })),
+    };
   } catch (err) {
-    process.stderr.write(`[scan] lever/${slug}: ${err.message}\n`);
-    return [];
+    if (verbose) process.stderr.write(`[scan] lever/${slug}: ${err.message}\n`);
+    return { ok: false, slug, jobs: [] };
   }
 }
 
@@ -97,47 +115,70 @@ async function loadExistingPipeline() {
   }
 }
 
-export async function scan({ sources = ['api'] } = {}) {
-  const companies = await loadCompanies();
-  const wantApi = sources.includes('api');
-  const wantLinkedIn = sources.includes('linkedin');
-  const wantIndeed = sources.includes('indeed');
-  const wantJobBank = sources.includes('jobbank');
-  const wantCivicJobs = sources.includes('civicjobs');
-  const wantWorkopolis = sources.includes('workopolis');
-  const wantAllScrapers = sources.includes('all');
+export async function scan({ sources = ['api'], seniorityOverride = null } = {}) {
+  const config = await loadConfig();
+  const verbose = !!config.verbose_scan;
+  const seniorityPolicy = seniorityOverride || config.seniority_policy;
+  const seniorCap = config.senior_score_cap;
+  const pipelineCap = config.max_pipeline_size;
 
-  const useLinkedIn = wantLinkedIn || wantAllScrapers;
-  const useIndeed = wantIndeed || wantAllScrapers;
-  const useJobBank = wantJobBank || wantAllScrapers;
-  const useCivicJobs = wantCivicJobs || wantAllScrapers;
-  const useWorkopolis = wantWorkopolis || wantAllScrapers;
+  const companies = await loadCompanies();
+  const wantAll = sources.includes('all');
+  const wantApi = sources.includes('api') || wantAll;
+  // `all` = api + linkedin + indeed + jobbank.
+  // CivicJobs (Cloudflare-blocked) and Workopolis (dormant 2018) are opt-in explicit only.
+  const useLinkedIn  = sources.includes('linkedin')  || wantAll;
+  const useIndeed    = sources.includes('indeed')    || wantAll;
+  const useJobBank   = sources.includes('jobbank')   || wantAll;
+  const useCivicJobs = sources.includes('civicjobs');
+  const useWorkopolis= sources.includes('workopolis');
   const anyScraper = useLinkedIn || useIndeed || useJobBank || useCivicJobs || useWorkopolis;
 
   if (wantApi && !anyScraper && !companies.greenhouse.length && !companies.lever.length) {
-    console.log('No companies configured. Edit data/companies.json to add Greenhouse/Lever slugs,');
-    console.log('or pass --sources all to scrape every supported board.');
+    console.log('No companies configured. Edit data/companies.json or pass --sources all.');
     return { jobs: [], added: 0 };
   }
 
-  if (useLinkedIn || useIndeed || useWorkopolis) {
-    console.log('\n⚠  LinkedIn/Indeed/Workopolis scraping is best-effort and may violate ToS.');
-    console.log('   A browser will open; your IP may be rate-limited or CAPTCHA-challenged.');
-    console.log('   Use sparingly.\n');
+  const greySources = [
+    useLinkedIn   && 'LinkedIn',
+    useIndeed     && 'Indeed',
+    useWorkopolis && 'Workopolis',
+  ].filter(Boolean);
+  if (greySources.length) {
+    console.log(`\n⚠  ${greySources.join(', ')} scraping is best-effort and may violate ToS.`);
+    console.log('   A browser will open; rate limits + CAPTCHAs are possible.\n');
   }
-  if (useJobBank || useCivicJobs) {
-    console.log('Scanning Job Bank / CivicJobs (public boards, rate-limited).\n');
+  const blockedSources = [
+    useCivicJobs  && 'CivicJobs (Cloudflare-protected, will return 0 results)',
+    useWorkopolis && 'Workopolis (site dormant since 2018)',
+  ].filter(Boolean);
+  if (blockedSources.length) {
+    console.log(`ℹ  Note: ${blockedSources.join('; ')}\n`);
+  }
+  if (useJobBank) {
+    console.log('Scanning Job Bank (public board).\n');
   }
 
   const resume = await loadBaseResume();
   const existing = await loadExistingPipeline();
   const existingByUrl = new Map(existing.map(j => [j.url, j]));
 
-  const apiTasks = wantApi ? [
-    ...companies.greenhouse.map(s => fetchGreenhouse(s)),
-    ...companies.lever.map(s => fetchLever(s)),
-  ] : [];
-  const apiResults = (await Promise.all(apiTasks)).flat();
+  const greenhouseResults = wantApi
+    ? await Promise.all(companies.greenhouse.map(s => fetchGreenhouse(s, verbose)))
+    : [];
+  const leverResults = wantApi
+    ? await Promise.all(companies.lever.map(s => fetchLever(s, verbose)))
+    : [];
+
+  const ghOk = greenhouseResults.filter(r => r.ok).length;
+  const leverOk = leverResults.filter(r => r.ok).length;
+  const ghSkipped = greenhouseResults.length - ghOk;
+  const leverSkipped = leverResults.length - leverOk;
+
+  const apiResults = [
+    ...greenhouseResults.flatMap(r => r.jobs),
+    ...leverResults.flatMap(r => r.jobs),
+  ];
 
   async function safeRun(label, fn) {
     try { return await fn(); } catch (err) {
@@ -146,8 +187,6 @@ export async function scan({ sources = ['api'] } = {}) {
     }
   }
 
-  // Sequential scraper runs (each launches its own browser) to avoid N concurrent
-  // Chromium instances and to keep one visible window at a time for CAPTCHA handling.
   const linkedInResults  = useLinkedIn   ? await safeRun('linkedin',   () => searchLinkedIn(companies.linkedin_queries))     : [];
   const indeedResults    = useIndeed     ? await safeRun('indeed',     () => searchIndeed(companies.indeed_queries))         : [];
   const jobBankResults   = useJobBank    ? await safeRun('jobbank',    () => searchJobBank(companies.jobbank_queries))       : [];
@@ -163,20 +202,44 @@ export async function scan({ sources = ['api'] } = {}) {
     ...workopolisResults,
   ];
 
+  if (wantApi) {
+    console.log(
+      `Fetched ${ghOk} Greenhouse + ${leverOk} Lever boards` +
+      (ghSkipped + leverSkipped ? ` (${ghSkipped + leverSkipped} skipped)` : '')
+    );
+  }
+  const scraperCounts = [];
+  if (useLinkedIn)   scraperCounts.push(`LinkedIn: ${linkedInResults.length}`);
+  if (useIndeed)     scraperCounts.push(`Indeed: ${indeedResults.length}`);
+  if (useJobBank)    scraperCounts.push(`JobBank: ${jobBankResults.length}`);
+  if (useCivicJobs)  scraperCounts.push(`CivicJobs: ${civicJobsResults.length}`);
+  if (useWorkopolis) scraperCounts.push(`Workopolis: ${workopolisResults.length}`);
+  if (scraperCounts.length) console.log(scraperCounts.join(' | '));
+
   const today = new Date().toISOString().slice(0, 10);
   const seenUrls = new Set();
+  const seenFuzzy = new Map(); // fuzzyKey -> index into `kept`
   const kept = [];
+  let droppedLocation = 0;
+  let droppedRole = 0;
+  let droppedSenior = 0;
+  let droppedDup = 0;
 
   for (const raw of results) {
-    if (!raw.url || seenUrls.has(raw.url)) continue;
+    if (!raw.url || seenUrls.has(raw.url)) { droppedDup++; continue; }
     seenUrls.add(raw.url);
-    if (!ROLE_RE.test(raw.role || '')) continue;
-    if (!locationOk(raw.location)) continue;
+    if (!ROLE_RE.test(raw.role || '')) { droppedRole++; continue; }
+    if (!locationOk(raw.location)) { droppedLocation++; continue; }
+
+    const scored = score(
+      { title: raw.role, description: raw.description },
+      resume,
+      { seniorityPolicy, seniorCap },
+    );
+    if (scored === null) { droppedSenior++; continue; }
 
     const prior = existingByUrl.get(raw.url);
-    const scored = score({ title: raw.role, description: raw.description }, resume);
-
-    kept.push({
+    const entry = {
       company: raw.company,
       role: raw.role,
       url: raw.url,
@@ -193,9 +256,22 @@ export async function scan({ sources = ['api'] } = {}) {
       notes: scored.missing_keywords.length
         ? `missing: ${scored.missing_keywords.join(', ')} | ${scored.rationale}`
         : scored.rationale,
-    });
+    };
+
+    const fk = fuzzyKey(entry.company, entry.role);
+    const dupIdx = seenFuzzy.get(fk);
+    if (dupIdx !== undefined) {
+      const existing = kept[dupIdx];
+      if (entry.fit_score > existing.fit_score) kept[dupIdx] = entry;
+      droppedDup++;
+      continue;
+    }
+    seenFuzzy.set(fk, kept.length);
+    kept.push(entry);
   }
 
+  // Preserve prior entries that didn't appear in this scan (re-inserted without
+  // fuzzy-dedup, since they're known-good historic state).
   const keptUrls = new Set(kept.map(j => j.url));
   for (const prior of existing) {
     if (keptUrls.has(prior.url)) continue;
@@ -207,18 +283,35 @@ export async function scan({ sources = ['api'] } = {}) {
 
   kept.sort((a, b) => b.fit_score - a.fit_score);
 
-  await mkdir(PIPELINE_DIR, { recursive: true });
-  await writeFile(PIPELINE_PATH, JSON.stringify(kept, null, 2), 'utf-8');
+  let trimmed = 0;
+  let final = kept;
+  if (final.length > pipelineCap) {
+    trimmed = final.length - pipelineCap;
+    final = final.slice(0, pipelineCap);
+  }
 
-  const newCount = kept.filter(j => !existingByUrl.has(j.url)).length;
-  console.log(`\nScanned ${results.length} postings -> ${kept.length} in pipeline (${newCount} new)\n`);
-  for (const j of kept.slice(0, 15)) {
+  await mkdir(PIPELINE_DIR, { recursive: true });
+  await writeFile(PIPELINE_PATH, JSON.stringify(final, null, 2), 'utf-8');
+
+  const newCount = final.filter(j => !existingByUrl.has(j.url)).length;
+  const dropParts = [];
+  if (droppedSenior)   dropParts.push(`${droppedSenior} senior`);
+  if (droppedDup)      dropParts.push(`${droppedDup} duplicates`);
+  if (droppedLocation) dropParts.push(`${droppedLocation} out-of-region`);
+  if (droppedRole)     dropParts.push(`${droppedRole} off-topic`);
+  if (trimmed)         dropParts.push(`${trimmed} beyond cap`);
+
+  console.log(
+    `\nFiltered ${results.length} postings -> ${final.length} in pipeline ` +
+    `(${newCount} new${dropParts.length ? `, dropped ${dropParts.join(', ')}` : ''})\n`
+  );
+  for (const j of final.slice(0, 15)) {
     const flag = j.applied ? '[applied]' : j.status === 'stale' ? '[stale]  ' : '         ';
     console.log(`${String(j.fit_score).padStart(3)}% fit ${flag} ${j.company} — ${j.role}`);
   }
-  if (kept.length > 15) console.log(`... and ${kept.length - 15} more in applications/pipeline.json`);
+  if (final.length > 15) console.log(`... and ${final.length - 15} more in applications/pipeline.json`);
 
-  return { jobs: kept, added: newCount };
+  return { jobs: final, added: newCount };
 }
 
 export async function readPipeline() {

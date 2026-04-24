@@ -44,23 +44,34 @@ Pulls live postings and writes them ranked into `applications/pipeline.json`. Re
 |---|---|---|---|
 | `api` | Greenhouse + Lever public APIs | Safe | Fast, reliable. Watchlist in [data/companies.json](data/companies.json). |
 | `jobbank` | Government of Canada (jobbank.gc.ca) | Safe | Public board. Deep coverage of Ontario roles incl. part-time/contract. |
-| `civicjobs` | CivicJobs.ca | Mostly safe | Municipal + broader public-sector roles. |
 | `linkedin` | LinkedIn guest search | Grey | Stealth Chromium. May rate-limit. |
-| `indeed` | Indeed.ca | Grey | Stealth Chromium. Frequently CAPTCHA-challenges. |
-| `workopolis` | Workopolis.com | Grey | Site was wound down in 2018 — often returns zero. |
-| `all` | Shortcut | — | Runs every scraper above in sequence. |
+| `indeed` | Indeed.ca | Grey | Stealth Chromium. CAPTCHA-challenges over time (cookies persist). |
+| `workopolis` | Workopolis.com | Grey | Explicit opt-in only. Site dormant since 2018 — expect 0 results. |
+| `civicjobs` | CivicJobs.ca | Blocked | Explicit opt-in only. Cloudflare-protected — returns 0 results. |
+| `all` | Shortcut | — | Runs `api + linkedin + indeed + jobbank` in sequence. |
 
 All searches are centered on **Toronto, ON with a 100km radius** (covers Mississauga, Hamilton, Kitchener-Waterloo, Barrie, Oshawa, Niagara, etc.) and cover full-time / part-time / contract / internship / hybrid / remote / on-site.
 
 ```bash
-npm run scan                                      # API only (default, safest)
-npm run scan -- --sources api,jobbank,civicjobs   # safe scrapers added
-npm run scan -- --sources all                     # everything, one browser at a time
+npm run scan                                     # API only (default, safest)
+npm run scan -- --sources api,jobbank            # + Job Bank
+npm run scan -- --sources all                    # api + linkedin + indeed + jobbank
 ```
 
-> ⚠ **LinkedIn / Indeed / Workopolis scraping may violate their ToS.** Your IP can be rate-limited, CAPTCHA-challenged, or blocked. The agent uses realistic UA, jittered delays, guest endpoints only, and caps each source at 3 queries × 25 results per run — it *will* break eventually. Job Bank and CivicJobs are public and have no such concerns.
+> ⚠ **LinkedIn and Indeed scraping may violate their ToS.** The agent uses realistic UA, jittered delays, guest endpoints only, and caps each source at 3 queries × 25 results per run. Cookies persist in `data/browser-profile/` so CAPTCHA challenges don't repeat every run.
 
-Scoring is deterministic (no LLM) across: keyword overlap, tech-stack overlap, title/seniority fit, education relevance, ATS keyword density. Senior titles are penalized 50% to surface junior/intern/mid roles first. Missing keywords are written into each entry's `notes`.
+Scoring is deterministic (no LLM) across: keyword overlap, tech-stack overlap, title/seniority fit, education relevance, ATS keyword density. Multi-location duplicates are merged via a fuzzy `company::role` key (keeping the higher-scored entry). Missing keywords are written into each entry's `notes`.
+
+**Seniority policy** — controlled by [data/config.json](data/config.json) or `--seniority` on the CLI:
+
+- `filter` (default): drop Senior/Staff/Principal/Manager/Director/VP/Lead/Architect titles entirely
+- `handicap`: keep them but cap their score at `senior_score_cap` (default 30)
+- `keep`: no penalty
+
+```bash
+npm run scan                              # uses config default (filter)
+node cli.js scan --seniority handicap     # one-off override
+```
 
 Tune queries in [data/companies.json](data/companies.json):
 
@@ -194,6 +205,19 @@ npm install
 | iCIMS | Yes | No | — |
 
 Workday autofill is best-effort — the form spans multiple pages and usually requires sign-in first. The agent fills what's visible on the landing page.
+
+## Configuration
+
+Tunable behavior lives in [data/config.json](data/config.json):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `seniority_policy` | `"filter"` | `filter` / `handicap` / `keep` — see above |
+| `senior_score_cap` | `30` | Max score for senior roles when policy is `handicap` |
+| `max_pipeline_size` | `200` | Trim the lowest-scoring entries beyond this |
+| `verbose_scan` | `false` | Set `true` to re-enable per-company 404 / error logs |
+
+Scraper cookies persist in `data/browser-profile/` (gitignored) so LinkedIn/Indeed don't re-issue the same challenges every scan. Delete the folder to reset the session.
 
 ## Output
 

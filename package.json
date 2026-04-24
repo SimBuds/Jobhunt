@@ -1,7 +1,7 @@
 {
   "name": "job-agent",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.1.0",
+  "description": "AI-assisted personal job search operating system. Discover, score, tailor, and apply — human-in-the-loop, local-only.",
   "main": "cli.js",
   "bin": {
     "job-agent": "./cli.js"
@@ -14,8 +14,19 @@
     "list": "node cli.js list",
     "status": "node cli.js status"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "job-search",
+    "resume",
+    "ats",
+    "ollama",
+    "local-llm",
+    "playwright",
+    "cli"
+  ],
+  "author": "Casey Hsu",
   "license": "ISC",
   "type": "module",
   "dependencies": {
