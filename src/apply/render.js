@@ -4,7 +4,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_DIR = join(__dirname, '..', 'output');
+const OUTPUT_DIR = join(__dirname, '..', '..', 'output');
 
 const MARGIN = 50;
 const PAGE_WIDTH = 612; // US Letter

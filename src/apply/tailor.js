@@ -1,22 +1,27 @@
 import { readFile, copyFile, access } from 'fs/promises';
 import { Ollama } from 'ollama';
-import { streamWithWatchdog, withRetry } from './_stream.js';
+import { streamWithWatchdog, withRetry } from '../core/stream.js';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 
-const RESUME_PATH = new URL('../base-resume.json', import.meta.url);
-const LEGACY_RESUME_PATH = new URL('../data/base-resume.json', import.meta.url);
+const DEFAULT_RESUME_PATH = new URL('../../base-resume.json', import.meta.url);
+const LEGACY_RESUME_PATH = new URL('../../data/base-resume.json', import.meta.url);
 
-let cachedResume = null;
+const resumeCache = new Map();
+
+export function getResumePath(profile = null) {
+  const name = profile ? `base-resume.${profile}.json` : 'base-resume.json';
+  return new URL(`../../${name}`, import.meta.url).pathname;
+}
 
 async function ensureResumeAtRoot() {
   try {
-    await access(RESUME_PATH);
+    await access(DEFAULT_RESUME_PATH);
     return;
   } catch {}
   try {
     await access(LEGACY_RESUME_PATH);
-    await copyFile(LEGACY_RESUME_PATH, RESUME_PATH);
+    await copyFile(LEGACY_RESUME_PATH, DEFAULT_RESUME_PATH);
     process.stderr.write('[resume] migrated data/base-resume.json -> base-resume.json (project root)\n');
   } catch {}
 }
@@ -35,19 +40,20 @@ function applyEnvOverrides(resume) {
   };
 }
 
-export async function loadBaseResume() {
-  if (cachedResume) return cachedResume;
-  await ensureResumeAtRoot();
-  const raw = await readFile(RESUME_PATH, 'utf-8');
-  cachedResume = applyEnvOverrides(JSON.parse(raw));
-  return cachedResume;
+export async function loadBaseResume(profile = null) {
+  const key = profile || '__default__';
+  if (resumeCache.has(key)) return resumeCache.get(key);
+  if (!profile) await ensureResumeAtRoot();
+  const path = new URL(`../../${profile ? `base-resume.${profile}.json` : 'base-resume.json'}`, import.meta.url);
+  const raw = await readFile(path, 'utf-8');
+  const result = applyEnvOverrides(JSON.parse(raw));
+  resumeCache.set(key, result);
+  return result;
 }
 
 export function resetResumeCache() {
-  cachedResume = null;
+  resumeCache.clear();
 }
-
-export { RESUME_PATH };
 
 function compactResume(resume) {
   return {
@@ -101,8 +107,8 @@ function mergeTailored(baseResume, tailored) {
   return merged;
 }
 
-export async function tailor(analysis, { model = 'gemma4:e2b' } = {}) {
-  const resume = await loadBaseResume();
+export async function tailor(analysis, { model = 'gemma4:e2b', profile = null } = {}) {
+  const resume = await loadBaseResume(profile);
   const prompt = buildPrompt(resume, analysis);
 
   process.stderr.write(`[tailor] model=${model}\n`);

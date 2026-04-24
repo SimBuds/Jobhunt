@@ -1,17 +1,14 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { loadBaseResume } from './tailor.js';
-import { loadCompanies } from './companies.js';
+import { loadBaseResume } from '../apply/tailor.js';
+import { loadCompanies } from '../core/companies.js';
 import { score, priorityFor } from './score.js';
-import { loadConfig } from './config.js';
+import { loadConfig } from '../core/config.js';
 import { searchLinkedIn } from './sources/linkedin.js';
-import { searchIndeed } from './sources/indeed.js';
 import { searchJobBank } from './sources/jobbank.js';
-import { searchCivicJobs } from './sources/civicjobs.js';
-import { searchWorkopolis } from './sources/workopolis.js';
 
-const PIPELINE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'applications');
+const PIPELINE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'applications');
 const PIPELINE_PATH = join(PIPELINE_DIR, 'pipeline.json');
 const STALE_DAYS = 14;
 
@@ -125,35 +122,18 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
   const companies = await loadCompanies();
   const wantAll = sources.includes('all');
   const wantApi = sources.includes('api') || wantAll;
-  // `all` = api + linkedin + indeed + jobbank.
-  // CivicJobs (Cloudflare-blocked) and Workopolis (dormant 2018) are opt-in explicit only.
-  const useLinkedIn  = sources.includes('linkedin')  || wantAll;
-  const useIndeed    = sources.includes('indeed')    || wantAll;
-  const useJobBank   = sources.includes('jobbank')   || wantAll;
-  const useCivicJobs = sources.includes('civicjobs');
-  const useWorkopolis= sources.includes('workopolis');
-  const anyScraper = useLinkedIn || useIndeed || useJobBank || useCivicJobs || useWorkopolis;
+  const useLinkedIn = sources.includes('linkedin') || wantAll;
+  const useJobBank  = sources.includes('jobbank')  || wantAll;
+  const anyScraper  = useLinkedIn || useJobBank;
 
   if (wantApi && !anyScraper && !companies.greenhouse.length && !companies.lever.length) {
     console.log('No companies configured. Edit data/companies.json or pass --sources all.');
     return { jobs: [], added: 0 };
   }
 
-  const greySources = [
-    useLinkedIn   && 'LinkedIn',
-    useIndeed     && 'Indeed',
-    useWorkopolis && 'Workopolis',
-  ].filter(Boolean);
-  if (greySources.length) {
-    console.log(`\n⚠  ${greySources.join(', ')} scraping is best-effort and may violate ToS.`);
+  if (useLinkedIn) {
+    console.log('\n⚠  LinkedIn scraping is best-effort and may violate ToS.');
     console.log('   A browser will open; rate limits + CAPTCHAs are possible.\n');
-  }
-  const blockedSources = [
-    useCivicJobs  && 'CivicJobs (Cloudflare-protected, will return 0 results)',
-    useWorkopolis && 'Workopolis (site dormant since 2018)',
-  ].filter(Boolean);
-  if (blockedSources.length) {
-    console.log(`ℹ  Note: ${blockedSources.join('; ')}\n`);
   }
   if (useJobBank) {
     console.log('Scanning Job Bank (public board).\n');
@@ -187,19 +167,13 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
     }
   }
 
-  const linkedInResults  = useLinkedIn   ? await safeRun('linkedin',   () => searchLinkedIn(companies.linkedin_queries))     : [];
-  const indeedResults    = useIndeed     ? await safeRun('indeed',     () => searchIndeed(companies.indeed_queries))         : [];
-  const jobBankResults   = useJobBank    ? await safeRun('jobbank',    () => searchJobBank(companies.jobbank_queries))       : [];
-  const civicJobsResults = useCivicJobs  ? await safeRun('civicjobs',  () => searchCivicJobs(companies.civicjobs_queries))   : [];
-  const workopolisResults= useWorkopolis ? await safeRun('workopolis', () => searchWorkopolis(companies.workopolis_queries)) : [];
+  const linkedInResults = useLinkedIn ? await safeRun('linkedin', () => searchLinkedIn(companies.linkedin_queries)) : [];
+  const jobBankResults  = useJobBank  ? await safeRun('jobbank',  () => searchJobBank(companies.jobbank_queries)) : [];
 
   const results = [
     ...apiResults,
     ...linkedInResults,
-    ...indeedResults,
     ...jobBankResults,
-    ...civicJobsResults,
-    ...workopolisResults,
   ];
 
   if (wantApi) {
@@ -209,11 +183,8 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
     );
   }
   const scraperCounts = [];
-  if (useLinkedIn)   scraperCounts.push(`LinkedIn: ${linkedInResults.length}`);
-  if (useIndeed)     scraperCounts.push(`Indeed: ${indeedResults.length}`);
-  if (useJobBank)    scraperCounts.push(`JobBank: ${jobBankResults.length}`);
-  if (useCivicJobs)  scraperCounts.push(`CivicJobs: ${civicJobsResults.length}`);
-  if (useWorkopolis) scraperCounts.push(`Workopolis: ${workopolisResults.length}`);
+  if (useLinkedIn) scraperCounts.push(`LinkedIn: ${linkedInResults.length}`);
+  if (useJobBank)  scraperCounts.push(`JobBank: ${jobBankResults.length}`);
   if (scraperCounts.length) console.log(scraperCounts.join(' | '));
 
   const today = new Date().toISOString().slice(0, 10);

@@ -2,9 +2,10 @@ import { readFile, writeFile, copyFile, access } from 'node:fs/promises';
 import { extname, resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ollama } from 'ollama';
-import { streamWithWatchdog, withRetry } from './_stream.js';
-import { RESUME_PATH, resetResumeCache } from './tailor.js';
-import { askYesNo } from './prompt.js';
+import { streamWithWatchdog, withRetry } from './core/stream.js';
+import { getResumePath, resetResumeCache } from './apply/tailor.js';
+const RESUME_PATH = getResumePath();
+import { askYesNo } from './core/prompt.js';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

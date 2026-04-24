@@ -129,8 +129,8 @@ const FILLERS = {
   workday: fillWorkday,
 };
 
-export async function autofill(url, resumePath) {
-  const resume = await loadBaseResume();
+export async function autofill(url, resumePath, { profile = null } = {}) {
+  const resume = await loadBaseResume(profile);
   const platform = detectPlatform(url);
   const filler = FILLERS[platform];
   let filled = false;
