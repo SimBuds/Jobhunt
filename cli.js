@@ -2,18 +2,19 @@
 
 import { Command } from 'commander';
 import { access } from 'node:fs/promises';
-import { scrape } from './src/scrape.js';
-import { analyze } from './src/analyze.js';
-import { tailor, RESUME_PATH } from './src/tailor.js';
-import { generateCoverLetter } from './src/coverletter.js';
-import { render } from './src/render.js';
-import { autofill } from './src/autofill.js';
-import { logApplication, listApplications, updateStatus } from './src/track.js';
-import { scan, readPipeline, writePipeline } from './src/scan.js';
+import { scrape } from './src/apply/scrape.js';
+import { analyze } from './src/apply/analyze.js';
+import { createHash } from 'node:crypto';
+import { tailor, getResumePath } from './src/apply/tailor.js';
+import { generateCoverLetter } from './src/apply/coverletter.js';
+import { render } from './src/apply/render.js';
+import { autofill } from './src/apply/autofill.js';
+import { logApplication, listApplications, updateStatus } from './src/core/track.js';
+import { scan, readPipeline, writePipeline } from './src/discover/scan.js';
 import { report } from './src/report.js';
 import { convertResume, autoDetectResumeFile } from './src/convert.js';
-import { ask, askYesNo } from './src/prompt.js';
-import { appendFeedback } from './src/feedback.js';
+import { ask, askYesNo } from './src/core/prompt.js';
+import { appendFeedback } from './src/core/feedback.js';
 
 const program = new Command();
 
@@ -22,11 +23,17 @@ program
   .description('AI-assisted personal job search operating system')
   .version('2.1.0');
 
-async function ensureBaseResume() {
+async function ensureBaseResume(profile = null) {
   try {
-    await access(RESUME_PATH);
+    await access(getResumePath(profile));
     return true;
-  } catch {}
+  } catch {
+    if (profile) {
+      console.log(`\nProfile resume "base-resume.${profile}.json" not found at project root.`);
+      console.log(`Create it first: cp base-resume.json base-resume.${profile}.json`);
+      return false;
+    }
+  }
   const detected = await autoDetectResumeFile();
   if (detected) {
     console.log(`\nNo base-resume.json yet. Found "${detected.split('/').pop()}" at project root.`);
@@ -42,7 +49,8 @@ async function ensureBaseResume() {
   return false;
 }
 
-async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
+async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry, profile = null }) {
+  if (profile) console.log(`Using resume profile: ${profile}`);
   console.log('Scraping job posting...');
   const { description, platform } = await scrape(url);
   console.log(`Detected platform: ${platform}`);
@@ -57,7 +65,7 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
   console.log(`Tone: ${analysis.tone}\n`);
 
   console.log(`Tailoring resume (${writingModel})...`);
-  const tailoredResume = await tailor(analysis, { model: writingModel });
+  const tailoredResume = await tailor(analysis, { model: writingModel, profile });
 
   console.log(`\nGenerating cover letter (${writingModel})...`);
   const coverLetter = await generateCoverLetter(analysis, tailoredResume, { model: writingModel });
@@ -67,18 +75,20 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry }) {
   console.log(`Resume:       ${resumePath}`);
   console.log(`Cover Letter: ${coverLetterPath}`);
 
+  const resumeHash = createHash('sha256').update(JSON.stringify(tailoredResume)).digest('hex').slice(0, 12);
   const appId = logApplication({
     company: analysis.company_name,
     role: analysis.role_title,
     url,
     resumePath,
     coverletterPath: coverLetterPath,
+    resumeHash,
   });
   console.log(`\nLogged as application #${appId}`);
 
   if (!noAutofill) {
     console.log('\nLaunching browser for autofill...');
-    await autofill(url, resumePath);
+    await autofill(url, resumePath, { profile });
   }
 
   console.log('\n--- Application feedback ---');
@@ -135,7 +145,7 @@ function printMenu(candidates) {
 program
   .command('scan')
   .description('Discover + auto-score jobs into applications/pipeline.json')
-  .option('--sources <list>', 'Comma-separated: api,linkedin,indeed,jobbank,civicjobs,workopolis,all', 'api')
+  .option('--sources <list>', 'Comma-separated: api,linkedin,jobbank,all', 'api')
   .option('--seniority <policy>', 'Override config: filter | handicap | keep')
   .action(async (opts) => {
     try {
@@ -162,14 +172,16 @@ program
   .option('--min-score <n>', 'Hide candidates below this fit score', '0')
   .option('--no-autofill', 'Skip browser autofill')
   .option('--fast', 'Use qwen3.5:4b for writing steps')
+  .option('--profile <name>', 'Resume profile to use (loads base-resume.<name>.json)')
   .action(async (opts) => {
     const writingModel = opts.fast ? 'qwen3.5:4b' : 'gemma4:e2b';
     const noAutofill = !opts.autofill;
+    const profile = opts.profile || null;
     try {
-      if (!(await ensureBaseResume())) return;
+      if (!(await ensureBaseResume(profile))) return;
 
       if (opts.url) {
-        await runApplyFlow({ url: opts.url, writingModel, noAutofill, pipelineEntry: false });
+        await runApplyFlow({ url: opts.url, writingModel, noAutofill, pipelineEntry: false, profile });
         return;
       }
 
@@ -205,7 +217,7 @@ program
           if (ans === 'q') { console.log('Batch cancelled.'); break; }
           if (ans !== 'y' && ans !== 'yes') { console.log('Skipped.'); continue; }
           try {
-            await runApplyFlow({ url: j.url, writingModel, noAutofill, pipelineEntry: true });
+            await runApplyFlow({ url: j.url, writingModel, noAutofill, pipelineEntry: true, profile });
           } catch (err) {
             console.error(`Error applying to ${j.company}: ${err.message}`);
             const cont = await askYesNo('Continue with the next job in the batch?');
@@ -223,7 +235,7 @@ program
       }
       const picked = candidates[n - 1];
       console.log(`\nSelected: ${picked.company} — ${picked.role} (${picked.fit_score}%)\n`);
-      await runApplyFlow({ url: picked.url, writingModel, noAutofill, pipelineEntry: true });
+      await runApplyFlow({ url: picked.url, writingModel, noAutofill, pipelineEntry: true, profile });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

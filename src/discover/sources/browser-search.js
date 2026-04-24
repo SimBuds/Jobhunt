@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 const REAL_UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-const PROFILE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'browser-profile');
+const PROFILE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'data', 'browser-profile');
 
 const LAUNCH_ARGS = [
   '--disable-blink-features=AutomationControlled',
@@ -32,7 +32,7 @@ async function applyStealth(context) {
 
 /**
  * Persistent-context launcher. Cookies + local storage persist between runs in
- * data/browser-profile/, so LinkedIn/Indeed don't re-issue the same challenges
+ * data/browser-profile/, so LinkedIn doesn't re-issue the same challenges
  * every scan. Returns { context, close } — no separate browser handle because
  * launchPersistentContext hides it.
  */

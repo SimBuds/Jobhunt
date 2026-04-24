@@ -1,5 +1,5 @@
 import { Ollama } from 'ollama';
-import { streamWithWatchdog, withRetry } from './_stream.js';
+import { streamWithWatchdog, withRetry } from '../core/stream.js';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 

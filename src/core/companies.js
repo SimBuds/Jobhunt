@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const COMPANIES_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'companies.json');
+const COMPANIES_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'companies.json');
 
 export { COMPANIES_PATH };
 
@@ -14,10 +14,7 @@ const DEFAULT_QUERIES = [
 
 const QUERY_FIELDS = [
   'linkedin_queries',
-  'indeed_queries',
   'jobbank_queries',
-  'civicjobs_queries',
-  'workopolis_queries',
 ];
 
 function pickQueries(parsed, field) {

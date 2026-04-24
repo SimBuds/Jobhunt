@@ -2,7 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const FEEDBACK_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'feedback.md');
+const FEEDBACK_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'feedback.md');
 
 export { FEEDBACK_PATH };
 

@@ -5,7 +5,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = join(__dirname, '..', 'data', 'scrape-cache');
+const CACHE_DIR = join(__dirname, '..', '..', 'data', 'scrape-cache');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';

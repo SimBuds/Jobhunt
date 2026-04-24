@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'config.json');
+const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'config.json');
 
 const DEFAULTS = Object.freeze({
   seniority_policy: 'filter',

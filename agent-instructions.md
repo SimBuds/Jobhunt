@@ -36,7 +36,7 @@ Portfolio framing: *"AI-Assisted Personal Job Search Operating System"* — neve
 | Command | Purpose |
 |---|---|
 | `convert [file]` | `.pdf`/`.docx`/`.txt` → `base-resume.json`. Auto-detects resume files at project root. |
-| `scan` | Discover + score jobs into `applications/pipeline.json`. `--sources api,linkedin,indeed,jobbank,civicjobs,workopolis,all`. All searches are centered on Toronto + 100km across every work type. |
+| `scan` | Discover + score jobs into `applications/pipeline.json`. `--sources api,linkedin,jobbank,all`. All searches are centered on Toronto + 100km across every work type. |
 | `apply` | Menu of top-10 unapplied jobs. Pick one / apply-all / cancel. `--url <url>` for direct. |
 | `report` | Weekly CLI summary. |
 | `list` | Tracked applications from SQLite. |
@@ -46,27 +46,32 @@ Every command has an `npm run` alias in `package.json`.
 
 ### Module map ([src/](src/))
 
-- [scrape.js](src/scrape.js) — platform-aware JD extraction (cheerio + 20s timeout + 24h cache)
-- [analyze.js](src/analyze.js) — `qwen2.5-coder:7b` → structured JSON (requirements/keywords/company/role/tone)
-- [tailor.js](src/tailor.js) — `gemma4:e2b` rewrites summary + reorders bullets. Owns `base-resume.json` loading.
-- [coverletter.js](src/coverletter.js) — ~250-word draft, matches analyzed tone
-- [render.js](src/render.js) — pdf-lib → PDFs in `output/`
-- [track.js](src/track.js) — SQLite, dedupe by URL
-- [autofill.js](src/autofill.js) — Playwright headful, fills Greenhouse/Lever/Ashby/SmartRecruiters/Workday
-- [scan.js](src/scan.js) — Greenhouse + Lever APIs, normalization, dedup against existing pipeline, stale-marking
-- [score.js](src/score.js) — deterministic fit score (keyword/stack/title/education/ATS factors). No LLM.
-- [convert.js](src/convert.js) — PDF/DOCX → base-resume.json via LLM
+**`src/core/`** — cross-cutting infrastructure
+- [config.js](src/core/config.js) — `data/config.json` loader (seniority policy, pipeline cap, verbose flag)
+- [companies.js](src/core/companies.js) — `data/companies.json` loader
+- [track.js](src/core/track.js) — SQLite, dedupe by URL
+- [feedback.js](src/core/feedback.js) — append-only `feedback.md`
+- [prompt.js](src/core/prompt.js) — `ask` / `askYesNo` readline wrappers
+- [stream.js](src/core/stream.js) — Ollama stream watchdog (45s stall, 5min max) + retry
+
+**`src/apply/`** — scrape → analyze → tailor → render → autofill pipeline
+- [scrape.js](src/apply/scrape.js) — platform-aware JD extraction (cheerio + 20s timeout + 24h cache)
+- [analyze.js](src/apply/analyze.js) — `qwen2.5-coder:7b` → structured JSON (requirements/keywords/company/role/tone)
+- [tailor.js](src/apply/tailor.js) — `gemma4:e2b` rewrites summary + reorders bullets. Owns `base-resume.json` loading.
+- [coverletter.js](src/apply/coverletter.js) — ~250-word draft, matches analyzed tone
+- [render.js](src/apply/render.js) — pdf-lib → PDFs in `output/`
+- [autofill.js](src/apply/autofill.js) — Playwright headful, fills Greenhouse/Lever/Ashby/SmartRecruiters/Workday
+
+**`src/discover/`** — scan + scoring + job sources
+- [scan.js](src/discover/scan.js) — Greenhouse + Lever APIs, normalization, fuzzy dedup, stale-marking, seniority policy application
+- [score.js](src/discover/score.js) — deterministic fit score (keyword/stack/title/education/ATS factors). No LLM.
+- [sources/browser-search.js](src/discover/sources/browser-search.js) — stealth Playwright launcher (persistent context, UA spoof, webdriver removal, jitter, 429 backoff, login/CAPTCHA detection)
+- [sources/linkedin.js](src/discover/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types)
+- [sources/jobbank.js](src/discover/sources/jobbank.js) — Government of Canada Job Bank parser (public, no ToS issue)
+
+**`src/` (standalone commands)**
+- [convert.js](src/convert.js) — PDF/DOCX → base-resume.json via LLM (with hyperlink extraction + backfill)
 - [report.js](src/report.js) — CLI dashboard
-- [feedback.js](src/feedback.js) — append-only `feedback.md`
-- [prompt.js](src/prompt.js) — `ask` / `askYesNo` readline wrappers
-- [companies.js](src/companies.js) — load `data/companies.json`
-- [sources/browser-search.js](src/sources/browser-search.js) — stealth Playwright launcher (UA spoof, webdriver removal, jitter)
-- [sources/linkedin.js](src/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types)
-- [sources/indeed.js](src/sources/indeed.js) — Indeed search parser (100km radius)
-- [sources/jobbank.js](src/sources/jobbank.js) — Government of Canada Job Bank parser (public, no ToS issue)
-- [sources/civicjobs.js](src/sources/civicjobs.js) — CivicJobs.ca parser (explicit opt-in only; Cloudflare-protected, returns 0 results in practice)
-- [sources/workopolis.js](src/sources/workopolis.js) — Workopolis parser (best-effort; site has been dormant since 2018)
-- [_stream.js](src/_stream.js) — Ollama stream watchdog (45s stall, 5min max) + retry
 
 ### Data files
 
@@ -74,7 +79,7 @@ Every command has an `npm run` alias in `package.json`.
 - `data/companies.json` — Greenhouse/Lever slugs + per-scraper query lists
 - `data/config.json` — tunable behavior (seniority policy, pipeline cap, verbose scan)
 - `data/applications.db` — SQLite history
-- `data/browser-profile/` — persistent Chromium profile for LinkedIn/Indeed cookies (gitignored)
+- `data/browser-profile/` — persistent Chromium profile for LinkedIn cookies (gitignored)
 - `applications/pipeline.json` — scored discovery output
 - `feedback.md` — post-apply notes (append-only)
 - `output/*.pdf` — rendered resumes + cover letters
@@ -120,8 +125,8 @@ Run before shipping changes. Each item is a smoke test — not exhaustive.
 - [ ] `--seniority keep` gives senior roles their raw scores
 - [ ] Pipeline length never exceeds `max_pipeline_size`
 - [ ] Default output is quiet (no per-company 404s); `verbose_scan: true` re-enables them
-- [ ] `npm run scan -- --sources api,linkedin,indeed` — ToS warning prints; Chromium opens; results tagged `ats_platform: "linkedin"`/`"indeed"`
-- [ ] On LinkedIn/Indeed block → warning printed, API results still populate, no crash
+- [ ] `npm run scan -- --sources api,linkedin` — ToS warning prints; Chromium opens; results tagged `ats_platform: "linkedin"`
+- [ ] On LinkedIn block → warning printed, API results still populate, no crash
 
 ### Apply
 
@@ -149,7 +154,7 @@ Run before shipping changes. Each item is a smoke test — not exhaustive.
 - [ ] Tailor output preserves every experience entry's `company` and `dates` unchanged
 - [ ] Tailor never invents new experience entries or skills
 - [ ] Autofill never clicks a Submit/Apply button (verify by reading [src/autofill.js](src/autofill.js))
-- [ ] LinkedIn/Indeed scrapers never authenticate (guest endpoints only)
+- [ ] LinkedIn scraper never authenticates (guest endpoints only)
 
 ### Regression
 
@@ -161,12 +166,12 @@ Priority-ordered. Each is scoped enough to be a single PR.
 
 ### Near-term
 
-1. **Feedback on `--no-autofill` runs** — currently the feedback prompt only fires after `autofill()`. When `--no-autofill` is set, we skip the prompt. Should fire anyway. ([cli.js](cli.js) — `runApplyFlow`)
-2. **Resume tracker** — current tailor writes PDFs named by company+date, but we don't track which tailored version maps to which application. Add a `resume_hash` column.
-3. **Resume versioning** — allow multiple base resumes (e.g. `base-resume.frontend.json`, `base-resume.backend.json`) and pick one via `--profile <name>`.
+1. ~~**Feedback on `--no-autofill` runs**~~ — resolved; feedback prompt fires outside the autofill block.
+2. ~~**Resume tracker**~~ — resolved; `resume_hash` column added to SQLite. Hash is a 12-char SHA-256 of the tailored resume JSON, computed in `runApplyFlow` before `logApplication`.
+3. ~~**Resume versioning**~~ — resolved; `--profile <name>` flag on `apply` loads `base-resume.<name>.json`. See `getResumePath()` in [tailor.js](src/apply/tailor.js).
 4. **Company blacklist** — `data/blacklist.json` skipping specific slugs in scan.
 5. **Company priority list** — `data/priorities.json` boosting specific slugs' fit scores.
-6. **Cleaner apply-all UX** — add `--limit N`, `--min-score N`, and a dry-run mode that lists what would be applied without opening browsers.
+6. **Cleaner apply-all UX** — `--limit N` and `--min-score N` exist; add `--dry-run` mode that lists what would be applied without opening browsers.
 
 *Resolved in latest pass*: senior over-ranking (now policy-driven), multi-location duplicates (fuzzy dedup), noisy scan output (compact summary), preemptive anti-scrape (persistent browser profile + 429 backoff + login/CAPTCHA detection).
 
@@ -195,7 +200,7 @@ When an agent (human or AI) modifies this codebase:
 - Don't add backend calls to external LLM providers (OpenAI, Anthropic, etc.). Local only.
 - Don't introduce a database other than SQLite. Don't migrate to an ORM.
 - Don't add a UI framework. CLI only.
-- Don't write code that could auto-submit, bypass CAPTCHA, or authenticate to LinkedIn/Indeed.
+- Don't write code that could auto-submit, bypass CAPTCHA, or authenticate to LinkedIn.
 - Don't add features that fabricate resume content. Tailor reorders and rewords; nothing more.
 - Don't add dependencies without checking bundle impact and offline availability.
 

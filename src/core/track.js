@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, '..', 'data', 'applications.db');
+const DB_PATH = join(__dirname, '..', '..', 'data', 'applications.db');
 
 let db;
 
@@ -21,9 +21,12 @@ function getDb() {
         status TEXT NOT NULL DEFAULT 'applied',
         resume_path TEXT,
         coverletter_path TEXT,
+        resume_hash TEXT,
         notes TEXT
       )
     `);
+    // Migration guard for existing DBs created before resume_hash was added
+    try { db.exec('ALTER TABLE applications ADD COLUMN resume_hash TEXT'); } catch {}
   }
   return db;
 }
@@ -37,25 +40,27 @@ export function logApplication(opts) {
     resume_path,
     coverletterPath,
     coverletter_path,
+    resumeHash,
     notes,
   } = opts;
   const resume = resumePath ?? resume_path ?? null;
   const cover = coverletterPath ?? coverletter_path ?? null;
+  const hash = resumeHash ?? null;
   const d = getDb();
   const existing = d.prepare('SELECT id FROM applications WHERE url = ?').get(url);
   if (existing) {
     d.prepare(`
       UPDATE applications
-      SET company = ?, role = ?, resume_path = ?, coverletter_path = ?, applied_at = datetime('now')
+      SET company = ?, role = ?, resume_path = ?, coverletter_path = ?, resume_hash = ?, applied_at = datetime('now')
       WHERE id = ?
-    `).run(company, role, resume, cover, existing.id);
+    `).run(company, role, resume, cover, hash, existing.id);
     return existing.id;
   }
   const stmt = d.prepare(`
-    INSERT INTO applications (company, role, url, resume_path, coverletter_path, notes)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO applications (company, role, url, resume_path, coverletter_path, resume_hash, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(company, role, url, resume, cover, notes || null);
+  const result = stmt.run(company, role, url, resume, cover, hash, notes || null);
   return result.lastInsertRowid;
 }
 
