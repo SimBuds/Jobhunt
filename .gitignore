@@ -9,6 +9,7 @@ output/
 data/applications.db
 data/applications.db-*
 data/scrape-cache/
+data/browser-profile/
 
 applications/
 feedback.md

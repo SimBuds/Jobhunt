@@ -1,4 +1,4 @@
-import { launchStealthBrowser, jitter } from './browser-search.js';
+import { launchStealthContext, jitter, gotoWithBackoff, looksLikeLogin, looksLikeCaptcha } from './browser-search.js';
 
 const MAX_QUERIES = 3;
 const MAX_PER_QUERY = 25;
@@ -21,13 +21,22 @@ export async function searchIndeed(queries) {
   const clipped = queries.slice(0, MAX_QUERIES);
   if (!clipped.length) return out;
 
-  const { browser, context } = await launchStealthBrowser({ headless: false });
+  const { context, close } = await launchStealthContext({ headless: false });
   try {
     const page = await context.newPage();
     for (const q of clipped) {
       process.stderr.write(`[indeed] searching "${q}"\n`);
       try {
-        await page.goto(buildUrl(q), { waitUntil: 'domcontentloaded', timeout: 25_000 });
+        const resp = await gotoWithBackoff(page, buildUrl(q), { timeout: 25_000, label: 'indeed' });
+        if (resp?.status() === 429) break;
+        if (await looksLikeLogin(page)) {
+          process.stderr.write('[indeed] login wall; skipping remaining queries.\n');
+          break;
+        }
+        if (await looksLikeCaptcha(page)) {
+          process.stderr.write('[indeed] CAPTCHA/Cloudflare challenge; skipping remaining queries. Solve it in the open browser to persist cookies for next run.\n');
+          break;
+        }
         await page.waitForSelector('#mosaic-jobResults, [data-testid="jobsearch-JobComponent"], .jobsearch-ResultsList', { timeout: 10_000 }).catch(() => {});
 
         const cards = await page.$$eval('.job_seen_beacon, [data-jk], [data-testid="jobsearch-JobComponent"]', nodes =>
@@ -62,13 +71,6 @@ export async function searchIndeed(queries) {
           }));
 
         process.stderr.write(`[indeed] "${q}" -> ${results.length} jobs\n`);
-        if (!results.length) {
-          const url = page.url();
-          if (/captcha|hcaptcha|cloudflare/i.test(url) || /captcha/i.test(await page.content().catch(() => ''))) {
-            process.stderr.write('[indeed] CAPTCHA detected — please solve it in the browser to continue future runs.\n');
-            break;
-          }
-        }
         out.push(...results);
       } catch (err) {
         process.stderr.write(`[indeed] "${q}" failed: ${err.message}\n`);
@@ -76,8 +78,7 @@ export async function searchIndeed(queries) {
       await jitter(4000, 8000);
     }
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await close();
   }
   return out;
 }
