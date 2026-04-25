@@ -68,7 +68,7 @@ async function runApplyFlow({ url, writingModel, noAutofill, pipelineEntry, prof
   const tailoredResume = await tailor(analysis, { model: writingModel, profile });
 
   console.log(`\nGenerating cover letter (${writingModel})...`);
-  const coverLetter = await generateCoverLetter(analysis, tailoredResume, { model: writingModel });
+  const coverLetter = await generateCoverLetter(analysis, tailoredResume, { model: writingModel, description });
 
   console.log('\nRendering PDFs...');
   const { resumePath, coverLetterPath } = await render(tailoredResume, coverLetter, analysis.company_name);

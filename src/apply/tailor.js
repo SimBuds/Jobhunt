@@ -55,6 +55,38 @@ export function resetResumeCache() {
   resumeCache.clear();
 }
 
+function tokenize(s) {
+  return new Set((s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean));
+}
+
+function jaccardSimilarity(a, b) {
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  if (!ta.size && !tb.size) return 1;
+  let intersection = 0;
+  for (const t of ta) if (tb.has(t)) intersection++;
+  return intersection / (ta.size + tb.size - intersection);
+}
+
+function maxSimilarity(proposed, originals) {
+  return originals.reduce((max, orig) => Math.max(max, jaccardSimilarity(proposed, orig)), 0);
+}
+
+export function validateTailoredBullets(originalBullets, proposedBullets, label = '') {
+  const accepted = [];
+  const rejected = [];
+  for (const bullet of proposedBullets) {
+    const sim = maxSimilarity(bullet, originalBullets);
+    if (sim >= 0.6) {
+      accepted.push(bullet);
+    } else {
+      process.stderr.write(`[tailor] rejected bullet${label ? ` (${label})` : ''}: "${bullet.slice(0, 80)}" (max similarity ${sim.toFixed(2)} < 0.6)\n`);
+      rejected.push(bullet);
+    }
+  }
+  return { accepted, rejected };
+}
+
 function compactResume(resume) {
   return {
     summary: resume.summary,
@@ -63,6 +95,11 @@ function compactResume(resume) {
       title: e.title,
       company: e.company,
       bullets: e.bullets || [],
+    })),
+    projects: (resume.projects || []).map((p, i) => ({
+      i,
+      name: p.name,
+      highlights: p.highlights || [],
     })),
     skills: resume.skills || [],
   };
@@ -87,6 +124,9 @@ Return ONLY a JSON object with this exact shape (no markdown):
   "experience": [
     { "i": <index from input>, "bullets": [<reordered existing bullets, most relevant first>] }
   ],
+  "projects": [
+    { "i": <index from input>, "highlights": [<reordered existing highlights, most relevant first>] }
+  ],
   "relevance_notes": "<1-2 sentences on what you emphasized>"
 }`;
 }
@@ -94,15 +134,31 @@ Return ONLY a JSON object with this exact shape (no markdown):
 function mergeTailored(baseResume, tailored) {
   const merged = { ...baseResume };
   if (tailored.summary) merged.summary = tailored.summary;
+
   if (Array.isArray(tailored.experience)) {
     merged.experience = baseResume.experience.map((orig, idx) => {
       const override = tailored.experience.find(e => e.i === idx);
       if (override && Array.isArray(override.bullets) && override.bullets.length) {
-        return { ...orig, bullets: override.bullets };
+        const { accepted } = validateTailoredBullets(orig.bullets, override.bullets, orig.company);
+        if (accepted.length) return { ...orig, bullets: accepted };
+        process.stderr.write(`[tailor] all bullets rejected for ${orig.company} — keeping original order\n`);
       }
       return orig;
     });
   }
+
+  if (Array.isArray(tailored.projects) && Array.isArray(baseResume.projects)) {
+    merged.projects = baseResume.projects.map((orig, idx) => {
+      const override = tailored.projects.find(p => p.i === idx);
+      if (override && Array.isArray(override.highlights) && override.highlights.length) {
+        const { accepted } = validateTailoredBullets(orig.highlights, override.highlights, orig.name);
+        if (accepted.length) return { ...orig, highlights: accepted };
+        process.stderr.write(`[tailor] all highlights rejected for project ${orig.name} — keeping original order\n`);
+      }
+      return orig;
+    });
+  }
+
   if (tailored.relevance_notes) merged.relevance_notes = tailored.relevance_notes;
   return merged;
 }

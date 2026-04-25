@@ -18,6 +18,22 @@ export { PIPELINE_PATH };
 const LOCATION_RE = /(toronto|gta|ontario|\bon\b|canada|remote|mississauga|brampton|markham|vaughan|richmond hill|oakville|burlington|hamilton|kitchener|waterloo|cambridge|guelph|oshawa|pickering|ajax|whitby|aurora|newmarket|barrie|milton|halton|peel|durham|york region|niagara|st\.?\s*catharines|grimsby)/i;
 const EXCLUDE_LOC_RE = /(united states|usa|u\.s\.a|uk\b|united kingdom|emea|apac|australia|india|brazil|germany|philippines)/i;
 const ROLE_RE = /(software|frontend|front-end|front end|backend|back-end|back end|full[-\s]?stack|engineer|developer|programmer|intern|new[-\s]?grad|junior)/i;
+const ROLE_DENY_BASE = [
+  'hris', 'salesforce', '\\bsap\\b', 'workday admin',
+  'data engineer', 'ml engineer', 'machine learning engineer',
+  '\\bdevops\\b', '\\bsre\\b', 'site reliability', 'platform engineer',
+  'security engineer', 'cloud engineer', 'infrastructure engineer',
+  'graphic designer', 'ux designer', 'ui designer', 'product designer',
+  'test engineer', 'qa engineer', '\\bsdet\\b', 'quality assurance',
+  'technical writer', 'scrum master', 'product manager', 'project manager',
+  'technical program manager', 'engineering manager', 'data scientist',
+  'data analyst', 'business analyst', 'solutions architect',
+];
+
+function buildDenyRe(extras = []) {
+  const all = [...ROLE_DENY_BASE, ...extras.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))];
+  return new RegExp(`\\b(${all.join('|')})\\b`, 'i');
+}
 
 function stripHtml(s = '') {
   return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -118,6 +134,7 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
   const seniorityPolicy = seniorityOverride || config.seniority_policy;
   const seniorCap = config.senior_score_cap;
   const pipelineCap = config.max_pipeline_size;
+  const roleDenyRe = buildDenyRe(Array.isArray(config.role_deny_extras) ? config.role_deny_extras : []);
 
   const companies = await loadCompanies();
   const wantAll = sources.includes('all');
@@ -200,6 +217,7 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
     if (!raw.url || seenUrls.has(raw.url)) { droppedDup++; continue; }
     seenUrls.add(raw.url);
     if (!ROLE_RE.test(raw.role || '')) { droppedRole++; continue; }
+    if (roleDenyRe.test(raw.role || '')) { droppedRole++; continue; }
     if (!locationOk(raw.location)) { droppedLocation++; continue; }
 
     const scored = score(
