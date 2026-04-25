@@ -2,5 +2,6 @@
   "seniority_policy": "filter",
   "senior_score_cap": 30,
   "max_pipeline_size": 200,
-  "verbose_scan": false
+  "verbose_scan": false,
+  "role_deny_extras": []
 }

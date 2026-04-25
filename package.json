@@ -12,7 +12,8 @@
     "report": "node cli.js report",
     "convert": "node cli.js convert",
     "list": "node cli.js list",
-    "status": "node cli.js status"
+    "status": "node cli.js status",
+    "test": "node --test src/apply/tailor.test.js"
   },
   "engines": {
     "node": ">=18.17"

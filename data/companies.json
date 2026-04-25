@@ -5,27 +5,47 @@
     "ritual",
     "leagueinc",
     "thinkific",
-    "instacart",
-    "stripe",
-    "figma",
-    "cloudflare",
-    "datadog",
-    "vercel",
-    "netlify",
-    "airtable",
-    "asana",
-    "duolingo",
-    "scaleai",
-    "attentive",
     "shopmonkey",
-    "paperlesspost"
+    "paperlesspost",
+    "tulip-retail",
+    "vena",
+    "nudge",
+    "unitify",
+    "samsara",
+    "nuvei",
+    "caseware",
+    "ecobee",
+    "d2l",
+    "intelex",
+    "arcadis",
+    "loblaw-digital"
   ],
   "lever": [
     "kepler",
     "plusgrade",
     "benchsci",
-    "xero"
+    "xero",
+    "flashfood",
+    "givebutter",
+    "mynd",
+    "spread",
+    "tailorbird"
   ],
-  "linkedin_queries": ["software engineer", "frontend developer", "backend developer"],
-  "jobbank_queries":  ["software developer", "web developer", "full stack developer"]
+  "linkedin_queries": [
+    "junior software developer Toronto",
+    "frontend developer Toronto",
+    "full stack developer Toronto",
+    "Shopify developer Toronto",
+    "HubSpot developer Toronto",
+    "Contentful developer Toronto",
+    "web developer Toronto",
+    "JavaScript developer Toronto"
+  ],
+  "jobbank_queries": [
+    "software developer",
+    "web developer",
+    "full stack developer",
+    "front end developer",
+    "JavaScript developer"
+  ]
 }

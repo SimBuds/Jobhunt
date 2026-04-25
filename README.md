@@ -23,8 +23,8 @@ npm run apply                   # pick a job and run the apply flow
 - **Ollama** running with models pulled:
   ```bash
   ollama pull qwen2.5-coder:7b
-  ollama pull gemma4:e2b
-  ollama pull qwen3.5:4b   # optional, only for --fast
+  ollama pull gemma4:e2b          # tailor only
+  ollama pull qwen3.5:4b          # optional, only for --fast
   ```
 - **Playwright Chromium** (for autofill + LinkedIn scan):
   ```bash
@@ -259,8 +259,8 @@ feedback.md                   # Post-apply notes, append-only
 
 | Model | Role | Used by |
 |---|---|---|
-| `qwen2.5-coder:7b` | Structured JSON extraction | analyze, convert |
-| `gemma4:e2b` | Resume tailoring + cover letter (default) | tailor, coverletter |
+| `qwen2.5-coder:7b` | Structured JSON extraction + cover letter | analyze, convert, coverletter |
+| `gemma4:e2b` | Resume tailoring (default) | tailor |
 | `qwen3.5:4b` | Fast fallback (`--fast`) | tailor, coverletter |
 
 All LLM calls stream through a watchdog: 45s stall timeout, 5-minute hard cap. Ollama host: `http://127.0.0.1:11434`.
@@ -277,6 +277,7 @@ All LLM calls stream through a watchdog: 45s stall timeout, 5-minute hard cap. O
 | `senior_score_cap` | `30` | Max score for senior roles when policy is `handicap` |
 | `max_pipeline_size` | `200` | Trim the lowest-scoring entries beyond this |
 | `verbose_scan` | `false` | Set `true` to re-enable per-company 404 / error logs |
+| `role_deny_extras` | `[]` | Extra role title substrings to block, e.g. `["staff accountant"]` |
 
 ---
 

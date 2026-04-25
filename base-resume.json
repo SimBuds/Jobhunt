@@ -21,7 +21,7 @@
     {
       "title": "Web Developer (Contract)",
       "company": "AI Agency",
-      "dates": "2026",
+      "dates": "Jan 2026 – Apr 2026",
       "bullets": [
         "Developed a custom 8-page HubSpot theme from scratch with full CRM integration, managing the complete legacy-to-custom migration: content mapping, page restructuring, and reusable HubL module architecture",
         "Cut page load time by 30% and lifted PageSpeed scores above 90 through image optimization, lazy loading, and caching, improving Core Web Vitals and organic search rankings",
@@ -43,26 +43,32 @@
       "company": "Multiple Venues, Toronto",
       "dates": "2015 – 2024",
       "bullets": [
-        "Led teams of 5–20 for nine years: hired and trained staff, managed scheduling and food cost budgets, and coordinated cross-functional operations with ownership and front-of-house"
+        "Led teams of 5–20 across nine years at multiple Toronto venues: hired and trained staff, managed scheduling, and coordinated operations with ownership and front-of-house",
+        "Owned food cost budget and weekly P&L reporting; reduced waste 15% through vendor renegotiation and inventory controls",
+        "Hired, trained, and mentored junior cooks; managed vendor relationships and bulk inventory procurement across multiple concurrent supplier accounts"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Casey's Job Seeker",
+      "url": "github.com/SimBuds/Caseys-job-seeker",
+      "summary": "AI-assisted local job search CLI. Node.js, Ollama, Playwright, SQLite. Discovers, scores, and tailors applications — human approves every submission.",
+      "highlights": [
+        "Built stealth Playwright scraper for LinkedIn guest search with UA spoof, randomized jitter, and 429 backoff — no login or CAPTCHA bypass",
+        "Designed Ollama streaming wrapper with 45s stall watchdog, 5-minute hard cap, and automatic retry to handle model instability",
+        "Deterministic fit scoring across keyword overlap, stack match, title fit, and ATS density — no LLM in the scoring hot path",
+        "Jaccard similarity guardrail rejects any LLM-generated bullet that diverges >40% from source text, enforcing truthfulness at runtime"
       ]
     }
   ],
   "skills": [
-    "JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass",
-    "Shopify (Liquid, Custom Themes)",
-    "HubSpot CMS (HubL, CRM Integration)",
-    "WordPress (Elementor)",
-    "Contentful (Certified Professional)",
-    "MongoDB, MySQL, PostgreSQL",
-    "Docker, Git, GitHub Actions CI/CD",
-    "Jest, Playwright, AWS, Azure",
-    "Local LLM hosting with Ollama and GPU optimization; prompt engineering for code generation, testing, and debugging",
-    "Java, Spring Boot, Python",
-    "Agile/Scrum",
-    "Headless Architecture",
-    "RESTful APIs",
-    "SEO",
-    "Figma"
+    "Languages: JavaScript (ES6+), TypeScript, HTML5, CSS3/Sass, Java, Python",
+    "Frameworks: React, Next.js, Node.js, Express, Spring Boot",
+    "CMS & Commerce: Shopify (Liquid), HubSpot (HubL), Contentful (Certified Professional), WordPress",
+    "AI / LLM: Ollama local inference, prompt engineering, agentic CLI workflows, GPU optimization",
+    "Data & Infra: PostgreSQL, MongoDB, MySQL, Docker, AWS, Azure, GitHub Actions CI/CD",
+    "Testing: Jest, Playwright"
   ],
   "education": [
     {

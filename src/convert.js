@@ -212,6 +212,17 @@ export async function convertResume(filePath, { model = 'qwen2.5-coder:7b', yes 
 
   backfillLinks(parsed, links);
 
+  // Preserve projects from existing base-resume.json — the LLM won't see them in PDF text
+  if (existing) {
+    try {
+      const prior = JSON.parse(await readFile(RESUME_PATH, 'utf-8'));
+      if (Array.isArray(prior.projects) && prior.projects.length) {
+        parsed.projects = prior.projects;
+        process.stderr.write(`[convert] preserved ${prior.projects.length} project(s) from existing base-resume.json\n`);
+      }
+    } catch {}
+  }
+
   console.log('\nExtracted resume preview:');
   console.log(`  LinkedIn:   ${parsed.linkedin || '(empty)'}`);
   console.log(`  GitHub:     ${parsed.github || '(empty)'}`);

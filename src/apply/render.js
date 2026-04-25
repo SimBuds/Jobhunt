@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, PDFName, PDFString, rgb } from 'pdf-lib';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -62,10 +62,50 @@ async function renderResumePdf(resume, company) {
     y -= 24;
   }
 
-  // Contact line
-  const contact = [resume.email, resume.phone, resume.linkedin, resume.github].filter(Boolean).join('  |  ');
-  if (contact) {
-    page.drawText(contact, { x: MARGIN, y, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
+  // Contact line — visible text with clickable URI annotations for links
+  const contactFields = [
+    resume.email ? { text: resume.email, url: `mailto:${resume.email}` } : null,
+    resume.phone ? { text: resume.phone, url: null } : null,
+    resume.linkedin ? { text: resume.linkedin.replace(/^https?:\/\//, ''), url: resume.linkedin } : null,
+    resume.github ? { text: resume.github.replace(/^https?:\/\//, ''), url: resume.github } : null,
+    resume.website ? { text: resume.website.replace(/^https?:\/\//, ''), url: resume.website } : null,
+  ].filter(Boolean);
+
+  if (contactFields.length) {
+    const separator = '  |  ';
+    let cx = MARGIN;
+    const contactY = y;
+    const annotRefs = [];
+    for (let i = 0; i < contactFields.length; i++) {
+      const { text, url } = contactFields[i];
+      const textWidth = font.widthOfTextAtSize(text, 9);
+      page.drawText(text, { x: cx, y: contactY, size: 9, font, color: url ? rgb(0.1, 0.1, 0.6) : rgb(0.3, 0.3, 0.3) });
+      if (url) {
+        const annotRef = doc.context.register(
+          doc.context.obj({
+            Type: 'Annot',
+            Subtype: 'Link',
+            Rect: [cx, contactY - 2, cx + textWidth, contactY + 9],
+            Border: [0, 0, 0],
+            A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+          })
+        );
+        annotRefs.push(annotRef);
+      }
+      cx += textWidth;
+      if (i < contactFields.length - 1) {
+        page.drawText(separator, { x: cx, y: contactY, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
+        cx += font.widthOfTextAtSize(separator, 9);
+      }
+    }
+    if (annotRefs.length) {
+      const existing = page.node.get(PDFName.of('Annots'));
+      if (existing) {
+        for (const ref of annotRefs) existing.push(ref);
+      } else {
+        page.node.set(PDFName.of('Annots'), doc.context.obj(annotRefs));
+      }
+    }
     y -= 20;
   }
 
@@ -101,13 +141,45 @@ async function renderResumePdf(resume, company) {
     }
   }
 
-  // Skills
+  // Projects
+  if (resume.projects?.length) {
+    ensureSpace(30);
+    page.drawText('PROJECTS', { x: MARGIN, y, size: 11, font: fontBold, color: rgb(0, 0, 0) });
+    y -= 16;
+
+    for (const proj of resume.projects) {
+      ensureSpace(40);
+      const nameWidth = fontBold.widthOfTextAtSize(proj.name || '', 10);
+      page.drawText(proj.name || '', { x: MARGIN, y, size: 10, font: fontBold, color: rgb(0, 0, 0) });
+      if (proj.url) {
+        const urlText = `  ${proj.url}`;
+        page.drawText(urlText, { x: MARGIN + nameWidth, y, size: 9, font, color: rgb(0.1, 0.1, 0.6) });
+      }
+      y -= 13;
+      if (proj.summary) {
+        y = await drawWrappedText(page, proj.summary, MARGIN, y, font, 9.5, CONTENT_WIDTH, 12);
+        y -= 2;
+      }
+      for (const highlight of (proj.highlights || [])) {
+        ensureSpace(15);
+        y = await drawWrappedText(page, `• ${highlight}`, MARGIN + 10, y, font, 9.5, CONTENT_WIDTH - 10, 12);
+        y -= 2;
+      }
+      y -= 8;
+    }
+  }
+
+  // Skills — each entry is a category string (e.g. "Languages: JS, TS")
   if (resume.skills?.length) {
     ensureSpace(30);
     page.drawText('SKILLS', { x: MARGIN, y, size: 11, font: fontBold, color: rgb(0, 0, 0) });
     y -= 14;
-    y = await drawWrappedText(page, resume.skills.join(', '), MARGIN, y, font, 10, CONTENT_WIDTH, 13);
-    y -= 10;
+    for (const skill of resume.skills) {
+      ensureSpace(14);
+      y = await drawWrappedText(page, skill, MARGIN, y, font, 9.5, CONTENT_WIDTH, 12);
+      y -= 2;
+    }
+    y -= 8;
   }
 
   // Education

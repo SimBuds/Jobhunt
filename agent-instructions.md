@@ -56,14 +56,14 @@ Every command has an `npm run` alias in `package.json`.
 
 **`src/apply/`** — scrape → analyze → tailor → render → autofill pipeline
 - [scrape.js](src/apply/scrape.js) — platform-aware JD extraction (cheerio + 20s timeout + 24h cache)
-- [analyze.js](src/apply/analyze.js) — `qwen2.5-coder:7b` → structured JSON (requirements/keywords/company/role/tone)
-- [tailor.js](src/apply/tailor.js) — `gemma4:e2b` rewrites summary + reorders bullets. Owns `base-resume.json` loading.
-- [coverletter.js](src/apply/coverletter.js) — ~250-word draft, matches analyzed tone
+- [analyze.js](src/apply/analyze.js) — `qwen2.5-coder:7b` → structured JSON (requirements/keywords/company/role/tone). Re-prompts once if role_title/company_name is unclear before throwing.
+- [tailor.js](src/apply/tailor.js) — `gemma4:e2b` rewrites summary + reorders bullets. Owns `base-resume.json` loading. Validates every output bullet via Jaccard similarity (≥0.6) against source — rejects hallucinations.
+- [coverletter.js](src/apply/coverletter.js) — ~250-word draft using `qwen2.5-coder:7b`. Validates role_title present in JD. Scans output for 28 cliché phrases and regenerates once if found.
 - [render.js](src/apply/render.js) — pdf-lib → PDFs in `output/`
 - [autofill.js](src/apply/autofill.js) — Playwright headful, fills Greenhouse/Lever/Ashby/SmartRecruiters/Workday
 
 **`src/discover/`** — scan + scoring + job sources
-- [scan.js](src/discover/scan.js) — Greenhouse + Lever APIs, normalization, fuzzy dedup, stale-marking, seniority policy application
+- [scan.js](src/discover/scan.js) — Greenhouse + Lever APIs, normalization, fuzzy dedup, stale-marking, seniority policy application. ROLE_DENY_RE blocks off-target titles (DevOps, QA, PM, etc.); `role_deny_extras` in config extends it.
 - [score.js](src/discover/score.js) — deterministic fit score (keyword/stack/title/education/ATS factors). No LLM.
 - [sources/browser-search.js](src/discover/sources/browser-search.js) — stealth Playwright launcher (persistent context, UA spoof, webdriver removal, jitter, 429 backoff, login/CAPTCHA detection)
 - [sources/linkedin.js](src/discover/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types)
@@ -88,9 +88,9 @@ Every command has an `npm run` alias in `package.json`.
 
 | Model | Role |
 |---|---|
-| `qwen2.5-coder:7b` | JSON extraction (analyze, convert) |
-| `gemma4:e2b` | Writing (tailor, cover letter) |
-| `qwen3.5:4b` | Fast fallback with `--fast` |
+| `qwen2.5-coder:7b` | JSON extraction + cover letter (analyze, convert, coverletter) |
+| `gemma4:e2b` | Resume tailoring (tailor) |
+| `qwen3.5:4b` | Fast fallback with `--fast` (tailor, coverletter) |
 
 All calls stream with watchdog. Ollama at `http://127.0.0.1:11434`.
 
@@ -173,12 +173,11 @@ Priority-ordered. Each is scoped enough to be a single PR.
 5. **Company priority list** — `data/priorities.json` boosting specific slugs' fit scores.
 6. **Cleaner apply-all UX** — `--limit N` and `--min-score N` exist; add `--dry-run` mode that lists what would be applied without opening browsers.
 
-*Resolved in latest pass*: senior over-ranking (now policy-driven), multi-location duplicates (fuzzy dedup), noisy scan output (compact summary), preemptive anti-scrape (persistent browser profile + 429 backoff + login/CAPTCHA detection).
+*Resolved in latest pass*: senior over-ranking (now policy-driven), multi-location duplicates (fuzzy dedup), noisy scan output (compact summary), preemptive anti-scrape (persistent browser profile + 429 backoff + login/CAPTCHA detection), cover letter "Unknown Role" bug (re-prompt + validation), tailor hallucination guardrail (Jaccard similarity ≥0.6), cliché deny-list (28 phrases, auto-retry), PROJECTS section in PDF (clickable links), company targeting reset (dropped FAANG-tier, added Toronto SaaS + agency targets), role deny-list (ROLE_DENY_RE + config `role_deny_extras`).
 
 ### Medium-term
 
 7. **ATS coverage expansion** — Workday multi-page autofill (currently best-effort on landing page only).
-8. **Role filter tuning in scan.js** — current regex over-matches (e.g. `"Graphic Designer"` slipped through). Move to a small deny-list.
 9. **Interview tracker** — table for interview events, reminders, prep notes.
 10. **Referral tracker** — who referred you, when, which company.
 11. **Recruiter CRM** — lightweight table of recruiter contacts tied to applications.
