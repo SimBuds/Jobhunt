@@ -5,12 +5,22 @@ const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 
 const CLICHE_DENYLIST = [
   'dynamic environment', 'fast-paced environment', 'fast paced environment',
-  'unique skill set', 'unique skillset', 'passionate about', 'team player',
-  'go-getter', 'go getter', 'results-driven', 'results driven', 'synergy', 'synergies',
-  'leverage', 'leveraging', 'cross-functional synergies', 'hit the ground running',
-  'wealth of experience', 'adept at', 'driving results', 'optimization',
-  'stakeholder', 'proactive', 'self-starter', 'self starter', 'detail-oriented',
-  'detail oriented', 'strong communication skills', 'problem solver',
+  'unique skill set', 'unique skillset',
+  'passionate about', 'team player', 'go-getter', 'go getter',
+  'results-driven', 'results driven',
+  'synergy', 'synergies', 'cross-functional synergies',
+  'hit the ground running', 'wealth of experience',
+  'driving results through',
+  'self-starter', 'self starter',
+  'detail-oriented', 'detail oriented',
+  'strong communication skills',
+  'problem solver', 'problem-solver',
+  'thrive in', 'eager to contribute',
+  'cutting-edge', 'cutting edge',
+  'unique opportunity',
+  'leverage my',
+  'proven ability to',
+  'extensive experience in',
 ];
 
 function detectCliches(text) {

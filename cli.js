@@ -39,7 +39,7 @@ async function ensureBaseResume(profile = null) {
     console.log(`\nNo base-resume.json yet. Found "${detected.split('/').pop()}" at project root.`);
     if (await askYesNo('Convert it to base-resume.json now?')) {
       await convertResume(detected, { yes: false });
-      try { await access(RESUME_PATH); return true; } catch { return false; }
+      try { await access(getResumePath()); return true; } catch { return false; }
     }
     console.log('OK — run `npm run convert -- <file>` when you\'re ready.');
     return false;

@@ -45,6 +45,17 @@ function parseFragment(html) {
   return jobs;
 }
 
+export const name = 'linkedin';
+
+export async function fetchAll({ companies }) {
+  const queries = Array.isArray(companies.linkedin_queries) ? companies.linkedin_queries : [];
+  const results = await searchLinkedIn(queries);
+  return {
+    results,
+    summary: `LinkedIn: ${results.length} job${results.length === 1 ? '' : 's'}`,
+  };
+}
+
 export async function searchLinkedIn(queries) {
   const out = [];
   const clipped = queries.slice(0, MAX_QUERIES);

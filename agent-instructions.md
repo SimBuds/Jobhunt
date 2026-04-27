@@ -63,11 +63,17 @@ Every command has an `npm run` alias in `package.json`.
 - [autofill.js](src/apply/autofill.js) — Playwright headful, fills Greenhouse/Lever/Ashby/SmartRecruiters/Workday
 
 **`src/discover/`** — scan + scoring + job sources
-- [scan.js](src/discover/scan.js) — Greenhouse + Lever APIs, normalization, fuzzy dedup, stale-marking, seniority policy application. ROLE_DENY_RE blocks off-target titles (DevOps, QA, PM, etc.); `role_deny_extras` in config extends it.
+- [scan.js](src/discover/scan.js) — orchestrator: pulls from the source registry, normalizes, fuzzy-dedupes, applies seniority policy, stale-marks. ROLE_DENY_RE blocks off-target titles; `role_deny_extras` in config extends it.
 - [score.js](src/discover/score.js) — deterministic fit score (keyword/stack/title/education/ATS factors). No LLM.
-- [sources/browser-search.js](src/discover/sources/browser-search.js) — stealth Playwright launcher (persistent context, UA spoof, webdriver removal, jitter, 429 backoff, login/CAPTCHA detection)
-- [sources/linkedin.js](src/discover/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types)
-- [sources/jobbank.js](src/discover/sources/jobbank.js) — Government of Canada Job Bank parser (public, no ToS issue)
+- [sources/index.js](src/discover/sources/index.js) — `REGISTRY` + `expandSources()` (resolves `api` / `all` aliases) + `isScraperSource()`. Adding a source = drop a file in `sources/`, register it here.
+- [sources/_shared.js](src/discover/sources/_shared.js) — `fetchJson` (15s timeout) + `stripHtml` helpers used by API sources.
+- [sources/greenhouse.js](src/discover/sources/greenhouse.js) — Greenhouse public board API.
+- [sources/lever.js](src/discover/sources/lever.js) — Lever public postings API.
+- [sources/linkedin.js](src/discover/sources/linkedin.js) — LinkedIn guest-search parser (100km radius, all work types).
+- [sources/jobbank.js](src/discover/sources/jobbank.js) — Government of Canada Job Bank parser (public, no ToS issue).
+- [sources/browser-search.js](src/discover/sources/browser-search.js) — stealth Playwright launcher (persistent context, UA spoof, webdriver removal, jitter, 429 backoff, login/CAPTCHA detection).
+
+Each source module exports `name` and `fetchAll({ companies, verbose }) -> { results, summary }`. `companies` is the parsed `data/companies.json`; the source pulls whichever fields it needs (slugs for API sources, `*_queries` for scrapers).
 
 **`src/` (standalone commands)**
 - [convert.js](src/convert.js) — PDF/DOCX → base-resume.json via LLM (with hyperlink extraction + backfill)

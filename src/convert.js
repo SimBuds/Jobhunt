@@ -212,6 +212,9 @@ export async function convertResume(filePath, { model = 'qwen2.5-coder:7b', yes 
 
   backfillLinks(parsed, links);
 
+  let existing = false;
+  try { await access(RESUME_PATH); existing = true; } catch {}
+
   // Preserve projects from existing base-resume.json — the LLM won't see them in PDF text
   if (existing) {
     try {
@@ -234,9 +237,6 @@ export async function convertResume(filePath, { model = 'qwen2.5-coder:7b', yes 
   console.log(`  Experience: ${parsed.experience?.length || 0} entries`);
   console.log(`  Skills:     ${parsed.skills?.length || 0} items`);
   console.log(`  Education:  ${parsed.education?.length || 0} entries`);
-
-  let existing = false;
-  try { await access(RESUME_PATH); existing = true; } catch {}
 
   if (!yes) {
     const msg = existing
