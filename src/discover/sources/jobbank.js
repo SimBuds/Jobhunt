@@ -12,6 +12,17 @@ function buildUrl(query) {
   return `https://www.jobbank.gc.ca/jobsearch/jobsearch?${params}`;
 }
 
+export const name = 'jobbank';
+
+export async function fetchAll({ companies }) {
+  const queries = Array.isArray(companies.jobbank_queries) ? companies.jobbank_queries : [];
+  const results = await searchJobBank(queries);
+  return {
+    results,
+    summary: `JobBank: ${results.length} job${results.length === 1 ? '' : 's'}`,
+  };
+}
+
 export async function searchJobBank(queries) {
   const out = [];
   const clipped = queries.slice(0, MAX_QUERIES);

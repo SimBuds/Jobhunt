@@ -5,8 +5,7 @@ import { loadBaseResume } from '../apply/tailor.js';
 import { loadCompanies } from '../core/companies.js';
 import { score, priorityFor } from './score.js';
 import { loadConfig } from '../core/config.js';
-import { searchLinkedIn } from './sources/linkedin.js';
-import { searchJobBank } from './sources/jobbank.js';
+import { REGISTRY, expandSources, isScraperSource } from './sources/index.js';
 
 const PIPELINE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'applications');
 const PIPELINE_PATH = join(PIPELINE_DIR, 'pipeline.json');
@@ -28,15 +27,20 @@ const ROLE_DENY_BASE = [
   'technical writer', 'scrum master', 'product manager', 'project manager',
   'technical program manager', 'engineering manager', 'data scientist',
   'data analyst', 'business analyst', 'solutions architect',
+  'sales engineer', 'solutions engineer', 'support engineer',
+  'technical support engineer', 'field engineer', 'field sales',
+  'customer engineer', 'customer success engineer',
+  'forward deployed', 'application engineer', 'implementation engineer',
+  'supply chain', 'embedded software', 'embedded systems',
+  'database administrator', '\\bdba\\b',
+  'network engineer', 'systems engineer',
+  'automation designer', 'automation engineer',
+  'solutions consultant', 'technical consultant',
 ];
 
 function buildDenyRe(extras = []) {
   const all = [...ROLE_DENY_BASE, ...extras.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))];
   return new RegExp(`\\b(${all.join('|')})\\b`, 'i');
-}
-
-function stripHtml(s = '') {
-  return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function locationOk(loc = '') {
@@ -53,70 +57,6 @@ function fuzzyKey(company, role) {
     .replace(/\s+/g, ' ')
     .trim();
   return `${(company || '').toLowerCase().trim()}::${cleanRole}`;
-}
-
-async function fetchJson(url) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15_000);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'job-agent/1.0' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function fetchGreenhouse(slug, verbose) {
-  const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
-  try {
-    const data = await fetchJson(url);
-    return {
-      ok: true,
-      slug,
-      jobs: (data.jobs || []).map(j => ({
-        company: slug,
-        role: j.title,
-        url: j.absolute_url,
-        location: j.location?.name || '',
-        salary: '',
-        tech_stack: [],
-        ats_platform: 'greenhouse',
-        description: stripHtml(j.content || ''),
-      })),
-    };
-  } catch (err) {
-    if (verbose) process.stderr.write(`[scan] greenhouse/${slug}: ${err.message}\n`);
-    return { ok: false, slug, jobs: [] };
-  }
-}
-
-async function fetchLever(slug, verbose) {
-  const url = `https://api.lever.co/v0/postings/${slug}?mode=json`;
-  try {
-    const data = await fetchJson(url);
-    return {
-      ok: true,
-      slug,
-      jobs: (Array.isArray(data) ? data : []).map(j => ({
-        company: slug,
-        role: j.text,
-        url: j.hostedUrl,
-        location: j.categories?.location || '',
-        salary: '',
-        tech_stack: (j.categories?.team ? [j.categories.team] : []),
-        ats_platform: 'lever',
-        description: stripHtml(
-          (j.descriptionPlain || j.description || '') +
-          ' ' +
-          (j.lists || []).map(l => l.text + ' ' + stripHtml(l.content || '')).join(' ')
-        ),
-      })),
-    };
-  } catch (err) {
-    if (verbose) process.stderr.write(`[scan] lever/${slug}: ${err.message}\n`);
-    return { ok: false, slug, jobs: [] };
-  }
 }
 
 async function loadExistingPipeline() {
@@ -137,22 +77,13 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
   const roleDenyRe = buildDenyRe(Array.isArray(config.role_deny_extras) ? config.role_deny_extras : []);
 
   const companies = await loadCompanies();
-  const wantAll = sources.includes('all');
-  const wantApi = sources.includes('api') || wantAll;
-  const useLinkedIn = sources.includes('linkedin') || wantAll;
-  const useJobBank  = sources.includes('jobbank')  || wantAll;
-  const anyScraper  = useLinkedIn || useJobBank;
+  const activeSources = expandSources(sources);
 
-  if (wantApi && !anyScraper && !companies.greenhouse.length && !companies.lever.length) {
-    console.log('No companies configured. Edit data/companies.json or pass --sources all.');
-    return { jobs: [], added: 0 };
-  }
-
-  if (useLinkedIn) {
+  if (activeSources.includes('linkedin')) {
     console.log('\n⚠  LinkedIn scraping is best-effort and may violate ToS.');
     console.log('   A browser will open; rate limits + CAPTCHAs are possible.\n');
   }
-  if (useJobBank) {
+  if (activeSources.includes('jobbank')) {
     console.log('Scanning Job Bank (public board).\n');
   }
 
@@ -160,49 +91,28 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
   const existing = await loadExistingPipeline();
   const existingByUrl = new Map(existing.map(j => [j.url, j]));
 
-  const greenhouseResults = wantApi
-    ? await Promise.all(companies.greenhouse.map(s => fetchGreenhouse(s, verbose)))
-    : [];
-  const leverResults = wantApi
-    ? await Promise.all(companies.lever.map(s => fetchLever(s, verbose)))
-    : [];
+  // Run API sources in parallel; scraper sources sequentially (each holds a browser).
+  const apiNames = activeSources.filter(n => !isScraperSource(n));
+  const scraperNames = activeSources.filter(n => isScraperSource(n));
 
-  const ghOk = greenhouseResults.filter(r => r.ok).length;
-  const leverOk = leverResults.filter(r => r.ok).length;
-  const ghSkipped = greenhouseResults.length - ghOk;
-  const leverSkipped = leverResults.length - leverOk;
-
-  const apiResults = [
-    ...greenhouseResults.flatMap(r => r.jobs),
-    ...leverResults.flatMap(r => r.jobs),
-  ];
-
-  async function safeRun(label, fn) {
-    try { return await fn(); } catch (err) {
-      process.stderr.write(`[${label}] aborted: ${err.message}\n`);
-      return [];
+  async function safeRun(name) {
+    try {
+      return await REGISTRY[name].fetchAll({ companies, verbose });
+    } catch (err) {
+      process.stderr.write(`[${name}] aborted: ${err.message}\n`);
+      return { results: [], summary: `${name}: aborted (${err.message})` };
     }
   }
 
-  const linkedInResults = useLinkedIn ? await safeRun('linkedin', () => searchLinkedIn(companies.linkedin_queries)) : [];
-  const jobBankResults  = useJobBank  ? await safeRun('jobbank',  () => searchJobBank(companies.jobbank_queries)) : [];
+  const apiOutputs = await Promise.all(apiNames.map(safeRun));
+  const scraperOutputs = [];
+  for (const n of scraperNames) scraperOutputs.push(await safeRun(n));
 
-  const results = [
-    ...apiResults,
-    ...linkedInResults,
-    ...jobBankResults,
-  ];
+  const sourceOutputs = [...apiOutputs, ...scraperOutputs];
+  const results = sourceOutputs.flatMap(o => o.results);
 
-  if (wantApi) {
-    console.log(
-      `Fetched ${ghOk} Greenhouse + ${leverOk} Lever boards` +
-      (ghSkipped + leverSkipped ? ` (${ghSkipped + leverSkipped} skipped)` : '')
-    );
-  }
-  const scraperCounts = [];
-  if (useLinkedIn) scraperCounts.push(`LinkedIn: ${linkedInResults.length}`);
-  if (useJobBank)  scraperCounts.push(`JobBank: ${jobBankResults.length}`);
-  if (scraperCounts.length) console.log(scraperCounts.join(' | '));
+  const summaries = sourceOutputs.map(o => o.summary).filter(Boolean);
+  if (summaries.length) console.log(summaries.join(' | '));
 
   const today = new Date().toISOString().slice(0, 10);
   const seenUrls = new Set();
@@ -259,15 +169,22 @@ export async function scan({ sources = ['api'], seniorityOverride = null } = {})
     kept.push(entry);
   }
 
-  // Preserve prior entries that didn't appear in this scan (re-inserted without
-  // fuzzy-dedup, since they're known-good historic state).
+  // Preserve prior entries that didn't appear in this scan. Re-apply role filters
+  // so entries added before the deny-list expanded don't persist forever.
   const keptUrls = new Set(kept.map(j => j.url));
   for (const prior of existing) {
     if (keptUrls.has(prior.url)) continue;
+    if (prior.applied) {
+      // Always keep applied entries — they're history.
+      kept.push({ ...prior });
+      continue;
+    }
+    if (!ROLE_RE.test(prior.role || '')) continue;
+    if (roleDenyRe.test(prior.role || '')) continue;
     const lastSeen = new Date(prior.last_seen || prior.date_discovered || today).getTime();
     const ageDays = (Date.now() - lastSeen) / 86_400_000;
-    if (ageDays > STALE_DAYS && !prior.applied) continue;
-    kept.push({ ...prior, status: prior.applied ? prior.status : 'stale' });
+    if (ageDays > STALE_DAYS) continue;
+    kept.push({ ...prior, status: 'stale' });
   }
 
   kept.sort((a, b) => b.fit_score - a.fit_score);
