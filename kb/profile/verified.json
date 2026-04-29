@@ -1,0 +1,99 @@
+{
+  "name": "Casey Hsu",
+  "contact_line": "Toronto, ON  |  casey-hsu@outlook.com  |  caseyhsu.com  |  LinkedIn  |  GitHub",
+  "summary": "Full-stack JavaScript developer with 2+ years of professional client work delivering e-commerce storefronts, custom CMS themes, and platform migrations across Shopify, HubSpot, and WordPress. Owns the full project lifecycle as sole developer — scoping, technical planning, deployment, and ongoing maintenance. Contentful Certified Professional. Nine years leading culinary teams of 5–20, managing budgets and vendor relationships, experience now applied to stakeholder communication.",
+  "skills_core": [
+    "JavaScript (ES6+)",
+    "TypeScript",
+    "React",
+    "Next.js",
+    "Node.js",
+    "Express",
+    "HTML5",
+    "CSS3/Sass"
+  ],
+  "skills_cms": [
+    "Shopify (Liquid, Custom Themes)",
+    "HubSpot CMS (HubL, CRM Integration)",
+    "WordPress (Elementor)",
+    "Contentful (Certified Professional)"
+  ],
+  "skills_data_devops": [
+    "MongoDB",
+    "MySQL",
+    "PostgreSQL",
+    "Docker",
+    "Git",
+    "GitHub Actions CI/CD",
+    "Jest",
+    "Playwright",
+    "AWS",
+    "Azure"
+  ],
+  "skills_ai": [
+    "Local LLM hosting with Ollama and GPU optimization; prompt engineering for code generation, testing, and debugging"
+  ],
+  "skills_familiar": [
+    "Java",
+    "Spring Boot",
+    "Python",
+    "Agile/Scrum",
+    "Headless Architecture",
+    "RESTful APIs",
+    "SEO",
+    "Figma"
+  ],
+  "work_history": [
+    {
+      "title": "Web Developer (Contract)",
+      "employer": "Custom Jewelry Brand (NDA)",
+      "dates": "2023 – Present",
+      "bullets": [
+        "Built and maintained a 14+ page Shopify storefront with 200+ product SKUs serving 500+ monthly visitors, migrating from WordPress through three project phases over 2+ years.",
+        "Designed and shipped an interactive ring builder that lets customers configure stone, band, and size options directly, replacing the legacy manual quote request workflow.",
+        "Developed custom Liquid templates, integrated Stripe payments, and own all ongoing feature development, bug fixes, and client communication as sole developer."
+      ]
+    },
+    {
+      "title": "Web Developer (Contract)",
+      "employer": "AI Agency (NDA)",
+      "dates": "2026",
+      "bullets": [
+        "Developed a custom 8-page HubSpot theme from scratch with full CRM integration, managing the complete legacy-to-custom migration: content mapping, page restructuring, and reusable HubL module architecture.",
+        "Cut page load time by 30% and lifted PageSpeed scores above 90 through image optimization, lazy loading, and caching, improving Core Web Vitals and organic search rankings.",
+        "Configured Google Tag Manager for conversion tracking and analytics; set up GitHub Actions CI pipeline with automated linting before deploying to production."
+      ]
+    },
+    {
+      "title": "Web Developer (Contract)",
+      "employer": "Vintage Gaming Retailer (NDA)",
+      "dates": "2024",
+      "bullets": [
+        "Built custom Shopify page layouts and product display modules for a 400+ item vintage gaming catalog, improving collection browsing and product discoverability.",
+        "Wrote and ran bulk JSON data migrations to restructure the full product catalog, cutting manual data entry time and eliminating duplicate SKU errors.",
+        "Ran technical SEO audits and security hardening that improved search visibility across target keywords."
+      ]
+    },
+    {
+      "title": "Sous Chef & Team Lead",
+      "employer": "Multiple Venues, Toronto",
+      "dates": "2015 – 2024",
+      "bullets": [
+        "Led teams of 5–20 for nine years: hired and trained staff, managed scheduling and food cost budgets, and coordinated cross-functional operations with ownership and front-of-house."
+      ]
+    }
+  ],
+  "certifications": [
+    "Contentful Certified Professional + Personalization Skill Badge, Contentful (October 2025)"
+  ],
+  "education": [
+    "Computer Programming & Analysis (Advanced Diploma), George Brown College, Toronto (April 2024)",
+    "Dean’s List (all terms). Coursework: Machine Learning, Data Structures & Algorithms, Enterprise Java, Full-Stack Development."
+  ],
+  "coursework_baseline": [
+    "Machine Learning",
+    "Data Structures & Algorithms",
+    "Enterprise Java",
+    "Full-Stack Development"
+  ]
+}

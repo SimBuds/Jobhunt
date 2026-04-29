@@ -1,0 +1,51 @@
+[project]
+name = "jobhunt"
+version = "0.1.0"
+description = "Local-first CLI for personal job search automation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "structlog>=24.1",
+    "tomli-w>=1.0",
+    "python-frontmatter>=1.1",
+    "python-docx>=1.1",
+]
+
+[project.scripts]
+job-seeker = "jobhunt.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jobhunt"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+# Typer's idiomatic API uses typer.Option()/typer.Argument() as default values.
+ignore = ["B008"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
