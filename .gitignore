@@ -5,12 +5,24 @@ package-lock.json
 .claude/
 .cursor/
 
-output/
-data/applications.db
-data/applications.db-*
-data/scrape-cache/
-data/browser-profile/
+# Python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 
+# Local state
+data/
+.env
+*.secret.*
+
+# Legacy artifacts
+output/
 applications/
 feedback.md
 base-resume.backup-*.json
