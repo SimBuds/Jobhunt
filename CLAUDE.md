@@ -2,11 +2,11 @@
 
 **Source of truth for agents working in this repo.** Auto-loaded by Claude Code on every session. Defines the architecture, conventions, and non-negotiable guardrails for `jobhunt`.
 
-If anything in `PLAN.md` or `AGENTS.md` contradicts this file, **this file wins** — open a PR to reconcile rather than working around it.
+If anything in `PLAN.md` contradicts this file, **this file wins** — open a PR to reconcile rather than working around it.
 
-- `PLAN.md` — phased roadmap and design rationale (strategic).
-- `AGENTS.md` — per-phase implementation prompts and verification (operational).
+- `PLAN.md` — design rationale and reference for implementation choices.
 - `README.md` — end-user install and usage. Don't put dev/agent guidance there.
+- `Resume_Tailoring_Instructions.md` — non-negotiable rules for tailoring (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
 
 ---
 
@@ -61,38 +61,53 @@ is `job-seeker`.
 
 ```
 src/jobhunt/
-├── cli.py              # Typer app, subcommand wiring only
-├── commands/           # one module per subcommand
-│   ├── convert_resume_cmd.py   # P1 — done
-│   ├── scan_cmd.py             # P2 — stub
-│   ├── apply_cmd.py            # P3+P4 — stub
-│   ├── list_cmd.py             # P5 — stub
-│   ├── db_cmd.py               # hidden internal
-│   ├── config_cmd.py           # hidden internal
-│   └── _stub.py                # phase-N stub helper
-├── resume/             # P1 — docx parser + (later) docx renderer
-│   └── parse_docx.py
-├── config.py           # config loading, Pydantic models
-├── db.py               # connection + migration runner
-├── errors.py           # exception hierarchy
-└── models.py           # Pydantic domain models (Job, Score, Application)
+├── cli.py                     # Typer app, subcommand wiring only
+├── commands/
+│   ├── convert_resume_cmd.py  # P1
+│   ├── scan_cmd.py            # P2: ingest + score
+│   ├── apply_cmd.py           # P3+P4: tailor + cover + autofill
+│   ├── list_cmd.py            # P5: pipeline view + weekly rollup
+│   ├── db_cmd.py              # hidden internal
+│   └── config_cmd.py          # hidden internal
+├── resume/
+│   ├── parse_docx.py          # baseline .docx → verified.json + kb/profile/*.md
+│   └── render_docx.py         # tailored markdown → ATS-safe .docx
+├── ingest/                    # one file per source
+│   ├── _filter.py             # GTA allowlist + Remote-Canada heuristic
+│   ├── greenhouse.py
+│   ├── lever.py
+│   ├── ashby.py
+│   └── adzuna_ca.py
+├── gateway/                   # Ollama client + prompt loader
+│   ├── client.py              # complete_json (POST /api/chat with format=schema)
+│   └── prompts.py             # frontmatter-aware markdown prompt loader
+├── pipeline/                  # score, tailor, cover
+│   ├── score.py
+│   ├── tailor.py              # enforces no-fabrication invariants
+│   └── cover.py
+├── browser/
+│   ├── autofill.py            # headed Playwright session, fill-plan.json
+│   ├── profile_map.py         # ApplicantProfile → form key map
+│   └── handlers/              # ATS-specific handlers + generic fallback
+├── http.py                    # async httpx client + per-host rate limiter
+├── secrets.py                 # ~/.config/jobhunt/secrets.toml loader
+├── config.py                  # config loading, Pydantic models
+├── db.py                      # connection + migration runner + query helpers
+├── errors.py
+└── models.py                  # Pydantic domain models (Job, Score, Application)
 ```
-
-Phases P2–P5 will reintroduce these directories as they're filled in:
-`ingest/` (one file per source), `gateway/` (Ollama client + router + prompt
-loader), `pipeline/` (score, tailor, cover), `browser/` (Playwright autofill).
-They were deleted as empty placeholders to keep the tree honest.
 
 ## Commands
 
-User-facing surface is **four** commands. `db` and `config` exist as hidden
-internals for setup.
+User-facing surface is **four** commands. `db` and `config` are hidden internals.
 
 ```
-job-seeker convert-resume       # parse Casey_Hsu_Resume_Baseline.docx → kb/profile/
-job-seeker scan                 # ingest GTA jobs + score                    [P2]
-job-seeker apply <job-id>       # tailor docs + autofill form                [P3+P4]
-job-seeker list [--week N]      # pipeline view + weekly tracking            [P5]
+job-seeker convert-resume       # parse baseline .docx → kb/profile/
+job-seeker scan                 # ingest GTA jobs + score
+job-seeker apply <job-id>       # tailor + cover + autofill (you submit)
+job-seeker apply --top N        # auto-pick N best-fit unapplied (1..10)
+job-seeker apply --best         # interactive picker over top 10
+job-seeker list [--week N]      # pipeline view + weekly rollup
 ```
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.

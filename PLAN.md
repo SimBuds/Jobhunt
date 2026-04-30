@@ -1,168 +1,126 @@
-# jobhunt — Implementation Plan
+# job-seeker — Design notes
 
-A CLI tool that ingests jobs from ATS APIs, scores them against your profile using local LLMs, tailors resumes and cover letters per role, and assists with form autofill. Runs on your Arch + Ryzen 5900 + 32GB + RTX 3080 setup. Built with Claude Code, run on Ollama.
+A CLI tool that ingests Toronto-area jobs from public ATS APIs, scores them
+against Casey's parsed baseline resume using local Ollama models, tailors
+resumes and cover letters per role, and assists with form autofill in a
+headed browser. Casey clicks Submit.
+
+This document explains the *why*. `CLAUDE.md` is the *how* (conventions,
+guardrails, project structure). `README.md` is for end-users.
 
 ---
 
 ## Goals
 
-1. **Replace cloud per-job AI spend with local inference.** Scoring, tailoring, and Q&A all run on Ollama. Token cost at runtime is zero.
-2. **Use Claude Code as the build environment**, not the runtime. Architecture decisions, refactors, and hard debugging go to Claude Code via `AGENTS.md` prompts.
-3. **Future-proof the knowledge layer.** Profile, prompts, schemas, examples, and conventions live in `kb/` as plain markdown and JSON. Model swaps don't break them.
-4. **Stay ToS-defensible.** Public ATS APIs only. No LinkedIn/Indeed scraping. No bot-submitted applications — Playwright fills the form, human clicks Submit.
-
----
+1. **Replace cloud per-job AI spend with local inference.** Scoring,
+   tailoring, and cover letters all run on Ollama. Token cost at runtime is
+   zero.
+2. **Future-proof the knowledge layer.** Profile facts live in
+   `kb/profile/verified.json` (regenerated from `Casey_Hsu_Resume_Baseline.docx`).
+   Prompts live in `kb/prompts/*.md` with JSON-schema frontmatter. Model swaps
+   don't break them.
+3. **Stay ToS-defensible.** Public ATS APIs only. No LinkedIn / Indeed /
+   Glassdoor scraping. No bot-submitted applications — Playwright fills the
+   form, human clicks Submit.
+4. **Honesty by construction.** Tailoring is constrained to facts in
+   `verified.json`. Roles must match `(employer, dates)` exactly. "Familiar"
+   skills can't be promoted into Core categories. The score prompt
+   auto-declines roles >2x Casey's experience or with senior titles.
 
 ## Design principles
 
-**Local-first at runtime.** Every per-job AI call routes through a local OpenAI-compatible gateway to Ollama. No cloud calls in the hot path.
+**Local-first at runtime.** Every per-job AI call routes through
+`jobhunt.gateway` to Ollama at `http://localhost:11434`. No cloud calls in
+the hot path.
 
-**Constrained output.** Any LLM call producing structured data uses a JSON schema (via Ollama's `format` parameter or llama.cpp grammar). A 7B with a schema beats a 70B without one.
+**Constrained output.** Every structured LLM call uses Ollama's `format`
+parameter with a JSON schema from the prompt's frontmatter.
 
-**Cascade by difficulty.** Cheap tasks (fit-score, classification, JSON extraction) → 8B model. Generation tasks (cover letter, tailored summary) → 14B model. Reasoning-heavy (debugging a weird application form) → optionally Claude Code via API.
+**Cascade by difficulty.** Cheap tasks (fit-score, classification) → 8B
+model. Generation tasks (tailored resume, cover letter) → 14B model. Set in
+config (`gateway.tasks`).
 
-**Eval-gated changes.** Prompt and model changes must pass a local eval suite before they merge. Without this, "I tweaked the prompt and it feels better" is how you regress silently.
-
-**Knowledge base is markdown.** No model-specific syntax baked in. Gateway translates to whatever runtime expects.
-
----
+**Knowledge base is markdown + JSON.** No model-specific syntax baked in.
 
 ## Hardware budget
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10GB) | One hot model at a time. Default: Qwen3 14B Q4_K_M (~9.5GB at 8K ctx). Swap to Qwen3 8B Q5_K_M (~6GB) for speed-bound tasks. |
-| System RAM (32GB) | Embeddings model in CPU; SQLite cache; Playwright when active |
-| Disk | Models in `~/.ollama/models`; project DB in `data/jobhunt.db` |
+| GPU VRAM (10 GB) | One hot model at a time. Default: Qwen3 14B Q4_K_M (~9.5 GB at 8K ctx). Swap to 8B Q5_K_M (~6 GB) for speed. |
+| System RAM (32 GB) | Embeddings on CPU; SQLite cache; Playwright when active. |
+| Disk | Models in `~/.ollama/models`; project DB in `data/jobhunt.db`. |
 
-Keep `num_ctx` honest. KV cache at 8K on a 14B is ~2GB. Don't blow the VRAM budget on context you won't use.
+## Models (default)
 
----
+| Task | Model | Why |
+|---|---|---|
+| Fit-score (JSON) | `qwen3:8b` | Fast, schema-constrained. |
+| Tailor resume | `qwen3:14b` | Better instruction-following + larger context. |
+| Cover letter | `qwen3:14b` | Voice/style matters. |
+| Embeddings | `nomic-embed-text` | CPU. Reserved for future kb retrieval. |
 
-## Repo layout (target end-state)
+All overridable in `~/.config/jobhunt/config.toml`.
 
-```
-jobhunt/
-├── CLAUDE.md                  # project context for Claude Code (auto-loaded)
-├── PLAN.md                    # this file
-├── AGENTS.md                  # phase-by-phase implementation prompts
-├── README.md
-├── pyproject.toml             # uv-managed
-├── .env.example
-├── src/jobhunt/
-│   ├── cli.py                 # Typer entry point
-│   ├── config.py              # TOML config loading
-│   ├── db.py                  # SQLite + migrations
-│   ├── ingest/                # ATS adapters (one file per source)
-│   ├── gateway/               # Ollama client + model router + prompt loader
-│   ├── pipeline/              # score, tailor, cover, qa
-│   ├── browser/               # Playwright autofill (human submits)
-│   └── kb_loader.py           # reads kb/ at runtime
-├── kb/                        # KNOWLEDGE BASE — git-tracked, model-portable
-│   ├── profile/
-│   │   ├── resume.md
-│   │   ├── work-history.md
-│   │   ├── skills.md
-│   │   ├── stories.md         # STAR-format examples
-│   │   └── voice.md           # writing samples for tone matching
-│   ├── prompts/
-│   │   ├── score.md
-│   │   ├── tailor.md
-│   │   ├── cover.md
-│   │   └── qa.md
-│   ├── schemas/               # JSON schemas for constrained output
-│   ├── stacks/                # tech conventions (python-uv.md, etc.)
-│   └── examples/              # few-shot good/bad pairs
-├── data/                      # SQLite DB, gitignored
-├── evals/                     # regression suite for prompts
-└── tests/
-```
+## Sources (Toronto-focused)
 
----
+- **Greenhouse** boards-api — most common in GTA tech listings.
+- **Lever** `api.lever.co/v0/postings/<slug>` — common at GTA startups.
+- **Ashby** posting API — growing share in 2025–26.
+- **Adzuna CA** — `country=ca&where=Toronto&distance=100`. Aggregates broadly;
+  needs a free API key.
 
-## Phased roadmap
+Filter pipeline: each adapter checks `is_gta_eligible(location)` before
+yielding a job. The allowlist covers Toronto + 13 surrounding municipalities,
+plus Remote-Canada / Remote-Ontario / Remote-EST. Bare "Remote" is rejected
+as ambiguous.
 
-Each phase is a discrete unit Claude Code can implement in one session. Exit criteria are testable. Don't start phase N+1 until N's exit criteria pass.
+Explicitly excluded (won't change without removing the no-scraping guardrail
+in `CLAUDE.md`):
 
-### Phase 0 — Foundations (½ day)
+- LinkedIn, Indeed, Glassdoor, ZipRecruiter — ToS, brittle, litigated.
+- USAJobs and worldwide job APIs — out of GTA scope.
 
-Bootstrap the repo, dependency management, SQLite schema, config loading, and `kb/` skeleton with a starter `profile/resume.md` you can fill in.
+## What this project deliberately doesn't do
 
-**Exit:** `jobhunt --help` runs. `jobhunt db init` creates the schema. `kb/profile/resume.md` exists. Tests pass.
+- Auto-submission of applications (ToS risk; human stays in the loop).
+- Web UI / mobile (CLI-first; no current need).
+- Recruiter outreach automation (different problem; do not bolt on).
 
-### Phase 1 — Ingest (1–2 days)
+## Database
 
-ATS adapters for Greenhouse, Lever, Ashby. USAJobs API client. Adzuna API client. RSS catch-all. Dedup by `(source, external_id)`. Persist to SQLite.
+SQLite, plain SQL, no ORM. Schema in `migrations/`:
 
-**Exit:** `jobhunt ingest run` populates `data/jobhunt.db` with ≥100 jobs across all three source categories. `jobhunt list` shows them. Rate-limited, polite User-Agent, robots.txt respected.
+- `0001_init.sql` — companies, jobs, scores, applications, indexes.
+- `0002_apply_tracking.sql` — adds `jobs.decline_reason` and
+  `applications.applied_week` (ISO week label, e.g. "2026-W18") for cheap
+  weekly rollups.
 
-### Phase 2 — Gateway (½–1 day)
+## Honesty enforcement (the structural part)
 
-OpenAI-compatible client pointing at `http://localhost:11434/v1`. Model router that maps task names (`score`, `tailor`, `cover`) to model tags via config. Prompt loader that composes from `kb/`. Eval harness scaffold.
+The "no fabrication" rule from `Resume_Tailoring_Instructions.md` is enforced
+in three places, not just the prompt:
 
-**Exit:** `jobhunt model list` shows installed Ollama models. `jobhunt model test score` runs a fixed prompt and reports tokens/sec + output. `jobhunt eval run` executes ≥3 fixture cases.
+1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.
+   The tailoring prompt is constrained to only use facts from this file.
+2. **Schema-constrained output.** `kb/prompts/tailor.md` declares a JSON
+   schema. Ollama's `format=<schema>` enforces shape at decode time.
+3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`:
+   - rejects any role whose `(employer, dates)` is missing from
+     `verified.json`;
+   - rejects skill items not present in `verified.json` (substring tolerance
+     for parenthetical variants like `Shopify (Liquid)` vs
+     `Shopify (Liquid, Custom Themes)`);
+   - rejects "Familiar" skills appearing in any non-Familiar category.
 
-### Phase 3 — Pipeline: scoring (½–1 day)
+If any check fails, the apply pipeline aborts for that job rather than
+producing a misleading resume.
 
-Fit-score every unscored job against `kb/profile/`. Constrained JSON output: `{score: 0-100, reasons: [str], red_flags: [str], must_clarify: [str]}`. Stored on the job row.
+## Success criteria
 
-**Exit:** `jobhunt score --unscored` processes the backlog. `jobhunt list --min-score 70` returns the high-fit subset. Eval suite covers ≥5 representative jobs with expected score bands.
-
-### Phase 4 — Pipeline: tailoring (1 day)
-
-For a given job ID, generate (a) a tailored resume markdown by re-ordering and rephrasing from `work-history.md` + `stories.md`, and (b) a cover letter draft in your voice from `voice.md`. Both saved to `data/applications/<job-id>/`.
-
-**Exit:** `jobhunt tailor <id>` produces `resume.md` and `cover-letter.md`. Eval suite checks for: ≥3 keywords from job description present, no fabricated employers/dates, length within bounds.
-
-### Phase 5 — CLI review TUI (½ day)
-
-Interactive review loop: show next high-score job, display fit reasoning, accept `[a]pply / [s]kip / [t]ailor / [q]uit`. Built on `prompt_toolkit` or `textual`.
-
-**Exit:** `jobhunt review` is the primary daily-use command. Feels fast.
-
-### Phase 6 — Autofill (1–2 days)
-
-Playwright-based form fill for the major ATS form patterns (Greenhouse, Lever, Ashby, Workday). Reads tailored docs from disk, fills fields, leaves browser open for human review and submit. Logs the field-fill plan to disk for auditability.
-
-**Exit:** `jobhunt apply <id>` opens browser, fills 80%+ of fields correctly on the three ATS targets, never clicks submit.
-
-### Phase 7 — Tracking + insights (½ day)
-
-Status transitions: `discovered → scored → tailored → applied → interviewing → offer/rejected`. `jobhunt status <id> --set <status>`. Weekly digest: which sources convert, which prompts produce the highest-scoring outputs.
-
-**Exit:** A 30-day rolling view exists. You can answer "of the jobs I scored ≥80, what % did I actually apply to" with one command.
-
----
-
-## Model selection (default)
-
-| Task | Model | Quant | Why |
-|---|---|---|---|
-| Fit-score (JSON) | `qwen3:8b` | Q5_K_M | Fast, schema-constrained, reasoning sufficient |
-| Tailor resume | `qwen3:14b` | Q4_K_M | Better instruction following, larger context |
-| Cover letter | `qwen3:14b` | Q4_K_M | Voice/style sensitivity matters |
-| Form Q&A | `qwen3:8b` | Q5_K_M | Short answers, retrieval-driven |
-| Embeddings | `nomic-embed-text` | — | CPU, used for kb retrieval |
-
-All overridable in `config.toml`. The eval suite is what tells you when to swap.
-
----
-
-## Success criteria for v1
-
-- Pulls ≥500 fresh jobs/day across configured sources without ToS issues
-- Scores every new job within 5 minutes of ingestion
-- Generates a tailored resume + cover letter in <90 seconds on local hardware
-- Autofills 80%+ of fields correctly on Greenhouse/Lever/Ashby
-- Eval suite catches prompt regressions before they hit production
-- Zero cloud API spend at runtime
-
----
-
-## What this plan deliberately excludes
-
-- Auto-submission of applications (ToS risk; human stays in the loop)
-- LinkedIn / Indeed scraping (ToS, brittle, litigated)
-- A web UI (CLI-first per your call; can add later)
-- Mobile (out of scope)
-- Recruiter outreach automation (different problem; do not bolt on)
+- Pulls fresh GTA jobs daily across configured Greenhouse/Lever/Ashby/Adzuna
+  sources without ToS issues.
+- Scores every new job within minutes of ingestion.
+- Generates a tailored .docx + cover letter in <90 seconds on local hardware.
+- Autofills standard fields on Greenhouse forms; falls back to a generic
+  selector-based handler elsewhere.
+- Zero cloud API spend at runtime.
