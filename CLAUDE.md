@@ -132,18 +132,25 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
 ## LLM call rules
 
-1. **Every structured call uses a JSON schema.** `gateway.client.complete(task=..., schema=...)`. No free-form JSON parsing.
-2. **Truncate inputs** to fit the configured context window. Document truncation in the prompt itself ("[resume truncated]").
-3. **Cache responses** keyed on `(prompt_hash, input_hash, model)`. Re-running the same scoring pass should be free.
-4. **Never log full prompts at INFO level.** Truncate to 200 chars or use DEBUG.
-5. **Default temperatures:** scoring 0.0, tailoring 0.3, cover letters 0.5. Set in prompt frontmatter.
+1. **Every structured call uses a JSON schema.** `gateway.client.complete_json(schema=...)` posts to Ollama `/api/chat` with `format: <schema>`. No free-form JSON parsing.
+2. **Truncate inputs** to fit `num_ctx`. The score/tailor pipelines truncate description to 6000 chars and policy to 4000 — see `pipeline.score.truncate`.
+3. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.5.
+4. **Honesty enforcement is structural.** The tailor pipeline's
+   `_enforce_no_fabrication` rejects any role/employer/dates that diverge from
+   `verified.json`, any skill not in `verified.json` (paren-substring tolerated),
+   and any "Familiar" skill in a non-Familiar category. Adding a new tailoring
+   capability MUST keep these checks green.
 
 ## Testing
 
-- Unit tests for ingest adapters use recorded fixtures (`tests/fixtures/<source>/`). No live HTTP in unit tests.
-- One integration test per source that hits the real API, marked `@pytest.mark.integration`, skipped by default.
-- LLM-using code is tested via the eval harness in `evals/`, not pytest. Eval cases are markdown files with frontmatter expectations.
-- Coverage target: 80% on `src/jobhunt/` excluding `cli.py` glue.
+- `pytest -q` is the gate. No live HTTP or Ollama calls in the test suite.
+- Tests live under `tests/`:
+  - **Pure helpers** (`_filter`, `parse_docx`, `_parse_picks`, `render_docx` page-fit, db upserts, tailor invariants) — unit-tested directly.
+  - **Pipeline integration** (real Ollama) — manual; not in CI. Run by hand after prompt changes.
+  - **Browser autofill** — manual; not in CI. Run via `apply --no-browser` first to verify docs, then re-run with the browser.
+- When adding an ingest adapter, capture a sample API response under
+  `tests/fixtures/<source>.json` and unit-test the parser against it (no
+  network).
 
 ## What Claude Code should NOT do
 
@@ -157,4 +164,4 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
 ## When stuck
 
-If a task in `AGENTS.md` is ambiguous, prefer the smaller, testable interpretation. Surface the ambiguity in your output as a "Decisions made" section so the user can correct in the next pass.
+If a request is ambiguous, prefer the smaller, testable interpretation. Surface the ambiguity in your output as a "Decisions made" section so the user can correct in the next pass. Never widen scope silently — adding a new ingest source, a new ATS handler, or a new prompt is a discrete change with its own review.

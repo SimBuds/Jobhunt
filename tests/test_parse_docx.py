@@ -55,7 +55,10 @@ def test_parse_baseline_missing_file_errors(tmp_path: Path):
     "value,expected",
     [
         ("a, b, c", ["a", "b", "c"]),
-        ("Shopify (Liquid, Custom Themes), HubSpot", ["Shopify (Liquid, Custom Themes)", "HubSpot"]),
+        (
+            "Shopify (Liquid, Custom Themes), HubSpot",
+            ["Shopify (Liquid, Custom Themes)", "HubSpot"],
+        ),
         ("foo (a, b, c), bar", ["foo (a, b, c)", "bar"]),
         ("  a  ,  b  ", ["a", "b"]),
         ("", []),

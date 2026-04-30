@@ -40,23 +40,37 @@ def _match(needle: str, haystacks: Iterable[str]) -> bool:
     return any(needle in h for h in haystacks if h)
 
 
+def _selector_for(raw_id: str | None, raw_name: str | None, tag: str) -> str:
+    if raw_id:
+        return f"#{raw_id}"
+    if raw_name:
+        return f'[name="{raw_name}"]'
+    return tag.lower() or "input"
+
+
 async def generic_fill(page: Any, field_map: dict[str, str]) -> list[FieldFill]:
     actions: list[FieldFill] = []
 
-    inputs = await page.query_selector_all("input, textarea, select")
+    # Defense-in-depth: only autofill when the page has at least one <form>.
+    if not await page.query_selector("form"):
+        return actions
+
+    inputs = await page.query_selector_all("form input, form textarea, form select")
     for el in inputs:
         try:
             tag = (await el.evaluate("e => e.tagName")) or ""
             input_type = (await el.evaluate("e => e.type || ''")).lower()
             if input_type in {"hidden", "submit", "button", "reset", "image"}:
                 continue
-            name = _norm(await el.get_attribute("name"))
-            id_ = _norm(await el.get_attribute("id"))
+            raw_name = await el.get_attribute("name")
+            raw_id = await el.get_attribute("id")
+            name = _norm(raw_name)
+            id_ = _norm(raw_id)
             placeholder = _norm(await el.get_attribute("placeholder"))
             autocomplete = _norm(await el.get_attribute("autocomplete"))
             label = ""
-            if id_:
-                lbl_el = await page.query_selector(f"label[for='{id_}']")
+            if raw_id:
+                lbl_el = await page.query_selector(f"label[for='{raw_id}']")
                 if lbl_el:
                     label = _norm(await lbl_el.text_content())
             haystacks = (name, id_, placeholder, autocomplete, label)
@@ -81,7 +95,7 @@ async def generic_fill(page: Any, field_map: dict[str, str]) -> list[FieldFill]:
                 await el.set_input_files(value)
                 actions.append(
                     FieldFill(
-                        selector=f"#{id_ or name or 'file'}",
+                        selector=_selector_for(raw_id, raw_name, tag),
                         profile_key=chosen_key,
                         value=value,
                         kind="upload",
@@ -103,7 +117,7 @@ async def generic_fill(page: Any, field_map: dict[str, str]) -> list[FieldFill]:
                 except Exception:  # noqa: BLE001
                     actions.append(
                         FieldFill(
-                            selector=f"#{id_ or name}",
+                            selector=_selector_for(raw_id, raw_name, tag),
                             profile_key=chosen_key,
                             value=value,
                             kind="skipped",
@@ -116,7 +130,7 @@ async def generic_fill(page: Any, field_map: dict[str, str]) -> list[FieldFill]:
                 kind = "text"
             actions.append(
                 FieldFill(
-                    selector=f"#{id_ or name}",
+                    selector=_selector_for(raw_id, raw_name, tag),
                     profile_key=chosen_key,
                     value=value,
                     kind=kind,
