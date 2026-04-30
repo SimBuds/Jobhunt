@@ -37,14 +37,29 @@ class PathsConfig(BaseModel):
     kb_dir: Path = Field(default_factory=lambda: Path.cwd() / "kb")
 
 
+class AdzunaConfig(BaseModel):
+    queries: list[str] = Field(
+        default_factory=lambda: [
+            "javascript developer",
+            "react developer",
+            "frontend developer",
+            "full stack developer",
+            "shopify developer",
+        ]
+    )
+    pages: int = 3
+    results_per_page: int = 50
+
+
 class IngestConfig(BaseModel):
-    user_agent: str = "jobhunt/0.1 (+personal-use; user@example.com)"
+    user_agent: str = "job-seeker/0.1 (+personal-use; caseyhsu@proton.me)"
     rate_limit_per_sec: float = 1.0
     cache_ttl_hours: int = 6
     greenhouse: list[str] = Field(default_factory=list)
     lever: list[str] = Field(default_factory=list)
     ashby: list[str] = Field(default_factory=list)
     rss: list[str] = Field(default_factory=list)
+    adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
 
 
 class GatewayConfig(BaseModel):
@@ -72,12 +87,31 @@ class BrowserConfig(BaseModel):
     user_data_dir: Path = Field(default_factory=lambda: _default_data_dir() / "browser-profile")
 
 
+class ApplicantProfile(BaseModel):
+    """Answers to common application form questions that aren't on the resume."""
+
+    full_name: str = "Casey Hsu"
+    email: str = "casey-hsu@outlook.com"
+    phone: str = ""
+    linkedin_url: str = "https://linkedin.com/in/casey-hsu"
+    github_url: str = "https://github.com/SimBuds"
+    portfolio_url: str = "https://caseyhsu.com"
+    city: str = "Toronto"
+    region: str = "Ontario"
+    country: str = "Canada"
+    work_auth_canada: bool = True
+    requires_visa_sponsorship: bool = False
+    salary_expectation_cad: str = ""
+    pronouns: str = ""
+
+
 class Config(BaseModel):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
+    applicant: ApplicantProfile = Field(default_factory=ApplicantProfile)
 
     @classmethod
     def example_toml(cls) -> str:
