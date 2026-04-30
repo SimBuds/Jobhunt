@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -96,8 +97,40 @@ def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
     )
 
 
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _tokens(s: str) -> frozenset[str]:
+    return frozenset(_TOKEN_RE.findall(s.lower()))
+
+
+_FORBIDDEN_SENIORITY = ("senior", "sr", "staff", "lead", "principal", "architect")
+_CULINARY_TERMS = ("culinary", "chef", "kitchen", "restaurant", "sous")
+
+
+def _has_word(text: str, word: str) -> bool:
+    return re.search(rf"\b{re.escape(word)}\b", text) is not None
+
+
+def _check_summary(summary: str, verified: dict[str, Any]) -> None:
+    """Reject summaries that inflate seniority or lead with culinary context."""
+    s = summary.lower()
+    verified_summary = (verified.get("summary") or "").lower()
+    for token in _FORBIDDEN_SENIORITY:
+        if _has_word(s, token) and not _has_word(verified_summary, token):
+            raise PipelineError(
+                f"summary contains seniority token {token!r} not present in verified.summary"
+            )
+    first_sentence = re.split(r"(?<=[.!?])\s+", summary.strip(), maxsplit=1)[0].lower()
+    if any(_has_word(first_sentence, term) for term in _CULINARY_TERMS):
+        raise PipelineError(
+            "summary leads with culinary/kitchen content; it must come last, not first"
+        )
+
+
 def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) -> None:
     """Hard checks that the tailored output stays inside verified facts."""
+    _check_summary(tailored.summary, verified)
     verified_roles = {(r["employer"], r["dates"]) for r in verified.get("work_history", [])}
     tailored_roles = {(r.employer, r.dates) for r in tailored.roles}
     missing = verified_roles - tailored_roles
@@ -107,8 +140,8 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             f"tailored roles diverged from verified: missing={missing}, extra={extra}"
         )
 
-    all_verified_skills = {
-        s.lower()
+    verified_skills = [
+        s
         for key in (
             "skills_core",
             "skills_cms",
@@ -117,17 +150,19 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             "skills_familiar",
         )
         for s in verified.get(key, [])
-    }
-    familiar_lower = {s.lower() for s in verified.get("skills_familiar", [])}
+    ]
+    verified_token_sets = [_tokens(s) for s in verified_skills]
+    familiar_token_sets = [_tokens(s) for s in verified.get("skills_familiar", [])]
+
     for cat in tailored.skills_categories:
         is_familiar_bucket = cat.name.strip().lower() == "familiar"
         for item in cat.items:
-            il = item.lower()
-            if il not in all_verified_skills and not any(
-                il in v or v in il for v in all_verified_skills
-            ):
+            tokens = _tokens(item)
+            if not any(tokens.issubset(v) or v.issubset(tokens) for v in verified_token_sets):
                 raise PipelineError(f"skill not in verified facts: {item!r}")
-            if not is_familiar_bucket and il in familiar_lower:
+            if not is_familiar_bucket and any(
+                tokens == f or tokens.issubset(f) for f in familiar_token_sets
+            ):
                 raise PipelineError(
                     f"Familiar skill {item!r} promoted to category {cat.name!r}"
                 )

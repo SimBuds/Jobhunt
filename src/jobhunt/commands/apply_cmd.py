@@ -60,8 +60,8 @@ def run(
         "--set-status",
         help=(
             "Update an existing application's status without re-tailoring. "
-            "Requires <job-id>. One of: drafted, applied, interviewing, offer, "
-            "rejected, withdrawn."
+            "Use as `apply --set-status STATUS <job-id>` (flag before the id). "
+            "One of: drafted, applied, interviewing, offer, rejected, withdrawn."
         ),
     ),
 ) -> None:
@@ -253,6 +253,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         typer.echo(f"\n=== {job.id} ===")
         typer.echo(f"    {job.title} @ {job.company}")
 
+        typer.echo("    … tailoring resume (LLM, ~1–2 min)")
         try:
             tailored = await tailor_resume(cfg, job)
         except JobHuntError as e:
@@ -266,6 +267,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                 err=True,
             )
 
+        typer.echo("    … writing cover letter (LLM, ~1 min)")
         try:
             cover = await write_cover(cfg, job)
         except JobHuntError as e:
@@ -295,6 +297,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         # Browser step.
         plan_path: Path | None = None
         if not no_browser and job.url:
+            typer.echo("    … launching browser autofill")
             try:
                 plan_path = await autofill(
                     url=job.url,
@@ -313,7 +316,20 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         elif not job.url:
             typer.echo("    ! no URL on this job — browser skipped", err=True)
 
-        # Record draft application.
+        # Confirm submission after the user closes the browser.
+        status = "drafted"
+        if plan_path is not None:
+            answer = typer.prompt(
+                "    did you submit this application? [y/N/w(ithdrawn)]",
+                default="n",
+                show_default=False,
+            ).strip().lower()
+            if answer in ("y", "yes"):
+                status = "applied"
+            elif answer in ("w", "withdrawn"):
+                status = "withdrawn"
+            typer.echo(f"    status: {status}")
+
         from datetime import date
 
         iso = date.today().isocalendar()
@@ -325,11 +341,11 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                     conn,
                     application_id=str(uuid.uuid4()),
                     job_id=job.id,
-                    status="drafted",
+                    status=status,
                     resume_path=str(resume_path),
                     cover_path=str(cover_path),
                     fill_plan_path=str(plan_path) if plan_path else None,
-                    applied_week=week_label,
+                    applied_week=week_label if status == "applied" else None,
                 )
         finally:
             conn.close()

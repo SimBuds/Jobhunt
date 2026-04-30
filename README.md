@@ -65,6 +65,16 @@ appear in `--help`.
 
 Add `--no-browser` to generate the tailored docs without launching Playwright.
 
+Bump status after submitting (or to mark interview / offer / rejected):
+
+```bash
+job-seeker apply --set-status applied      <job-id>
+job-seeker apply --set-status interviewing <job-id>
+job-seeker apply --set-status rejected     <job-id>
+```
+
+The flag must come **before** the job id.
+
 ### `list` filters
 
 - `--week N` — 0=current week, 1=last week, …

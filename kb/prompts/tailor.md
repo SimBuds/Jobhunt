@@ -59,9 +59,21 @@ Hard rules (from kb/policies/tailoring-rules.md):
 5. Education: include the GBC diploma line. Coursework: 4–6 items chosen from
    verified_facts.coursework_baseline OR the broader GBC list mentioned in
    `policy`, only items that map to the JD.
-6. Summary: 3–5 sentences. Lead with what the JD wants. If the JD mentions
-   AI/LLM/RAG/prompt engineering/ML/modern tooling, include the AI/Ollama line.
-   Mention the GBC diploma + Dean's List once. No fabricated years.
+6. Summary: 3–5 sentences. Strict rules:
+   a. Open with the candidate's actual role label as it appears in
+      `verified_facts.summary` (e.g. "Full-stack JavaScript developer"). NEVER
+      prepend a seniority qualifier (Senior / Sr. / Staff / Lead / Principal /
+      Architect) that is not literally present in `verified_facts.summary`.
+   b. Years of experience must come verbatim from `verified_facts.summary`
+      (e.g. "2+ years"). Do not round, restate, or invent.
+   c. The culinary / leadership-of-kitchen-teams clause is OPTIONAL. If
+      included, it must come last and be ≤1 short clause. It must NOT be the
+      first sentence or the lead frame.
+   d. Tech-stack name-drops in the summary must come from
+      `verified_facts.skills_core` ∪ `verified_facts.skills_cms` only — never
+      from `skills_familiar`.
+   e. If the JD mentions AI/LLM/RAG/prompt engineering/ML/modern tooling,
+      include the AI/Ollama line. Mention the GBC diploma + Dean's List once.
 7. Bullets must use strong verbs (built, designed, shipped, owned, led,
    integrated, migrated, optimized, deployed, configured, automated). No "I",
    no "responsible for", no "helped with".

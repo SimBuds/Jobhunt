@@ -29,7 +29,16 @@ The candidate has ~2.5–3 years of professional dev experience. Hard auto-decli
 triggers (set `decline_reason` to a short string explaining which one):
 - 3+ JD must-haves are gaps (skills not in verified_facts).
 - Required years > 2x the candidate's ~3 years (i.e. 6+ years).
-- Title implies Senior / Staff / Lead / Principal / Architect.
+- Title implies Senior / Staff / Lead / Principal / Architect (IC seniority).
+- Title is a people-management or non-IC role: Manager, Senior Manager,
+  Director, Head of, VP, or any title where the primary responsibility is
+  managing people rather than writing code. "Engineering Manager" and
+  "Senior Manager, <anything>" both decline.
+- Title is a non-engineering function: Sales, Partnerships, Partner Manager,
+  Account Executive, Account Manager, Customer Success, Marketing, Product
+  Manager, Project Manager, Program Manager, Recruiter, Designer, Analyst,
+  Consultant (non-technical). The candidate is an IC software engineer; only
+  hands-on coding roles qualify.
 - Domain requires regulated experience (clinical software, securities trading,
   medical devices, defense).
 - Location is outside Toronto/GTA + 100km AND not Remote-Canada eligible.
