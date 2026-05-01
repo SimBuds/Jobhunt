@@ -24,9 +24,7 @@ def _strip_html(s: str | None) -> str | None:
     return _TAG_RE.sub(" ", s).replace("&nbsp;", " ").replace("&amp;", "&").strip()
 
 
-async def fetch(
-    client: httpx.AsyncClient, limiter: RateLimiter, slug: str
-) -> AsyncIterator[Job]:
+async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> AsyncIterator[Job]:
     data = await get_json(client, API.format(slug=slug), limiter, params={"content": "true"})
     if not isinstance(data, dict):
         return

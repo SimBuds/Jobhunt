@@ -32,7 +32,8 @@ from jobhunt.errors import BrowserError, JobHuntError, PipelineError
 from jobhunt.models import Job
 from jobhunt.pipeline.cover import write_cover
 from jobhunt.pipeline.tailor import tailor_resume
-from jobhunt.resume.render_docx import fits_one_page, render
+from jobhunt.resume.render_cover_docx import render_cover
+from jobhunt.resume.render_docx import render
 
 app = typer.Typer(
     help="Tailor resume + cover letter and autofill the application form.",
@@ -49,9 +50,7 @@ def run(
     best: bool = typer.Option(
         False, "--best", help="Interactively pick from the top 10 unapplied jobs."
     ),
-    min_score: int = typer.Option(
-        65, "--min-score", help="Floor for --top / --best selection."
-    ),
+    min_score: int = typer.Option(65, "--min-score", help="Floor for --top / --best selection."),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Generate docs only; skip the browser autofill step."
     ),
@@ -237,11 +236,39 @@ def _parse_picks(raw: str, max_n: int) -> list[int]:
 
 # --- apply each --------------------------------------------------------------
 
-_SLUG_RE = re.compile(r"[^a-zA-Z0-9]+")
+_NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9]+")
+_LEGAL_SUFFIX_RE = re.compile(
+    r"(?:^|[\s,_-]+)("
+    r"incorporated|corporation|limited|"
+    r"inc|llc|ltd|corp|co|gmbh|plc|sa|pty(?:\s+ltd)?"
+    r")\.?$",
+    flags=re.IGNORECASE,
+)
+_MAX_COMPANY_SLUG = 40
 
 
-def _slug(s: str | None) -> str:
-    return _SLUG_RE.sub("_", (s or "Role")).strip("_") or "Role"
+def _company_slug(company: str | None) -> str:
+    """Normalize a company name into a recruiter-friendly filename slug.
+
+    - Strips trailing legal suffixes (Inc, LLC, Ltd, Corp, …).
+    - Collapses runs of non-alphanumerics to a single underscore.
+    - Caps length, truncating at the last underscore boundary.
+    - Falls back to "Company" if normalization yields an empty string.
+    """
+    if not company:
+        return "Company"
+    s = company.strip()
+    prev = ""
+    while s and s != prev:
+        prev = s
+        s = _LEGAL_SUFFIX_RE.sub("", s).strip()
+    s = _NON_ALNUM_RE.sub("_", s).strip("_")
+    if not s:
+        return "Company"
+    if len(s) > _MAX_COMPANY_SLUG:
+        cut = s[:_MAX_COMPANY_SLUG].rsplit("_", 1)[0]
+        s = cut or s[:_MAX_COMPANY_SLUG]
+    return s
 
 
 async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool) -> None:
@@ -260,13 +287,6 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
             typer.echo(f"    ! tailor failed: {e}", err=True)
             continue
 
-        if not fits_one_page(tailored):
-            typer.echo(
-                "    ! warning: tailored content estimated to overflow one page; "
-                "consider tightening summary or skill categories.",
-                err=True,
-            )
-
         typer.echo("    … writing cover letter (LLM, ~1 min)")
         try:
             cover = await write_cover(cfg, job)
@@ -275,24 +295,34 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
             continue
 
         # Render artifacts.
-        role_slug = _slug(f"{job.title}_{job.company}")
-        resume_path = out_dir / f"Casey_Hsu_Resume_{role_slug}.docx"
-        render(
-            tailored,
-            contact_line=cfg.applicant.email
+        company_slug = _company_slug(job.company)
+        contact_line = (
+            cfg.applicant.email
             + ("  |  " + cfg.applicant.phone if cfg.applicant.phone else "")
             + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
-            + cfg.applicant.github_url,
+            + cfg.applicant.github_url
+        )
+        resume_path = out_dir / f"Casey_Hsu_Resume_-_{company_slug}.docx"
+        render(
+            tailored,
+            contact_line=contact_line,
             name=cfg.applicant.full_name,
             out_path=resume_path,
         )
-        cover_path = out_dir / "cover-letter.md"
-        cover_path.write_text(cover.to_markdown(), encoding="utf-8")
+        cover_docx_path = out_dir / f"Casey_Hsu_Cover_Letter_-_{company_slug}.docx"
+        render_cover(
+            cover,
+            contact_line=contact_line,
+            name=cfg.applicant.full_name,
+            out_path=cover_docx_path,
+        )
+        cover_md_path = out_dir / "cover-letter.md"
+        cover_md_path.write_text(cover.to_markdown(), encoding="utf-8")
         (out_dir / "tailored-resume.json").write_text(
             __import__("json").dumps(asdict(tailored), indent=2), encoding="utf-8"
         )
         typer.echo(f"    + {resume_path.name}")
-        typer.echo(f"    + {cover_path.name}")
+        typer.echo(f"    + {cover_docx_path.name}")
 
         # Browser step.
         plan_path: Path | None = None
@@ -303,7 +333,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                     url=job.url,
                     profile=cfg.applicant,
                     resume_path=resume_path,
-                    cover_path=cover_path,
+                    cover_path=cover_docx_path,
                     out_dir=out_dir,
                     headed=cfg.browser.headed,
                     user_data_dir=cfg.browser.user_data_dir,
@@ -319,11 +349,15 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         # Confirm submission after the user closes the browser.
         status = "drafted"
         if plan_path is not None:
-            answer = typer.prompt(
-                "    did you submit this application? [y/N/w(ithdrawn)]",
-                default="n",
-                show_default=False,
-            ).strip().lower()
+            answer = (
+                typer.prompt(
+                    "    did you submit this application? [y/N/w(ithdrawn)]",
+                    default="n",
+                    show_default=False,
+                )
+                .strip()
+                .lower()
+            )
             if answer in ("y", "yes"):
                 status = "applied"
             elif answer in ("w", "withdrawn"):
@@ -343,7 +377,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                     job_id=job.id,
                     status=status,
                     resume_path=str(resume_path),
-                    cover_path=str(cover_path),
+                    cover_path=str(cover_docx_path),
                     fill_plan_path=str(plan_path) if plan_path else None,
                     applied_week=week_label if status == "applied" else None,
                 )

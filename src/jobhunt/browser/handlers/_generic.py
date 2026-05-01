@@ -138,9 +138,7 @@ async def generic_fill(page: Any, field_map: dict[str, str]) -> list[FieldFill]:
             )
         except Exception as e:  # noqa: BLE001 — never let one bad field abort the whole run
             actions.append(
-                FieldFill(
-                    selector="?", profile_key="?", value="", kind="skipped", note=str(e)[:80]
-                )
+                FieldFill(selector="?", profile_key="?", value="", kind="skipped", note=str(e)[:80])
             )
             continue
     return actions

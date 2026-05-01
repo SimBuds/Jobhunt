@@ -20,7 +20,6 @@ from jobhunt.browser.profile_map import build_field_map
 from jobhunt.config import ApplicantProfile
 from jobhunt.errors import BrowserError
 
-
 _FORM_FIELD_HINT_ATTRS = ("name", "id", "placeholder", "aria-label")
 
 

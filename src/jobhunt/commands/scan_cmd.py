@@ -26,9 +26,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
 from jobhunt.secrets import load_secrets
 
-app = typer.Typer(
-    help="Ingest GTA-scoped jobs and score them.", invoke_without_command=True
-)
+app = typer.Typer(help="Ingest GTA-scoped jobs and score them.", invoke_without_command=True)
 
 
 @app.callback(invoke_without_command=True)
@@ -160,9 +158,7 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
         return inserted
 
 
-async def _safe_stream(
-    source: str, label: str, stream: AsyncIterator[Job]
-) -> AsyncIterator[Job]:
+async def _safe_stream(source: str, label: str, stream: AsyncIterator[Job]) -> AsyncIterator[Job]:
     """Wrap an adapter so a failure on one source doesn't kill the whole scan."""
     try:
         async for job in stream:

@@ -196,9 +196,7 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
 
     resume_md = profile / "resume.md"
     resume_md.write_text(
-        f"# {facts.name}\n\n"
-        f"{facts.contact_line}\n\n"
-        f"## Summary\n\n{facts.summary}\n",
+        f"# {facts.name}\n\n{facts.contact_line}\n\n## Summary\n\n{facts.summary}\n",
         encoding="utf-8",
     )
     written.append(resume_md)

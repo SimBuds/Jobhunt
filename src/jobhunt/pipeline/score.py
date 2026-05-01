@@ -29,7 +29,6 @@ class ScoreResult:
     model: str
 
 
-
 async def score_job(cfg: Config, job: Job) -> ScoreResult:
     if not job.description:
         raise PipelineError(f"job {job.id} has no description to score")

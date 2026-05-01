@@ -71,7 +71,61 @@ async def tailor_resume(cfg: Config, job: Job) -> TailoredResume:
     )
     tailored = _parse(raw, model)
     _enforce_no_fabrication(tailored, verified)
+    _dedupe_education(tailored)
+    _shrink_to_one_page(tailored)
     return tailored
+
+
+_FAMILIAR_FLOOR = 4
+
+
+def _dedupe_education(tailored: TailoredResume) -> None:
+    """Drop education entries that duplicate the Dean's List / Coursework line.
+
+    `render_docx` always composes a single 'Dean's List (all terms). Coursework: …'
+    paragraph from `tailored.coursework`. If the LLM also emits one inside
+    `education`, the rendered resume shows the block twice.
+    """
+    cleaned: list[str] = []
+    for line in tailored.education:
+        low = line.strip().lower()
+        if low.startswith("coursework") or "dean" in low:
+            continue
+        cleaned.append(line)
+    tailored.education = cleaned
+
+
+def _shrink_to_one_page(tailored: TailoredResume) -> None:
+    """Hard one-page guarantee. Apply trims in order until the resume fits."""
+    from jobhunt.resume.render_docx import fits_one_page  # avoid import cycle
+
+    if fits_one_page(tailored):
+        return
+
+    for cat in tailored.skills_categories:
+        if cat.name.strip().lower() != "familiar":
+            continue
+        while len(cat.items) > _FAMILIAR_FLOOR and not fits_one_page(tailored):
+            cat.items.pop()
+        break
+    if fits_one_page(tailored):
+        return
+
+    sentences = re.split(r"(?<=[.!?])\s+", tailored.summary.strip())
+    if len(sentences) > 3:
+        tailored.summary = " ".join(sentences[:3]).strip()
+    if fits_one_page(tailored):
+        return
+
+    if tailored.coursework:
+        tailored.coursework = []
+    if fits_one_page(tailored):
+        return
+
+    raise PipelineError(
+        "tailored resume still overflows one page after shrink pass; "
+        "tighten verified.json bullets or summary"
+    )
 
 
 def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
@@ -163,6 +217,4 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             if not is_familiar_bucket and any(
                 tokens == f or tokens.issubset(f) for f in familiar_token_sets
             ):
-                raise PipelineError(
-                    f"Familiar skill {item!r} promoted to category {cat.name!r}"
-                )
+                raise PipelineError(f"Familiar skill {item!r} promoted to category {cat.name!r}")

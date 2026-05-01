@@ -163,9 +163,7 @@ def _tighten(paragraph: Any, *, before: int = 0, after: int = 2) -> None:
 def _add_right_tab_stop(paragraph: Any) -> None:
     from docx.enum.text import WD_TAB_ALIGNMENT
 
-    paragraph.paragraph_format.tab_stops.add_tab_stop(
-        Inches(7.0), WD_TAB_ALIGNMENT.RIGHT
-    )
+    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(7.0), WD_TAB_ALIGNMENT.RIGHT)
 
 
 def _add_bottom_border(paragraph: Any) -> None:
