@@ -182,24 +182,35 @@ def _add_bottom_border(paragraph: Any) -> None:
 
 # --- one-page heuristic check -------------------------------------------------
 
-# Rough budget for 10.5pt Calibri on US Letter with 0.5"/0.75" margins:
-# ~52 lines of body text per page. Section headings + role headers have higher
-# spacing so we count them at 1.5x. Bullets are ~95 chars per line.
-LINES_PER_PAGE = 52
+# Conservative budget for 10.5pt Calibri on US Letter with 0.5"/0.75" margins.
+# The previous 52-line budget overshot — section headings, role headers, and
+# skill lines that wrap each cost more than the flat 1 line we counted.
+# 48 lines with wrap-aware skill/summary/bullet counts produces reliable
+# single-page output.
+LINES_PER_PAGE = 48
 BULLET_CHARS_PER_LINE = 95
-SUMMARY_CHARS_PER_LINE = 105
+SUMMARY_CHARS_PER_LINE = 100
+SKILL_CHARS_PER_LINE = 95
+
+
+def _wrapped_lines(text: str, width: int) -> int:
+    return max(1, (len(text) + width - 1) // width)
 
 
 def estimate_lines(tailored: TailoredResume) -> int:
     lines = 4  # name + contact + spacing
-    summary_lines = max(1, len(tailored.summary) // SUMMARY_CHARS_PER_LINE + 1)
-    lines += 1 + summary_lines
-    lines += 1 + sum(1 for c in tailored.skills_categories if c.items)
+    lines += 1 + _wrapped_lines(tailored.summary, SUMMARY_CHARS_PER_LINE)
+    lines += 1
+    for cat in tailored.skills_categories:
+        if not cat.items:
+            continue
+        line_text = f"{cat.name}: " + ", ".join(cat.items)
+        lines += _wrapped_lines(line_text, SKILL_CHARS_PER_LINE)
     lines += 1
     for role in tailored.roles:
-        lines += 1  # role header
+        lines += 1
         for b in role.bullets:
-            lines += max(1, len(b) // BULLET_CHARS_PER_LINE + 1)
+            lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
     lines += 1 + len(tailored.certifications) + len(tailored.education)
     if tailored.coursework:
         lines += 2
