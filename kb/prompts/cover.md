@@ -54,10 +54,28 @@ Hard rules:
    "leveraged", "spearheaded", "results-driven", "I'm excited", "I
    believe", "aligns with", "core requirements", "production-grade",
    "complementing my practical experience", "track record", "proven
-   ability", "deeply passionate", "hit the ground running", "value-add".
+   ability", "deeply passionate", "hit the ground running", "value-add",
+   "direct match", "mirrors the kind of", "technical rigor",
+   "I'd bring to", "I'd welcome the chance", "the chance to discuss",
+   "I'm drawn to", "transform enterprises", "support your team's goals".
    No first-person superlatives. No exclamation marks.
-8. Salutation: "Dear Hiring Team," unless the JD names a specific person.
-9. Sign-off: "Best,\nCasey Hsu"
+
+8. Anti-patterns (REWRITE if you catch yourself doing these):
+   - Don't echo the company's marketing copy back at them ("your focus on
+     performance-driven sales tech platforms"). Name what they do in
+     plain language.
+   - Don't pad with framing clauses ("The project required X, which
+     mirrors Y"). Just say what you did.
+   - Don't write a closing that's three abstract nouns in a row ("I'd
+     welcome the chance to discuss how my hands-on experience with
+     headless CMS architectures and performance optimization could
+     support your team's goals"). One concrete, plain sentence.
+
+9. Sentence rhythm: aim for an average of 15–18 words per sentence with
+   real variance. Some sentences should be under 10 words. If three
+   sentences in a row are over 25 words, rewrite.
+10. Salutation: "Dear Hiring Team," unless the JD names a specific person.
+11. Sign-off: "Best,\nCasey Hsu"
 
 ## USER
 # Verified facts

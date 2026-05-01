@@ -102,18 +102,19 @@ def _shrink_to_one_page(tailored: TailoredResume) -> None:
     if fits_one_page(tailored):
         return
 
+    sentences = re.split(r"(?<=[.!?])\s+", tailored.summary.strip())
+    while len(sentences) > 3 and not fits_one_page(tailored):
+        sentences.pop()
+        tailored.summary = " ".join(sentences).strip()
+    if fits_one_page(tailored):
+        return
+
     for cat in tailored.skills_categories:
         if cat.name.strip().lower() != "familiar":
             continue
         while len(cat.items) > _FAMILIAR_FLOOR and not fits_one_page(tailored):
             cat.items.pop()
         break
-    if fits_one_page(tailored):
-        return
-
-    sentences = re.split(r"(?<=[.!?])\s+", tailored.summary.strip())
-    if len(sentences) > 3:
-        tailored.summary = " ".join(sentences[:3]).strip()
     if fits_one_page(tailored):
         return
 
