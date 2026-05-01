@@ -56,9 +56,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
    JD. Do not move bullets between roles.
 4. Skill categories: keep "Familiar" as a separate category whose items are
    exactly the items in verified_facts.skills_familiar (you may reorder).
-5. Education: include the GBC diploma line. Coursework: 4–6 items chosen from
-   verified_facts.coursework_baseline OR the broader GBC list mentioned in
-   `policy`, only items that map to the JD.
+5. Education: include EXACTLY ONE entry — the GBC diploma line (e.g.
+   "Computer Programming & Analysis (Advanced Diploma), George Brown College,
+   Toronto (April 2024)"). Do NOT add a "Dean's List" or "Coursework: …"
+   entry to `education` — those are rendered separately from `coursework` and
+   adding them here produces a duplicated block on the resume. Coursework:
+   4–6 items chosen from verified_facts.coursework_baseline OR the broader
+   GBC list mentioned in `policy`, only items that map to the JD.
 6. Summary: 3–5 sentences. Strict rules:
    a. Open with the candidate's actual role label as it appears in
       `verified_facts.summary` (e.g. "Full-stack JavaScript developer"). NEVER

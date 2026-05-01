@@ -8,9 +8,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 RemoteType = Literal["onsite", "hybrid", "remote", "unknown"]
-ApplicationStatus = Literal[
-    "drafted", "applied", "interviewing", "offer", "rejected", "withdrawn"
-]
+ApplicationStatus = Literal["drafted", "applied", "interviewing", "offer", "rejected", "withdrawn"]
 
 
 class Job(BaseModel):

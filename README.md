@@ -30,7 +30,7 @@ cloud LLM calls in the runtime path.
 
 ```bash
 git clone <this-repo>
-cd Caseys-Job-Seeker
+cd Job-Seeker
 uv sync
 uv run playwright install chromium
 

@@ -42,7 +42,9 @@ def tailored() -> TailoredResume:
 
 def test_render_writes_valid_docx(tailored: TailoredResume, tmp_path: Path):
     out = render(
-        tailored, contact_line="me@example.com | site.com", name="Casey Hsu",
+        tailored,
+        contact_line="me@example.com | site.com",
+        name="Casey Hsu",
         out_path=tmp_path / "out.docx",
     )
     assert out.exists()
@@ -58,3 +60,15 @@ def test_render_writes_valid_docx(tailored: TailoredResume, tmp_path: Path):
 def test_estimate_fits_one_page(tailored: TailoredResume):
     assert fits_one_page(tailored)
     assert estimate_lines(tailored) > 0
+
+
+def test_render_emits_single_deans_list_paragraph(tailored: TailoredResume, tmp_path: Path):
+    out = render(
+        tailored,
+        contact_line="me@example.com",
+        name="Casey Hsu",
+        out_path=tmp_path / "out.docx",
+    )
+    doc = Document(str(out))
+    deans = [p for p in doc.paragraphs if p.text.startswith("Dean")]
+    assert len(deans) == 1, [p.text for p in deans]

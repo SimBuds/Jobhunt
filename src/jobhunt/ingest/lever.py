@@ -15,9 +15,7 @@ from jobhunt.models import Job
 API = "https://api.lever.co/v0/postings/{slug}"
 
 
-async def fetch(
-    client: httpx.AsyncClient, limiter: RateLimiter, slug: str
-) -> AsyncIterator[Job]:
+async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> AsyncIterator[Job]:
     data = await get_json(client, API.format(slug=slug), limiter, params={"mode": "json"})
     if not isinstance(data, list):
         return

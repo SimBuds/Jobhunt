@@ -74,9 +74,7 @@ class FakePage:
 
 @pytest.mark.asyncio
 async def test_detects_resume_file_input():
-    page = FakePage(
-        file_inputs_in_form=[FakeEl(attrs={"name": "resume_upload"}, type_="file")]
-    )
+    page = FakePage(file_inputs_in_form=[FakeEl(attrs={"name": "resume_upload"}, type_="file")])
     assert await looks_like_application_page(page) is True
 
 

@@ -36,8 +36,14 @@ def run(
     conn = connect(cfg.paths.db_path)
     try:
         target_week = _iso_week_label(week) if week is not None else None
-        rows = _query(conn, week_label=target_week, status=status, min_score=min_score,
-                      source=source, limit=limit)
+        rows = _query(
+            conn,
+            week_label=target_week,
+            status=status,
+            min_score=min_score,
+            source=source,
+            limit=limit,
+        )
         _render_rows(rows, target_week)
         typer.echo("")
         _render_weekly_footer(conn, target_week or _iso_week_label(0))

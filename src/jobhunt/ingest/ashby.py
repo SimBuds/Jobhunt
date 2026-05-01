@@ -15,9 +15,7 @@ from jobhunt.models import Job
 API = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 
 
-async def fetch(
-    client: httpx.AsyncClient, limiter: RateLimiter, slug: str
-) -> AsyncIterator[Job]:
+async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> AsyncIterator[Job]:
     params = {"includeCompensation": "false"}
     data = await get_json(client, API.format(slug=slug), limiter, params=params)
     if not isinstance(data, dict):

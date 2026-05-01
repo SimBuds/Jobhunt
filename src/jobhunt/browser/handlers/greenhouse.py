@@ -37,8 +37,13 @@ async def greenhouse_fill(page: Any, field_map: dict[str, str]) -> list[FieldFil
             actions.append(FieldFill(selector=selector, profile_key=key, value=value))
         except Exception as e:  # noqa: BLE001
             actions.append(
-                FieldFill(selector=selector, profile_key=key, value=value,
-                          kind="skipped", note=str(e)[:80])
+                FieldFill(
+                    selector=selector,
+                    profile_key=key,
+                    value=value,
+                    kind="skipped",
+                    note=str(e)[:80],
+                )
             )
 
     # Resume upload — Greenhouse uses a hidden <input type="file"> under "Attach"
@@ -60,8 +65,13 @@ async def greenhouse_fill(page: Any, field_map: dict[str, str]) -> list[FieldFil
                 )
         except Exception as e:  # noqa: BLE001
             actions.append(
-                FieldFill(selector="?", profile_key="resume_path", value=resume,
-                          kind="skipped", note=str(e)[:80])
+                FieldFill(
+                    selector="?",
+                    profile_key="resume_path",
+                    value=resume,
+                    kind="skipped",
+                    note=str(e)[:80],
+                )
             )
 
     # Generic pass picks up everything else (custom EEO questions, etc.).

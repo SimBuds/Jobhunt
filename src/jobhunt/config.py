@@ -136,7 +136,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     for key, value in os.environ.items():
         if not key.startswith(ENV_PREFIX):
             continue
-        path = key[len(ENV_PREFIX):].lower().split(ENV_NESTED_SEP)
+        path = key[len(ENV_PREFIX) :].lower().split(ENV_NESTED_SEP)
         cursor: dict[str, Any] = data
         for part in path[:-1]:
             nxt = cursor.get(part)

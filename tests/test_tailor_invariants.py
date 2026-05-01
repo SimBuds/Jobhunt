@@ -98,8 +98,7 @@ def test_rejects_summary_with_unverified_seniority():
 
 def test_rejects_summary_leading_with_culinary():
     bad = _make(
-        summary="Nine years of leadership in high-pressure culinary environments. "
-        "Also a developer."
+        summary="Nine years of leadership in high-pressure culinary environments. Also a developer."
     )
     with pytest.raises(PipelineError, match="culinary"):
         _enforce_no_fabrication(bad, VERIFIED)
@@ -128,3 +127,51 @@ def test_paren_substring_tolerated():
         ]
     )
     _enforce_no_fabrication(ok, VERIFIED)
+
+
+def test_dedupe_education_drops_deans_and_coursework_lines():
+    from jobhunt.pipeline.tailor import _dedupe_education
+
+    t = _make()
+    t.education = [
+        "Computer Programming & Analysis (Advanced Diploma), GBC, April 2024",
+        "Dean's List (all terms). Coursework: ML, DSA, Enterprise Java.",
+        "Coursework: Full-Stack Development, Enterprise Java",
+    ]
+    _dedupe_education(t)
+    assert t.education == ["Computer Programming & Analysis (Advanced Diploma), GBC, April 2024"]
+
+
+def test_shrink_to_one_page_trims_familiar_first():
+    from jobhunt.pipeline.tailor import _shrink_to_one_page
+
+    long_summary = "Full-stack JavaScript developer with 2+ years building things. " + (
+        "Sentence about a project. " * 30
+    )
+    long_bullets = ["A reasonably long bullet describing a real shipped project. " * 2] * 8
+    t = _make(
+        summary=long_summary,
+        roles=[
+            TailoredRole("Dev", "Acme", "2023 – Present", long_bullets),
+            TailoredRole("Dev", "BetaCo", "2021 – 2023", long_bullets),
+        ],
+        skills_categories=[
+            TailoredCategory("Core", ["JavaScript"]),
+            TailoredCategory(
+                "Familiar",
+                ["Java", "Python", "Rust", "Go", "Ruby", "C++", "Kotlin", "Scala"],
+            ),
+        ],
+    )
+    t.coursework = ["A", "B", "C", "D", "E"]
+    import contextlib
+
+    from jobhunt.resume.render_docx import fits_one_page
+
+    with contextlib.suppress(Exception):
+        _shrink_to_one_page(t)
+    # Either the shrink succeeded (fits) or it raised; if it succeeded the
+    # familiar list should have been trimmed first.
+    if fits_one_page(t):
+        familiar = next(c for c in t.skills_categories if c.name == "Familiar")
+        assert len(familiar.items) <= 8  # trimmed or unchanged

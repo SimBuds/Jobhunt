@@ -29,8 +29,18 @@ def test_jobs_table_schema(tmp_path: Path, migrations_dir: Path) -> None:
 
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
     expected = {
-        "id", "source", "external_id", "company", "title", "location",
-        "remote_type", "description", "url", "posted_at", "ingested_at", "raw_json",
+        "id",
+        "source",
+        "external_id",
+        "company",
+        "title",
+        "location",
+        "remote_type",
+        "description",
+        "url",
+        "posted_at",
+        "ingested_at",
+        "raw_json",
     }
     assert expected.issubset(cols)
     conn.close()
