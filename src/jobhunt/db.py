@@ -108,6 +108,25 @@ def unscored_jobs(conn: sqlite3.Connection, limit: int | None = None) -> list[sq
     return list(conn.execute(sql))
 
 
+def jobs_to_score(
+    conn: sqlite3.Connection, *, current_hash: str, limit: int | None = None
+) -> list[sqlite3.Row]:
+    """Jobs that need (re)scoring: never scored, or scored under a different prompt_hash.
+
+    Each row carries a `prev_hash` column: NULL for new jobs, a string for stale
+    ones — the caller can split counts on that.
+    """
+    sql = (
+        "SELECT j.*, s.prompt_hash AS prev_hash FROM jobs j "
+        "LEFT JOIN scores s ON s.job_id = j.id "
+        "WHERE s.job_id IS NULL OR s.prompt_hash IS NOT ? "
+        "ORDER BY (s.job_id IS NULL) DESC, j.ingested_at DESC"
+    )
+    if limit is not None:
+        sql += f" LIMIT {int(limit)}"
+    return list(conn.execute(sql, (current_hash,)))
+
+
 def upsert_application(
     conn: sqlite3.Connection,
     *,

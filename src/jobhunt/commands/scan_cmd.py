@@ -13,9 +13,9 @@ import typer
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
     connect,
+    jobs_to_score,
     migrate,
     set_decline_reason,
-    unscored_jobs,
     upsert_job,
     write_score,
 )
@@ -53,12 +53,18 @@ async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int |
         if skip_score:
             return
 
-        rows = unscored_jobs(conn, limit=limit)
+        ph = prompt_hash(cfg.paths.kb_dir)
+        rows = jobs_to_score(conn, current_hash=ph, limit=limit)
         if not rows:
             typer.echo("score: nothing to score")
             return
-        typer.echo(f"score: {len(rows)} job(s) to score (this can take a while on Ollama)")
-        ph = prompt_hash(cfg.paths.kb_dir)
+        new_n = sum(1 for r in rows if r["prev_hash"] is None)
+        stale_n = len(rows) - new_n
+        typer.echo(
+            f"score: {len(rows)} job(s) to score "
+            f"({new_n} new, {stale_n} stale — profile/prompt/policy changed) "
+            "(this can take a while on Ollama)"
+        )
         ok = 0
         for row in rows:
             job = Job(

@@ -84,6 +84,8 @@ The flag must come **before** the job id.
 
 ## First run
 
+> Note: `config` and `db` are setup-only commands — they're hidden from `--help` after install. Run them once during setup as shown below.
+
 ```bash
 uv run job-seeker config show       # writes a default config and prints it
 uv run job-seeker db init           # creates SQLite schema at data/jobhunt.db

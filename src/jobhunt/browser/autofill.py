@@ -105,7 +105,7 @@ async def autofill(
             raise BrowserError(f"failed to load {url}: {e}") from e
 
         if not await looks_like_application_page(page):
-            plan = {
+            plan: dict[str, Any] = {
                 "url": url,
                 "handler": "none",
                 "fills": [],

@@ -35,6 +35,12 @@ If any of the following hold, mark the job `decline_reason` and skip:
 - 3+ JD must-haves are gaps.
 - Required years > 2x Casey's ~2.5–3 years of dev experience.
 - Title implies Senior/Staff/Lead/Principal/Architect seniority.
+- Title is people-management or non-IC (Manager, Senior Manager, Director,
+  Head of, VP, including "Engineering Manager"). Casey is an IC engineer.
+- Title is a non-engineering function (Sales, Partnerships, Account
+  Executive/Manager, Customer Success, Marketing, Product/Project/Program
+  Manager, Recruiter, Designer, Analyst, non-technical Consultant). Only
+  hands-on coding roles qualify.
 - Domain requires regulated experience Casey doesn't have (clinical, securities,
   medical devices).
 - Not in Toronto/GTA + 100km and not Remote-Canada eligible.

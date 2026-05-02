@@ -9,7 +9,7 @@ from datetime import datetime
 import httpx
 
 from jobhunt.http import RateLimiter, get_json
-from jobhunt.ingest._filter import is_gta_eligible
+from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
 API = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
@@ -27,6 +27,7 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
         if not is_gta_eligible(location):
             continue
         ext = str(j.get("id"))
+        rt = "remote" if j.get("isRemote") else classify_remote_type(location=location)
         yield Job(
             id=f"ashby:{slug}:{ext}",
             source="ashby",
@@ -34,6 +35,7 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
             company=slug,
             title=j.get("title"),
             location=location,
+            remote_type=rt,
             description=j.get("descriptionPlain") or j.get("descriptionHtml"),
             url=j.get("jobUrl") or j.get("applyUrl"),
             posted_at=_parse_dt(j.get("publishedAt")),

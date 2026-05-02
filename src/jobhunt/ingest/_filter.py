@@ -7,6 +7,9 @@ Also accepts Remote-Canada / Remote-Ontario postings as eligible.
 from __future__ import annotations
 
 import re
+from typing import Literal
+
+RemoteType = Literal["onsite", "hybrid", "remote", "unknown"]
 
 GTA_CITIES = (
     "toronto",
@@ -51,3 +54,21 @@ def is_gta_eligible(location: str | None) -> bool:
         return False
     # Bare "Remote" with no country qualifier — too ambiguous, skip.
     return False
+
+
+def classify_remote_type(*, location: str | None, extra: str | None = None) -> RemoteType:
+    """Classify a posting as onsite/hybrid/remote from free-text signals.
+
+    `extra` is an optional second string (e.g. Lever's commitment field, or
+    a description excerpt) checked alongside the location.
+    """
+    blob = " ".join(s for s in (location, extra) if s).lower()
+    if not blob:
+        return "unknown"
+    if "hybrid" in blob:
+        return "hybrid"
+    if "remote" in blob or "work from home" in blob or "wfh" in blob:
+        return "remote"
+    if any(city in blob for city in GTA_CITIES):
+        return "onsite"
+    return "unknown"
