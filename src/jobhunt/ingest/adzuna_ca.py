@@ -10,7 +10,7 @@ import httpx
 
 from jobhunt.errors import IngestError
 from jobhunt.http import RateLimiter, get_json
-from jobhunt.ingest._filter import is_gta_eligible
+from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
 API = "https://api.adzuna.com/v1/api/jobs/ca/search/{page}"
@@ -61,6 +61,9 @@ async def fetch(
                 company=(j.get("company") or {}).get("display_name"),
                 title=j.get("title"),
                 location=loc_str,
+                remote_type=classify_remote_type(
+                    location=loc_str, extra=j.get("title") or ""
+                ),
                 description=j.get("description"),
                 url=j.get("redirect_url"),
                 posted_at=_parse_dt(j.get("created")),

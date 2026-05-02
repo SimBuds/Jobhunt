@@ -6,6 +6,7 @@ import pytest
 
 from jobhunt.db import (
     connect,
+    jobs_to_score,
     migrate,
     set_decline_reason,
     unscored_jobs,
@@ -60,6 +61,23 @@ def test_unscored_jobs_excludes_scored(conn):
     rows = unscored_jobs(conn)
     ids = {r["id"] for r in rows}
     assert ids == {"greenhouse:acme:2"}
+
+
+def test_jobs_to_score_includes_new_and_stale(conn):
+    upsert_job(conn, _job("1"))
+    upsert_job(conn, _job("2"))
+    upsert_job(conn, _job("3"))
+    write_score(
+        conn, job_id="greenhouse:acme:1", score=80, reasons=[], red_flags=[],
+        must_clarify=[], model="m", prompt_hash="OLD",
+    )
+    write_score(
+        conn, job_id="greenhouse:acme:2", score=70, reasons=[], red_flags=[],
+        must_clarify=[], model="m", prompt_hash="CURRENT",
+    )
+    rows = jobs_to_score(conn, current_hash="CURRENT")
+    by_id = {r["id"]: r["prev_hash"] for r in rows}
+    assert by_id == {"greenhouse:acme:1": "OLD", "greenhouse:acme:3": None}
 
 
 def test_set_decline_reason(conn):

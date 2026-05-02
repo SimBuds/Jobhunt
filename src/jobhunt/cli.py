@@ -21,10 +21,10 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-app.add_typer(convert_resume_cmd.app, name="convert-resume")
-app.add_typer(scan_cmd.app, name="scan")
-app.add_typer(apply_cmd.app, name="apply")
-app.add_typer(list_cmd.app, name="list")
+app.command("convert-resume", help=convert_resume_cmd.app.info.help)(convert_resume_cmd.run)
+app.command("scan", help=scan_cmd.app.info.help)(scan_cmd.run)
+app.command("apply", help=apply_cmd.app.info.help)(apply_cmd.run)
+app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
 app.add_typer(db_cmd.app, name="db", hidden=True)
 app.add_typer(config_cmd.app, name="config", hidden=True)
 

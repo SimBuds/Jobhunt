@@ -69,8 +69,17 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
 
 
 def prompt_hash(kb_dir: Path) -> str:
-    """Stable hash of the score prompt for cache invalidation."""
+    """Stable hash of the inputs that determine a score, for cache invalidation.
+
+    Covers the score prompt, the candidate's verified facts, and the tailoring
+    policy. If any of these change, `scan` re-scores affected jobs.
+    """
     import hashlib
 
-    path = kb_dir / "prompts" / "score.md"
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    h = hashlib.sha256()
+    for rel in ("prompts/score.md", "profile/verified.json", "policies/tailoring-rules.md"):
+        p = kb_dir / rel
+        if p.is_file():
+            h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()[:16]

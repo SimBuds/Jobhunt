@@ -44,8 +44,24 @@ triggers (set `decline_reason` to a short string explaining which one):
 - Location is outside Toronto/GTA + 100km AND not Remote-Canada eligible.
 
 If none apply, set `decline_reason` to null and return a score 0–100 reflecting
-overall fit. Score bands: 80+ strong fit, 65–79 worth tailoring, 50–64 stretch,
-under 50 weak fit.
+overall fit. Use the full range — pick a specific integer that reflects the
+count of matched must-haves and gaps. Two jobs with different gap counts or
+different match counts MUST receive different scores. Do not default to 85.
+
+Score rubric:
+- 95–100: every JD must-have matched, zero gaps, ai_bonus_present, title is a
+  clean IC fit at the candidate's level.
+- 90–94: all must-haves matched, zero gaps, ai_bonus may or may not be present.
+- 85–89: all must-haves matched, exactly one minor gap (nice-to-have absent).
+- 80–84: most must-haves matched, one minor gap, no ai_bonus, or a slight
+  level/stack mismatch that's still a strong fit.
+- 70–79: 1–2 real gaps in must-haves; worth tailoring.
+- 65–69: 2 gaps, weaker stack overlap; tailoring required.
+- 50–64: stretch — 2+ gaps but no auto-decline trigger fired.
+- under 50: weak fit.
+
+Within each band, vary the integer by match count, gap count, and
+ai_bonus_present. Avoid repeating the same score across dissimilar jobs.
 
 `ai_bonus_present` = true if the JD mentions AI / LLM / RAG / prompt engineering
 / ML / "modern tooling" as either must-have or bonus.

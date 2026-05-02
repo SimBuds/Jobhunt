@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import httpx
 
 from jobhunt.http import RateLimiter, get_json
-from jobhunt.ingest._filter import is_gta_eligible
+from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
 API = "https://api.lever.co/v0/postings/{slug}"
@@ -36,6 +36,7 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
             company=slug,
             title=j.get("text"),
             location=location,
+            remote_type=classify_remote_type(location=location, extra=commitment),
             description=descr or None,
             url=j.get("hostedUrl") or j.get("applyUrl"),
             posted_at=_from_ms(j.get("createdAt")),

@@ -10,7 +10,7 @@ from datetime import datetime
 import httpx
 
 from jobhunt.http import RateLimiter, get_json
-from jobhunt.ingest._filter import is_gta_eligible
+from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
 API = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
@@ -40,6 +40,7 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
             company=slug,
             title=j.get("title"),
             location=location,
+            remote_type=classify_remote_type(location=location),
             description=_strip_html(j.get("content")),
             url=j.get("absolute_url"),
             posted_at=_parse_dt(j.get("updated_at")),

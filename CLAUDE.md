@@ -134,7 +134,7 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
 1. **Every structured call uses a JSON schema.** `gateway.client.complete_json(schema=...)` posts to Ollama `/api/chat` with `format: <schema>`. No free-form JSON parsing.
 2. **Truncate inputs** to fit `num_ctx`. The score/tailor pipelines truncate description to 6000 chars and policy to 4000 — see `pipeline.score.truncate`.
-3. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.5.
+3. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
 4. **Honesty enforcement is structural.** The tailor pipeline's
    `_enforce_no_fabrication` rejects any role/employer/dates that diverge from
    `verified.json`, any skill not in `verified.json` (paren-substring tolerated),
