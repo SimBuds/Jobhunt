@@ -30,6 +30,7 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
     doc = Document()
     _set_margins(doc)
     _set_default_font(doc)
+    _scrub_metadata(doc, name)
 
     _add_name(doc, name)
     _add_contact(doc, contact_line)
@@ -90,6 +91,26 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
     return out_path
+
+
+def _scrub_metadata(doc: Any, name: str) -> None:
+    """Strip OOXML core properties that leak machine identity. Recruiter-side
+    AI screeners in 2026 occasionally inspect these. Set author and last-modifier
+    to the candidate's own name; clear comments/keywords/category."""
+    from datetime import datetime, timezone
+
+    cp = doc.core_properties
+    cp.author = name
+    cp.last_modified_by = name
+    cp.title = ""
+    cp.subject = ""
+    cp.keywords = ""
+    cp.comments = ""
+    cp.category = ""
+    cp.revision = 1
+    now = datetime.now(timezone.utc)
+    cp.created = now
+    cp.modified = now
 
 
 def _set_margins(doc: Any) -> None:

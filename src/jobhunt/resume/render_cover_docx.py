@@ -15,6 +15,7 @@ from jobhunt.resume.render_docx import (
     BODY_FONT,
     BODY_SIZE,
     NAME_SIZE,
+    _scrub_metadata,
     _set_default_font,
     _set_margins,
     _tighten,
@@ -37,6 +38,7 @@ def render_cover(cover: CoverLetter, contact_line: str, name: str, out_path: Pat
     doc = Document()
     _set_margins(doc)
     _set_default_font(doc)
+    _scrub_metadata(doc, name)
 
     p_name = doc.add_paragraph()
     p_name.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER

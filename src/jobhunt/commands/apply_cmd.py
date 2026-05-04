@@ -30,7 +30,9 @@ from jobhunt.config import Config, load_config
 from jobhunt.db import connect, upsert_application
 from jobhunt.errors import BrowserError, JobHuntError, PipelineError
 from jobhunt.models import Job
+from jobhunt.pipeline.audit import audit, write_audit
 from jobhunt.pipeline.cover import write_cover
+from jobhunt.pipeline.score import ScoreResult
 from jobhunt.pipeline.tailor import tailor_resume
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
@@ -50,7 +52,9 @@ def run(
     best: bool = typer.Option(
         False, "--best", help="Interactively pick from the top 10 unapplied jobs."
     ),
-    min_score: int = typer.Option(65, "--min-score", help="Floor for --top / --best selection."),
+    min_score: int | None = typer.Option(
+        None, "--min-score", help="Floor for --top / --best selection (default: pipeline.min_score)."
+    ),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Generate docs only; skip the browser autofill step."
     ),
@@ -83,14 +87,15 @@ def run(
         raise typer.Exit(code=2)
 
     cfg = load_config()
+    effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
     conn = connect(cfg.paths.db_path)
     try:
         if job_id is not None:
             jobs = _resolve_by_id(conn, job_id)
         elif top is not None:
-            jobs = _resolve_top_n(conn, n=top, min_score=min_score)
+            jobs = _resolve_top_n(conn, n=top, min_score=effective_min_score)
         else:
-            jobs = _resolve_interactive(conn, min_score=min_score)
+            jobs = _resolve_interactive(conn, min_score=effective_min_score)
     finally:
         conn.close()
 
@@ -272,6 +277,13 @@ def _company_slug(company: str | None) -> str:
 
 
 async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool) -> None:
+    import json as _json
+
+    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified: dict[str, object] = {}
+    if verified_path.is_file():
+        verified = _json.loads(verified_path.read_text(encoding="utf-8"))
+
     for row in rows:
         job = _row_to_job(row)
         out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
@@ -293,6 +305,43 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         except JobHuntError as e:
             typer.echo(f"    ! cover letter failed: {e}", err=True)
             continue
+
+        # Audit pass — deterministic, fast, no LLM call.
+        score_result = _load_score(cfg, job.id)
+        try:
+            audit_result = audit(
+                tailored=tailored,
+                cover=cover,
+                score=score_result,
+                verified=verified,
+                company=job.company,
+                cover_max_words=cfg.pipeline.cover_max_words,
+            )
+        except PipelineError as e:
+            typer.echo(f"    ! audit failed: {e}", err=True)
+            continue
+
+        audit_path = write_audit(out_dir, audit_result)
+        typer.echo(
+            f"    audit: verdict={audit_result.verdict} "
+            f"keyword_coverage={audit_result.keyword_coverage_pct}% "
+            f"missing={len(audit_result.missing_must_haves)} "
+            f"cover_violations={len(audit_result.cover_letter_violations)}"
+        )
+        if audit_result.verdict == "block" and cfg.pipeline.audit_block_on_fabrication:
+            for flag in audit_result.fabrication_flags:
+                typer.echo(f"    BLOCK: {flag}", err=True)
+            typer.echo(f"    + {audit_path.name} (see for details)")
+            continue
+        if audit_result.verdict == "revise":
+            for v in audit_result.cover_letter_violations:
+                typer.echo(f"    revise: {v}", err=True)
+            if audit_result.missing_must_haves:
+                typer.echo(
+                    f"    revise: {len(audit_result.missing_must_haves)} JD must-haves not in resume "
+                    f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
+                    err=True,
+                )
 
         # Render artifacts.
         company_slug = _company_slug(job.company)
@@ -383,6 +432,38 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                 )
         finally:
             conn.close()
+
+
+def _load_score(cfg: Config, job_id: str) -> ScoreResult | None:
+    """Pull the latest score row for a job. Returns None if never scored."""
+    import json as _json
+
+    conn = connect(cfg.paths.db_path)
+    try:
+        row = conn.execute(
+            "SELECT score, reasons, red_flags, must_clarify, model "
+            "FROM scores WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    try:
+        matched = _json.loads(row["reasons"] or "[]")
+        gaps = _json.loads(row["must_clarify"] or "[]")
+        red_flags = _json.loads(row["red_flags"] or "[]")
+    except (TypeError, ValueError):
+        matched, gaps, red_flags = [], [], []
+    decline_reason = red_flags[0] if red_flags else None
+    return ScoreResult(
+        score=int(row["score"]),
+        matched_must_haves=list(matched),
+        gaps=list(gaps),
+        decline_reason=decline_reason,
+        ai_bonus_present=False,  # not persisted; not needed by audit
+        model=row["model"] or "",
+    )
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:

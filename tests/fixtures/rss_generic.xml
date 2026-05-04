@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Company Careers</title>
+    <link>https://careers.example.com</link>
+    <item>
+      <title>Software Developer — Toronto, ON (Remote Canada OK)</title>
+      <link>https://careers.example.com/jobs/1</link>
+      <description>Full-stack role. Toronto or Remote Canada. TypeScript, React, Node.js.</description>
+      <pubDate>Mon, 04 May 2026 09:00:00 +0000</pubDate>
+      <guid>job-1</guid>
+    </item>
+    <item>
+      <title>Data Scientist — New York, NY</title>
+      <link>https://careers.example.com/jobs/2</link>
+      <description>Data scientist role in New York. Python, TensorFlow.</description>
+      <pubDate>Mon, 04 May 2026 09:00:00 +0000</pubDate>
+      <guid>job-2</guid>
+    </item>
+  </channel>
+</rss>

@@ -58,6 +58,8 @@ class IngestConfig(BaseModel):
     greenhouse: list[str] = Field(default_factory=list)
     lever: list[str] = Field(default_factory=list)
     ashby: list[str] = Field(default_factory=list)
+    smartrecruiters: list[str] = Field(default_factory=list)
+    job_bank_ca: list[str] = Field(default_factory=list)
     rss: list[str] = Field(default_factory=list)
     adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
 
@@ -80,6 +82,8 @@ class PipelineConfig(BaseModel):
     score_concurrency: int = 2
     tailor_max_words: int = 700
     cover_max_words: int = 280
+    min_score: int = 65
+    audit_block_on_fabrication: bool = True
 
 
 class BrowserConfig(BaseModel):
