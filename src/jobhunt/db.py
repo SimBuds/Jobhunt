@@ -127,6 +127,9 @@ def jobs_to_score(
     return list(conn.execute(sql, (current_hash,)))
 
 
+_TERMINAL_STATUSES = frozenset({"interviewing", "offer", "rejected", "withdrawn"})
+
+
 def upsert_application(
     conn: sqlite3.Connection,
     *,
@@ -155,7 +158,11 @@ def upsert_application(
             notes = COALESCE(excluded.notes, applications.notes),
             applied_at = CASE
                 WHEN excluded.status = 'applied' AND applications.applied_at IS NULL
-                THEN CURRENT_TIMESTAMP ELSE applications.applied_at END
+                THEN CURRENT_TIMESTAMP ELSE applications.applied_at END,
+            outcome_at = CASE
+                WHEN excluded.status IN ('interviewing','offer','rejected','withdrawn')
+                     AND applications.outcome_at IS NULL
+                THEN CURRENT_TIMESTAMP ELSE applications.outcome_at END
         """,
         (
             application_id,

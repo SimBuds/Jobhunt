@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Job Bank Canada Search Results</title>
+    <link>https://www.jobbank.gc.ca</link>
+    <description>Job postings from Job Bank Canada</description>
+    <item>
+      <title>web developer - ACME Inc - Toronto (ON)</title>
+      <link>https://www.jobbank.gc.ca/jobsearch/jobposting/123456</link>
+      <description>Full-stack web developer role in Toronto. React, Node.js, TypeScript required.</description>
+      <pubDate>Mon, 04 May 2026 09:00:00 +0000</pubDate>
+      <guid>https://www.jobbank.gc.ca/jobsearch/jobposting/123456</guid>
+    </item>
+    <item>
+      <title>software engineer - Startup - Vancouver (BC)</title>
+      <link>https://www.jobbank.gc.ca/jobsearch/jobposting/999999</link>
+      <description>Software engineer in Vancouver. Python, Django required.</description>
+      <pubDate>Mon, 04 May 2026 09:00:00 +0000</pubDate>
+      <guid>https://www.jobbank.gc.ca/jobsearch/jobposting/999999</guid>
+    </item>
+    <item>
+      <title>frontend developer - Remote Corp - Remote (Canada)</title>
+      <link>https://www.jobbank.gc.ca/jobsearch/jobposting/777777</link>
+      <description>Remote frontend developer role open to all Canadian candidates. TypeScript, React.</description>
+      <pubDate>Mon, 04 May 2026 09:00:00 +0000</pubDate>
+      <guid>https://www.jobbank.gc.ca/jobsearch/jobposting/777777</guid>
+    </item>
+  </channel>
+</rss>

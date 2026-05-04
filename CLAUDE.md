@@ -64,8 +64,8 @@ src/jobhunt/
 ├── cli.py                     # Typer app, subcommand wiring only
 ├── commands/
 │   ├── convert_resume_cmd.py  # P1
-│   ├── scan_cmd.py            # P2: ingest + score
-│   ├── apply_cmd.py           # P3+P4: tailor + cover + autofill
+│   ├── scan_cmd.py            # P2: ingest + score + cross-source dedupe
+│   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
 │   ├── db_cmd.py              # hidden internal
 │   └── config_cmd.py          # hidden internal
@@ -74,17 +74,23 @@ src/jobhunt/
 │   └── render_docx.py         # tailored markdown → ATS-safe .docx
 ├── ingest/                    # one file per source
 │   ├── _filter.py             # GTA allowlist + Remote-Canada heuristic
+│   ├── _rss.py                # stdlib RSS/Atom parser (no extra deps)
 │   ├── greenhouse.py
 │   ├── lever.py
 │   ├── ashby.py
-│   └── adzuna_ca.py
+│   ├── adzuna_ca.py
+│   ├── smartrecruiters.py     # SmartRecruiters public Posting API (no key needed)
+│   ├── job_bank_ca.py         # Government of Canada Job Bank RSS
+│   └── rss_generic.py         # generic employer career RSS/Atom feeds
 ├── gateway/                   # Ollama client + prompt loader
 │   ├── client.py              # complete_json (POST /api/chat with format=schema)
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
-├── pipeline/                  # score, tailor, cover
+├── pipeline/                  # score, tailor, cover, audit, cover_validate
 │   ├── score.py
 │   ├── tailor.py              # enforces no-fabrication invariants
-│   └── cover.py
+│   ├── cover.py
+│   ├── cover_validate.py      # deterministic cover-letter validator (banned phrases, etc.)
+│   └── audit.py               # post-generation audit: keyword coverage + verdict
 ├── browser/
 │   ├── autofill.py            # headed Playwright session, fill-plan.json
 │   ├── profile_map.py         # ApplicantProfile → form key map
@@ -114,7 +120,7 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
 ## Ingestion rules — non-negotiable
 
-1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), Job Bank Canada RSS, generic RSS.
+1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
 2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
 4. **Respect `robots.txt`** for any non-API HTTP fetch. Use `protego`.
@@ -140,6 +146,27 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
    `verified.json`, any skill not in `verified.json` (paren-substring tolerated),
    and any "Familiar" skill in a non-Familiar category. Adding a new tailoring
    capability MUST keep these checks green.
+
+## Post-generation audit rules
+
+After `tailor_resume` + `write_cover`, `pipeline.audit.audit()` runs before
+.docx render. It is **deterministic and LLM-free** — do not add an Ollama call
+to it without explicit discussion.
+
+1. **Keyword coverage** — JD must-haves (from the score result) must appear in
+   the tailored resume at ≥70 % (2026 ATS guideline). Verdict `revise` if below.
+2. **Cover-letter validator** (`pipeline.cover_validate`) — enforces banned
+   phrases, word count, paragraph count, company name in lead, no unverified
+   numbers, no closing diploma re-recap. Verdict `revise` on violations.
+3. **Fabrication re-check** — `_enforce_no_fabrication` runs again on the
+   tailored resume post-decode. Verdict `block` on any failure.
+4. **Verdicts:** `block` → the apply loop skips this job and logs the reason;
+   `revise` → docs are still rendered but warnings are printed to stderr and
+   written to `data/applications/<id>/audit.json`; `ship` → clean pass.
+5. **`config calibrate`** (hidden subcommand) prints interview-rate per score
+   band from `applications`. Use after ≥20 applications to tune `pipeline.min_score`.
+6. **`pipeline.min_score`** is now set in `config.toml` under `[pipeline]`
+   (default 65). The `--min-score` CLI flag overrides it per run.
 
 ## Testing
 

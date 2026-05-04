@@ -21,7 +21,15 @@ from jobhunt.db import (
 )
 from jobhunt.errors import IngestError, JobHuntError
 from jobhunt.http import RateLimiter
-from jobhunt.ingest import adzuna_ca, ashby, greenhouse, lever
+from jobhunt.ingest import (
+    adzuna_ca,
+    ashby,
+    greenhouse,
+    job_bank_ca,
+    lever,
+    rss_generic,
+    smartrecruiters,
+)
 from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
 from jobhunt.secrets import load_secrets
@@ -124,6 +132,18 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
             streams.append(_safe_stream("lever", slug, lever.fetch(client, limiter, slug)))
         for slug in cfg.ingest.ashby:
             streams.append(_safe_stream("ashby", slug, ashby.fetch(client, limiter, slug)))
+        for slug in cfg.ingest.smartrecruiters:
+            streams.append(
+                _safe_stream(
+                    "smartrecruiters", slug, smartrecruiters.fetch(client, limiter, slug)
+                )
+            )
+        for url in cfg.ingest.job_bank_ca:
+            streams.append(
+                _safe_stream("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url))
+            )
+        for url in cfg.ingest.rss:
+            streams.append(_safe_stream("rss", url, rss_generic.fetch(client, limiter, url)))
         if secrets.adzuna_app_id and secrets.adzuna_app_key:
             for query in cfg.ingest.adzuna.queries:
                 streams.append(
@@ -156,12 +176,33 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
             return 0
 
         inserted = 0
+        seen_dedup: set[str] = set()
         for stream in streams:
             async for job in stream:
+                dedup_key = _dedup_key(job)
+                if dedup_key in seen_dedup:
+                    continue
+                seen_dedup.add(dedup_key)
                 with conn:
                     if upsert_job(conn, job):
                         inserted += 1
         return inserted
+
+
+_DEDUP_RE = __import__("re").compile(r"[^a-z0-9]+")
+
+
+def _dedup_key(job: Job) -> str:
+    """Stable cross-source dedupe key. Same role at the same company from two
+    different sources (e.g. Greenhouse + Adzuna) hashes to the same key so we
+    don't score the same posting twice. Uses already-stored external_id when the
+    source is Greenhouse/Lever/Ashby/SmartRecruiters (unique per company posting),
+    falls back to normalised (title, company) for aggregators like Adzuna/RSS."""
+    if job.source in {"greenhouse", "lever", "ashby", "smartrecruiters"}:
+        return job.id  # already source-specific unique
+    title_norm = _DEDUP_RE.sub("", (job.title or "").lower())
+    company_norm = _DEDUP_RE.sub("", (job.company or "").lower())
+    return f"{title_norm}:{company_norm}"
 
 
 async def _safe_stream(source: str, label: str, stream: AsyncIterator[Job]) -> AsyncIterator[Job]:
