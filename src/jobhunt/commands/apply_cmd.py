@@ -31,7 +31,7 @@ from jobhunt.db import connect, upsert_application
 from jobhunt.errors import BrowserError, JobHuntError, PipelineError
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import audit, write_audit
-from jobhunt.pipeline.cover import write_cover
+from jobhunt.pipeline.cover import write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult
 from jobhunt.pipeline.tailor import tailor_resume
 from jobhunt.resume.render_cover_docx import render_cover
@@ -301,10 +301,20 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
 
         typer.echo("    … writing cover letter (LLM, ~1 min)")
         try:
-            cover = await write_cover(cfg, job)
+            cover, cover_violations, cover_attempts = await write_cover_with_retry(
+                cfg,
+                job,
+                verified=verified,
+                company=job.company,
+                max_words=cfg.pipeline.cover_max_words,
+                max_attempts=cfg.pipeline.cover_retry_attempts,
+            )
         except JobHuntError as e:
             typer.echo(f"    ! cover letter failed: {e}", err=True)
             continue
+        if cover_attempts > 1:
+            tag = "clean" if not cover_violations else f"{len(cover_violations)} violations remain"
+            typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
 
         # Audit pass — deterministic, fast, no LLM call.
         score_result = _load_score(cfg, job.id)

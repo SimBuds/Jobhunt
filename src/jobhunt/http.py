@@ -98,6 +98,53 @@ async def post_json(
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
 
+async def resolve_redirect(
+    client: httpx.AsyncClient,
+    url: str,
+    limiter: RateLimiter,
+    *,
+    max_hops: int = 5,
+) -> str:
+    """Follow Location headers manually and return the final URL.
+
+    Used to chase Adzuna's tracking-link `redirect_url` to the employer's
+    actual posting page so the autofill handler lands on the apply form
+    instead of a listing-redirect intermediary.
+
+    Never raises and never blocks ingest — on any error (network, loop,
+    non-redirect 4xx/5xx, timeout) returns the original URL. We try HEAD
+    first; some hosts reject HEAD with 405, so we fall back to GET with
+    streaming so we don't pull the body just to read headers.
+    """
+    current = url
+    seen: set[str] = set()
+    for _ in range(max_hops):
+        if current in seen:
+            return url  # loop detected — give up, keep original
+        seen.add(current)
+        await limiter.wait(host_of(current))
+        try:
+            r = await client.head(current, follow_redirects=False)
+            if r.status_code == 405:
+                # HEAD not allowed — try a streaming GET instead.
+                async with client.stream("GET", current, follow_redirects=False) as gr:
+                    status = gr.status_code
+                    location = gr.headers.get("location")
+            else:
+                status = r.status_code
+                location = r.headers.get("location")
+        except httpx.HTTPError:
+            return url
+        if 300 <= status < 400 and location:
+            current = str(httpx.URL(current).join(location))
+            continue
+        # Terminal status (2xx, 4xx, 5xx without redirect) — current is the
+        # final URL we landed on.
+        return current
+    # Hop budget exhausted — fall back to original.
+    return url
+
+
 async def with_client[T](
     fn: Callable[[httpx.AsyncClient], Awaitable[T]], *, user_agent: str = DEFAULT_UA
 ) -> T:

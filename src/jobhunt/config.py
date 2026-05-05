@@ -85,6 +85,7 @@ class PipelineConfig(BaseModel):
     score_concurrency: int = 2
     tailor_max_words: int = 700
     cover_max_words: int = 280
+    cover_retry_attempts: int = 3
     min_score: int = 65
 
 
