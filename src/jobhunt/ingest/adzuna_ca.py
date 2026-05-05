@@ -9,7 +9,7 @@ from datetime import datetime
 import httpx
 
 from jobhunt.errors import IngestError
-from jobhunt.http import RateLimiter, get_json
+from jobhunt.http import RateLimiter, get_json, resolve_redirect
 from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
@@ -54,6 +54,17 @@ async def fetch(
             if not is_gta_eligible(loc_str):
                 continue
             ext = str(j.get("id"))
+            adzuna_url = j.get("redirect_url")
+            # Adzuna's redirect_url is a tracking link that lands on
+            # adzuna.ca/details/<id> and then bounces to the employer. Chase
+            # the chain at ingest time so the apply pipeline opens the real
+            # posting page (where the Apply form actually lives). On any
+            # error we fall back to the original URL — never block ingest.
+            final_url = (
+                await resolve_redirect(client, adzuna_url, limiter)
+                if adzuna_url
+                else None
+            )
             yield Job(
                 id=f"adzuna_ca:{ext}",
                 source="adzuna_ca",
@@ -65,7 +76,7 @@ async def fetch(
                     location=loc_str, extra=j.get("title") or ""
                 ),
                 description=j.get("description"),
-                url=j.get("redirect_url"),
+                url=final_url,
                 posted_at=_parse_dt(j.get("created")),
                 raw_json=json.dumps(j),
             )

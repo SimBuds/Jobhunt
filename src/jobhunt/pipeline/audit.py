@@ -21,12 +21,12 @@ under "Scoring audit needed".
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from jobhunt.errors import PipelineError
+from jobhunt.pipeline._keywords import phrase_present
 from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.cover_validate import validate_cover
 from jobhunt.pipeline.score import ScoreResult
@@ -34,18 +34,6 @@ from jobhunt.pipeline.tailor import TailoredResume, _enforce_no_fabrication
 
 # Coverage threshold (Scale.jobs 2026 ATS guidance: aim 70-80%).
 MIN_KEYWORD_COVERAGE_PCT = 70
-
-_TOKEN_RE = re.compile(r"[a-z0-9+#./-]+")
-_STOPWORDS = frozenset(
-    {
-        "a", "an", "and", "or", "the", "of", "in", "on", "to", "for", "with",
-        "is", "are", "be", "as", "at", "by", "it", "this", "that", "you",
-        "we", "our", "your", "their", "from", "have", "has", "will", "can",
-        "year", "years", "experience", "skills", "knowledge", "ability",
-        "strong", "good", "great", "able", "must", "should", "would",
-        "preferred", "plus", "bonus", "required", "required.",
-    }
-)
 
 
 @dataclass
@@ -79,26 +67,6 @@ def _resume_text(tailored: TailoredResume) -> str:
     return "\n".join(parts).lower()
 
 
-def _phrase_tokens(phrase: str) -> list[str]:
-    return [t for t in _TOKEN_RE.findall(phrase.lower()) if t not in _STOPWORDS and len(t) > 1]
-
-
-def _phrase_present(phrase: str, blob: str) -> bool:
-    """A keyword counts as covered if (a) the full phrase appears as a substring,
-    or (b) every non-stopword token in the phrase appears somewhere in the blob.
-    The latter handles "GitHub Actions CI/CD" → tokens spread across the resume.
-    """
-    p = phrase.lower().strip()
-    if not p:
-        return False
-    if p in blob:
-        return True
-    tokens = _phrase_tokens(p)
-    if not tokens:
-        return False
-    return all(t in blob for t in tokens)
-
-
 def keyword_coverage(
     must_haves: list[str], tailored: TailoredResume
 ) -> tuple[int, list[str], list[str]]:
@@ -109,7 +77,7 @@ def keyword_coverage(
     matched: list[str] = []
     missing: list[str] = []
     for phrase in must_haves:
-        if _phrase_present(phrase, blob):
+        if phrase_present(phrase, blob):
             matched.append(phrase)
         else:
             missing.append(phrase)

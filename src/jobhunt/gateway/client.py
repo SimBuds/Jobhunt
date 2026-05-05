@@ -20,11 +20,16 @@ async def complete_json(
     temperature: float = 0.0,
     num_ctx: int = 8192,
     timeout_s: float = 180.0,
+    keep_alive: str = "30m",
 ) -> dict[str, Any]:
     """Send a chat completion to Ollama and return the parsed JSON object.
 
     `base_url` may end with `/v1` (OpenAI-compatible) or be a bare host. We hit the
     native /api/chat endpoint either way for the format-as-schema feature.
+
+    `keep_alive` defaults to 30m so the model stays resident across a long
+    `scan` run instead of unloading after Ollama's 5-minute default and
+    burning 5-15s on a reload between every job.
     """
     host = base_url.rstrip("/")
     if host.endswith("/v1"):
@@ -38,15 +43,21 @@ async def complete_json(
         ],
         "stream": False,
         "format": schema,
+        "keep_alive": keep_alive,
         "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
             r = await client.post(url, json=payload)
     except httpx.HTTPError as e:
-        raise GatewayError(f"ollama request failed: {e}") from e
+        # httpx exceptions like ReadTimeout / RemoteProtocolError frequently
+        # format to an empty string. Always include the class name and the
+        # model so the failure isn't silent on the user's terminal.
+        raise GatewayError(
+            f"ollama request failed (model={model}, {type(e).__name__}): {e}"
+        ) from e
     if r.status_code >= 400:
-        raise GatewayError(f"ollama {r.status_code}: {r.text[:300]}")
+        raise GatewayError(f"ollama {r.status_code} (model={model}): {r.text[:300]}")
     body = r.json()
     content = (body.get("message") or {}).get("content")
     if not content:

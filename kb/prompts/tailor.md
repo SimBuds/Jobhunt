@@ -76,8 +76,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
    d. Tech-stack name-drops in the summary must come from
       `verified_facts.skills_core` ∪ `verified_facts.skills_cms` only — never
       from `skills_familiar`.
-   e. If the JD mentions AI/LLM/RAG/prompt engineering/ML/modern tooling,
-      include the AI/Ollama line. Mention the GBC diploma + Dean's List once.
+   e. If the JD mentions AI, ML, LLM, generative AI, RAG, prompt engineering,
+      or "modern tooling", the summary's first OR second sentence MUST surface
+      Casey's local LLM / Ollama / GPU / prompt-engineering work — do NOT
+      bury it as the closing sentence. Use phrasing that includes the literal
+      tokens "AI" and "LLM" (e.g. "AI/LLM tooling with local Ollama
+      hosting…") so ATS keyword matchers latch onto both. Mention the GBC
+      diploma + Dean's List once, but in the closing sentence, not the lead.
 7. Bullets must use strong verbs (built, designed, shipped, owned, led,
    integrated, migrated, optimized, deployed, configured, automated). No "I",
    no "responsible for", no "helped with".
