@@ -68,6 +68,36 @@ async def get_json(
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
 
+async def post_json(
+    client: httpx.AsyncClient,
+    url: str,
+    limiter: RateLimiter,
+    *,
+    json_body: Mapping[str, Any],
+    max_retries: int = 3,
+) -> Any:
+    """POST a URL with a JSON body, return parsed JSON. Backs off on 429/5xx."""
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        await limiter.wait(host_of(url))
+        try:
+            r = await client.post(url, json=dict(json_body))
+        except httpx.HTTPError as e:
+            last_exc = e
+            await asyncio.sleep(2**attempt)
+            continue
+        if r.status_code == 429 or r.status_code >= 500:
+            await asyncio.sleep(2**attempt)
+            continue
+        if r.status_code in (401, 403):
+            raise IngestError(f"{r.status_code} {url} (tenant auth-walled — skipping)")
+        if r.status_code == 404:
+            raise IngestError(f"404 {url}")
+        r.raise_for_status()
+        return r.json()
+    raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
+
+
 async def with_client[T](
     fn: Callable[[httpx.AsyncClient], Awaitable[T]], *, user_agent: str = DEFAULT_UA
 ) -> T:

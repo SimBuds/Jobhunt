@@ -29,13 +29,23 @@ GTA_CITIES = (
     "north york",
     "scarborough",
     "etobicoke",
+    # Kitchener-Waterloo corridor — within the 100 km radius the README promises.
+    "waterloo",
+    "kitchener",
+    "cambridge",
+    "guelph",
 )
 
 _NON_CANADA_REMOTE = re.compile(
     r"\b(us(a)?|united states|emea|europe|uk|asia|latam|anywhere)\b", re.IGNORECASE
 )
+# Canada hints. The "on" province code only counts when it appears as a
+# comma-delimited token (e.g. "Remote, ON") — never as the English word in
+# "Remote (on-call) — US", which previously slipped through as Canadian.
 _CANADA_HINT = re.compile(
-    r"\b(canada|canadian|ontario|toronto|gta|on\b|est\b|eastern\s+time)\b", re.IGNORECASE
+    r"(?:\b(?:canada|canadian|ontario|toronto|gta|est|eastern\s+time)\b"
+    r"|(?:^|,\s*|\(\s*)on(?=\s*(?:,|\)|$|\s+canada)))",
+    re.IGNORECASE,
 )
 
 

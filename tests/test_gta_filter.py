@@ -18,6 +18,17 @@ from jobhunt.ingest._filter import is_gta_eligible
         ("Remote, US", False),
         ("Remote, EMEA", False),
         ("Remote", False),
+        # Regression: "on" as English word must not match the ON province hint.
+        ("Remote (on-call) — US", False),
+        ("Remote, working on-call rotation, US", False),
+        # Regression: comma-delimited ON province code is still a Canada hint.
+        ("Remote, ON", True),
+        ("Remote, ON, Canada", True),
+        # KW corridor is in scope (README promises GTA + 100 km).
+        ("Waterloo, ON", True),
+        ("Kitchener, Ontario", True),
+        ("Cambridge, ON, Canada", True),
+        ("Guelph, ON", True),
         ("San Francisco, CA", False),
         ("New York, NY", False),
         ("", False),

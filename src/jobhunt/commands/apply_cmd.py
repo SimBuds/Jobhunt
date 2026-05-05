@@ -328,7 +328,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
             f"missing={len(audit_result.missing_must_haves)} "
             f"cover_violations={len(audit_result.cover_letter_violations)}"
         )
-        if audit_result.verdict == "block" and cfg.pipeline.audit_block_on_fabrication:
+        if audit_result.verdict == "block":
             for flag in audit_result.fabrication_flags:
                 typer.echo(f"    BLOCK: {flag}", err=True)
             typer.echo(f"    + {audit_path.name} (see for details)")

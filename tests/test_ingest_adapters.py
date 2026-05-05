@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from jobhunt.errors import IngestError
 from jobhunt.ingest._rss import RSSItem, parse_feed, strip_html
 from jobhunt.ingest.job_bank_ca import _split_title
 from jobhunt.ingest.smartrecruiters import (
@@ -15,6 +16,7 @@ from jobhunt.ingest.smartrecruiters import (
     _format_location,
     _parse_dt,
 )
+from jobhunt.ingest.workday import _location_text, _parse_tenant
 from jobhunt.models import Job
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -158,3 +160,38 @@ def test_dedup_key_different_companies_differ() -> None:
     j1 = Job(id="adzuna_ca:1", source="adzuna_ca", external_id="1", title="Developer", company="ACME")
     j2 = Job(id="adzuna_ca:2", source="adzuna_ca", external_id="2", title="Developer", company="Beta Corp")
     assert _dedup_key(j1) != _dedup_key(j2)
+
+
+# ---------------------------------------------------------------------------
+# workday adapter
+# ---------------------------------------------------------------------------
+
+
+def test_workday_parse_tenant_spec() -> None:
+    assert _parse_tenant("rbc:wd3:RBC_Careers") == ("rbc", "wd3", "RBC_Careers")
+
+
+def test_workday_parse_tenant_rejects_malformed() -> None:
+    with pytest.raises(IngestError):
+        _parse_tenant("rbc:wd3")
+    with pytest.raises(IngestError):
+        _parse_tenant("rbc::RBC_Careers")
+
+
+def test_workday_location_text_handles_list_and_str() -> None:
+    assert _location_text({"locationsText": "Toronto, ON"}) == "Toronto, ON"
+    assert _location_text({"bulletFields": ["Toronto", "Remote"]}) == "Toronto, Remote"
+    assert _location_text({}) is None
+
+
+def test_workday_fixture_filters_to_gta() -> None:
+    """Walk the fixture the same way the adapter does — confirm the GTA filter
+    keeps the Toronto + Remote-Canada postings and drops the NY one."""
+    data = json.loads((FIXTURES / "workday.json").read_text())
+    from jobhunt.ingest._filter import is_gta_eligible
+
+    kept = [p for p in data["jobPostings"] if is_gta_eligible(_location_text(p))]
+    titles = [p["title"] for p in kept]
+    assert "Senior Software Engineer, Digital Banking" in titles
+    assert "Platform Engineer (Remote, Canada)" in titles
+    assert "Backend Engineer" not in titles
