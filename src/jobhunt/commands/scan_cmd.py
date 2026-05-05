@@ -29,6 +29,7 @@ from jobhunt.ingest import (
     lever,
     rss_generic,
     smartrecruiters,
+    workday,
 )
 from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
@@ -138,6 +139,8 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
                     "smartrecruiters", slug, smartrecruiters.fetch(client, limiter, slug)
                 )
             )
+        for spec in cfg.ingest.workday:
+            streams.append(_safe_stream("workday", spec, workday.fetch(client, limiter, spec)))
         for url in cfg.ingest.job_bank_ca:
             streams.append(
                 _safe_stream("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url))
@@ -175,17 +178,36 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
             )
             return 0
 
+        # Drain all streams concurrently — adapters share the per-host
+        # RateLimiter so politeness is preserved while distinct hosts overlap.
+        queue: asyncio.Queue[Job | None] = asyncio.Queue()
+
+        async def drain(stream: AsyncIterator[Job]) -> None:
+            async for job in stream:
+                await queue.put(job)
+
+        producers = [asyncio.create_task(drain(s)) for s in streams]
+
+        async def closer() -> None:
+            await asyncio.gather(*producers, return_exceptions=False)
+            await queue.put(None)
+
+        closer_task = asyncio.create_task(closer())
+
         inserted = 0
         seen_dedup: set[str] = set()
-        for stream in streams:
-            async for job in stream:
-                dedup_key = _dedup_key(job)
-                if dedup_key in seen_dedup:
-                    continue
-                seen_dedup.add(dedup_key)
-                with conn:
-                    if upsert_job(conn, job):
-                        inserted += 1
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            dedup_key = _dedup_key(item)
+            if dedup_key in seen_dedup:
+                continue
+            seen_dedup.add(dedup_key)
+            with conn:
+                if upsert_job(conn, item):
+                    inserted += 1
+        await closer_task
         return inserted
 
 
@@ -198,7 +220,7 @@ def _dedup_key(job: Job) -> str:
     don't score the same posting twice. Uses already-stored external_id when the
     source is Greenhouse/Lever/Ashby/SmartRecruiters (unique per company posting),
     falls back to normalised (title, company) for aggregators like Adzuna/RSS."""
-    if job.source in {"greenhouse", "lever", "ashby", "smartrecruiters"}:
+    if job.source in {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}:
         return job.id  # already source-specific unique
     title_norm = _DEDUP_RE.sub("", (job.title or "").lower())
     company_norm = _DEDUP_RE.sub("", (job.company or "").lower())

@@ -1,0 +1,29 @@
+{
+  "total": 3,
+  "jobPostings": [
+    {
+      "title": "Senior Software Engineer, Digital Banking",
+      "externalPath": "/en-US/RBC_Careers/job/Toronto-Ontario-Canada/Senior-Software-Engineer_R-0001234",
+      "locationsText": "Toronto, ON, Canada",
+      "shortDescription": "Build digital banking experiences in TypeScript and React.",
+      "bulletFields": ["R-0001234"],
+      "postedOn": "Posted 3 Days Ago"
+    },
+    {
+      "title": "Backend Engineer",
+      "externalPath": "/en-US/RBC_Careers/job/New-York/Backend-Engineer_R-0009999",
+      "locationsText": "New York, NY",
+      "shortDescription": "NY-based role.",
+      "bulletFields": ["R-0009999"],
+      "postedOn": "Posted Today"
+    },
+    {
+      "title": "Platform Engineer (Remote, Canada)",
+      "externalPath": "/en-US/RBC_Careers/job/Remote-Canada/Platform-Engineer_R-0005678",
+      "locationsText": "Remote, Canada",
+      "shortDescription": "Remote-Canada platform role.",
+      "bulletFields": ["R-0005678"],
+      "postedOn": "Posted Yesterday"
+    }
+  ]
+}

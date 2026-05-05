@@ -59,6 +59,9 @@ class IngestConfig(BaseModel):
     lever: list[str] = Field(default_factory=list)
     ashby: list[str] = Field(default_factory=list)
     smartrecruiters: list[str] = Field(default_factory=list)
+    # Each entry is "tenant:host:site" — e.g. "rbc:wd3:RBC_Careers". See
+    # ingest/workday.py for how to find these values for a given employer.
+    workday: list[str] = Field(default_factory=list)
     job_bank_ca: list[str] = Field(default_factory=list)
     rss: list[str] = Field(default_factory=list)
     adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
@@ -83,7 +86,6 @@ class PipelineConfig(BaseModel):
     tailor_max_words: int = 700
     cover_max_words: int = 280
     min_score: int = 65
-    audit_block_on_fabrication: bool = True
 
 
 class BrowserConfig(BaseModel):
