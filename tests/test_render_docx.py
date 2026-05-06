@@ -36,7 +36,7 @@ def tailored() -> TailoredResume:
         certifications=["Contentful Certified Professional (October 2025)"],
         education=["Computer Programming & Analysis (Advanced Diploma), GBC, April 2024"],
         coursework=["Data Structures & Algorithms", "Full-Stack Development"],
-        model="qwen3:14b",
+        model="qwen3.5:9b",
     )
 
 

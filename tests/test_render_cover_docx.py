@@ -19,7 +19,7 @@ def test_render_cover_writes_valid_docx(tmp_path: Path):
             ("Last year I built a 14+ page Shopify storefront end-to-end as the sole developer."),
         ],
         sign_off="Best,\nCasey Hsu",
-        model="qwen3:14b",
+        model="qwen3.5:9b",
     )
     out = render_cover(
         cover,

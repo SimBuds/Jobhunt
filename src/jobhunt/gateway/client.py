@@ -18,7 +18,7 @@ async def complete_json(
     user: str,
     schema: dict[str, Any],
     temperature: float = 0.0,
-    num_ctx: int = 8192,
+    num_ctx: int = 6144,
     timeout_s: float = 180.0,
     keep_alive: str = "30m",
 ) -> dict[str, Any]:

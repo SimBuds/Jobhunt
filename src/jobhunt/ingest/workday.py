@@ -31,10 +31,7 @@ def _parse_tenant(spec: str) -> tuple[str, str, str]:
     """Parse a 'tenant:host:site' config string. Example: 'rbc:wd3:RBC_Careers'."""
     parts = spec.split(":")
     if len(parts) != 3 or not all(parts):
-        raise IngestError(
-            f"workday tenant spec must be 'tenant:host:site' (e.g. 'rbc:wd3:RBC_Careers'), "
-            f"got {spec!r}"
-        )
+        raise IngestError(f"invalid workday tenant spec {spec!r}; expected 'tenant:host:site'")
     return parts[0], parts[1], parts[2]
 
 

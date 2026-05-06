@@ -54,13 +54,13 @@ async def test_connect_error_includes_class_and_model(monkeypatch: pytest.Monkey
     with pytest.raises(GatewayError) as exc:
         await complete_json(
             base_url="http://localhost:11434",
-            model="gemma4:e4b",
+            model="qwen3.5:9b",
             system="s",
             user="u",
             schema={"type": "object"},
         )
     msg = str(exc.value)
-    assert "gemma4:e4b" in msg
+    assert "qwen3.5:9b" in msg
     assert "ConnectError" in msg
 
 
