@@ -16,9 +16,9 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 ## Hardware context
 
-- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total — 8 GB usable for Ollama, 2 GB reserved for the desktop session via `OLLAMA_GPU_OVERHEAD=2147483648`)
+- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and qwen3.5:9b lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover, qa) — single hot model at `num_ctx=6144`; `nomic-embed-text` reserved for future embeddings
+- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover, qa) — single hot model at `num_ctx=6144` with `keep_alive="30m"` and reasoning (`think`) disabled at the gateway; `nomic-embed-text` reserved for future embeddings
 - One model hot in VRAM at a time. Single-model setup eliminates reload churn between task types; reload churn was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
@@ -118,6 +118,18 @@ job-seeker list [--week N]      # pipeline view + weekly rollup
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
+**Hidden internals:**
+- `job-seeker db init|migrate|reset` — `reset` wipes DB, `data/applications/`,
+  `data/cache/`, the Playwright profile, **and** `kb/profile/`, then re-runs
+  migrations. Use `--force` to skip the confirmation prompt.
+- `job-seeker config show|path|calibrate`.
+
+**Profile guard.** `scan`, `list`, and `apply` call `ensure_profile(cfg)` from
+`commands/__init__.py` at the top of their callbacks. If
+`kb/profile/verified.json` is missing, they exit with a friendly message
+pointing the user to `convert-resume`. Do not bypass this guard — adding new
+top-level commands that touch scoring/listing/applying must call it too.
+
 ## Ingestion rules — non-negotiable
 
 1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
@@ -139,13 +151,30 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 ## LLM call rules
 
 1. **Every structured call uses a JSON schema.** `gateway.client.complete_json(schema=...)` posts to Ollama `/api/chat` with `format: <schema>`. No free-form JSON parsing.
-2. **Truncate inputs** to fit `num_ctx`. The score/tailor pipelines truncate description to 6000 chars and policy to 4000 — see `pipeline.score.truncate`.
-3. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
-4. **Honesty enforcement is structural.** The tailor pipeline's
+2. **Reasoning disabled.** The gateway sends `"think": false` so qwen3.5's
+   reasoning trace doesn't blow past the timeout on structured calls. Quality
+   is held by the deterministic post-processing layers (score clamp, cover
+   validator + retry, audit), not by reasoning tokens. If a future task slot
+   needs thinking, plumb it through as a per-call kwarg — don't flip the
+   default.
+3. **Keep-alive + warm-up.** `keep_alive="30m"` in the payload so the model
+   stays resident across a scan. `scan_cmd._warm_model()` fires a tiny chat
+   before the scoring loop so the first real call doesn't pay cold-load on
+   top of the 180 s gateway timeout.
+4. **Truncate inputs** to fit `num_ctx` (default 6144). The score/tailor pipelines truncate description to 6000 chars and policy to 4000 — see `pipeline.score.truncate`.
+5. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
+6. **Honesty enforcement is structural.** The tailor pipeline's
    `_enforce_no_fabrication` rejects any role/employer/dates that diverge from
    `verified.json`, any skill not in `verified.json` (paren-substring tolerated),
    and any "Familiar" skill in a non-Familiar category. Adding a new tailoring
    capability MUST keep these checks green.
+7. **Transferable-skill matching is in the score prompt.** `kb/prompts/score.md`
+   defines peer-tech families (React↔Vue↔Svelte, Express↔Fastify↔Koa,
+   Postgres↔MySQL↔SQLite, AWS↔GCP↔Azure, etc.) so closely-related experience
+   counts as matched, not as gaps. Auto-decline triggers are conservative:
+   "Senior" alone is **not** a decline; only Lead/Principal/Architect/Staff
+   *with* stated leadership responsibilities, 5+ year hard requirements, or
+   non-IC titles. The gap threshold is 4+ hard gaps.
 
 ## Post-generation audit rules
 

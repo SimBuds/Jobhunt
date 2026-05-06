@@ -32,7 +32,10 @@ def run(
     ),
     limit: int = typer.Option(40, "--limit", help="Max rows to display."),
 ) -> None:
+    from jobhunt.commands import ensure_profile
+
     cfg = load_config()
+    ensure_profile(cfg)
     conn = connect(cfg.paths.db_path)
     try:
         target_week = _iso_week_label(week) if week is not None else None

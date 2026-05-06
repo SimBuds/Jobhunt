@@ -81,10 +81,10 @@ FIXTURE_JOB = Job(
 
 def _make_cfg(model: str, task: str) -> tuple[Config, str]:
     tasks = {
-        "score": model if task == "score" else "qwen3:8b",
-        "tailor": model if task == "tailor" else "qwen3:14b",
-        "cover": "qwen3:14b",
-        "qa": "qwen3:8b",
+        "score": model if task == "score" else "qwen3.5:9b",
+        "tailor": model if task == "tailor" else "qwen3.5:9b",
+        "cover": "qwen3.5:9b",
+        "qa": "qwen3.5:9b",
         "embed": "nomic-embed-text",
     }
     cfg = Config(

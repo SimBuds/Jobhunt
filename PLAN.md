@@ -51,7 +51,7 @@ Set in config (`gateway.tasks`).
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total, 8 GB usable for Ollama) | `OLLAMA_GPU_OVERHEAD=2147483648` reserves 2 GB for the Linux desktop session. Default model: `qwen3.5:9b` at `num_ctx=6144`. Single hot model; never unloads mid-scan. |
+| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset — qwen3.5:9b lands at ~9.1 GB resident at `num_ctx=6144` with comfortable headroom. Single hot model; never unloads mid-scan (`keep_alive="30m"` plus a warm-up call at scan start). Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU; SQLite cache; Playwright when active. |
 | Disk | Models in `~/.ollama/models`; project DB in `data/jobhunt.db`. |
 
@@ -59,7 +59,7 @@ Set in config (`gateway.tasks`).
 
 | Task | Model | Why |
 |---|---|---|
-| Fit-score / tailor / cover | `qwen3.5:9b` | Single hot model — no reload churn. Strong open tool-use + reasoning model; post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. |
+| Fit-score / tailor / cover / qa | `qwen3.5:9b` | Single hot model — no reload churn. Strong open tool-use model; reasoning is disabled (`think: false`) at the gateway since structured-output latency under thinking blew past the 180 s timeout. Post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. |
 | Embeddings | `nomic-embed-text` | CPU. Reserved for future kb retrieval. |
 
 All overridable in `~/.config/jobhunt/config.toml`. Per-call override via

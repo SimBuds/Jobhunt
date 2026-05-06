@@ -86,7 +86,10 @@ def run(
         typer.echo("error: <job-id>, --top, and --best are mutually exclusive.", err=True)
         raise typer.Exit(code=2)
 
+    from jobhunt.commands import ensure_profile
+
     cfg = load_config()
+    ensure_profile(cfg)
     effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
     conn = connect(cfg.paths.db_path)
     try:

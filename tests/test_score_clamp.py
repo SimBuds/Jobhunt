@@ -1,6 +1,6 @@
 """Score-time deterministic coverage clamp.
 
-Closes the loophole where qwen3:8b returned `score=95` while listing must-haves
+Closes the loophole where qwen3.5:9b returned `score=95` while listing must-haves
 it hadn't actually matched in `matched_must_haves`. We re-partition the LLM's
 must-have list against verified.json ourselves and cap the score to the band
 the deterministic coverage justifies.
@@ -124,7 +124,7 @@ def kb_dir(tmp_path: Path) -> Path:
 def _cfg(kb: Path) -> Config:
     return Config(
         paths=PathsConfig(kb_dir=kb),
-        gateway=GatewayConfig(tasks={"score": "qwen3:8b"}),
+        gateway=GatewayConfig(tasks={"score": "qwen3.5:9b"}),
     )
 
 
