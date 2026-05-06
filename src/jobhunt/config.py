@@ -72,10 +72,15 @@ class GatewayConfig(BaseModel):
     api_key: str = "ollama"
     tasks: dict[str, str] = Field(
         default_factory=lambda: {
-            "score": "qwen3:8b",
-            "tailor": "qwen3:14b",
-            "cover": "qwen3:14b",
-            "qa": "qwen3:8b",
+            # qwen3.5:9b — strong open tool-use + reasoning model used as the
+            # single hot model across score/tailor/cover/qa slots. Single
+            # hot model means no reload churn between task types. Quality is
+            # backed by the deterministic post-processing layers (score
+            # clamp, cover validator + retry, audit).
+            "score": "qwen3.5:9b",
+            "tailor": "qwen3.5:9b",
+            "cover": "qwen3.5:9b",
+            "qa": "qwen3.5:9b",
             "embed": "nomic-embed-text",
         }
     )

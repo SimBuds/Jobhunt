@@ -16,10 +16,10 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 ## Hardware context
 
-- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10GB VRAM)
+- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total — 8 GB usable for Ollama, 2 GB reserved for the desktop session via `OLLAMA_GPU_OVERHEAD=2147483648`)
 - Ollama at `http://localhost:11434`
-- Default models: `qwen3:14b` (Q4_K_M) for generation, `qwen3:8b` (Q5_K_M) for classification/JSON, `nomic-embed-text` for embeddings
-- One model hot in VRAM at a time. Respect this when designing flows.
+- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover, qa) — single hot model at `num_ctx=6144`; `nomic-embed-text` reserved for future embeddings
+- One model hot in VRAM at a time. Single-model setup eliminates reload churn between task types; reload churn was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
 

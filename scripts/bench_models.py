@@ -32,17 +32,19 @@ from jobhunt.pipeline.tailor import _enforce_no_fabrication, _parse
 REPO_ROOT = Path(__file__).parent.parent
 
 # --- candidate models ---------------------------------------------------------
-# Tuples of (label, task, model_id). Score tasks use qwen3:8b as baseline;
-# swap in phi4:14b-q4_K_M or qwen3.5:9b-q4_K_M when those are pulled.
+# Tuples of (label, task, model_id). Default is qwen3.5:9b (see PLAN.md).
+# Uncomment alternatives to A/B before committing a default change.
 SCORE_MODELS: list[tuple[str, str]] = [
-    ("qwen3:8b (baseline)", "qwen3:8b"),
-    # ("qwen3.5:9b-q4_K_M", "qwen3.5:9b-q4_K_M"),
-    # ("phi4:14b-q4_K_M", "phi4:14b-q4_K_M"),
+    ("qwen3.5:9b (default)", "qwen3.5:9b"),
+    # ("gemma4:e4b", "gemma4:e4b"),
+    # ("granite4.1:8b", "granite4.1:8b"),
+    # ("nemotron-3-nano:4b", "nemotron-3-nano:4b"),
 ]
 TAILOR_MODELS: list[tuple[str, str]] = [
-    ("qwen3:14b (baseline)", "qwen3:14b"),
-    # ("qwen3.5:9b-q5_K_M", "qwen3.5:9b-q5_K_M"),
-    # ("llama3.1:8b-q5_K_M", "llama3.1:8b-q5_K_M"),
+    ("qwen3.5:9b (default)", "qwen3.5:9b"),
+    # ("gemma4:e4b", "gemma4:e4b"),
+    # ("granite4.1:8b", "granite4.1:8b"),
+    # ("nemotron-3-nano:4b", "nemotron-3-nano:4b"),
 ]
 RUNS_PER_MODEL = 3
 

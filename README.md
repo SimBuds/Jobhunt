@@ -23,7 +23,7 @@ cloud LLM calls in the runtime path.
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) for dependency management
 - [Ollama](https://ollama.com) running locally (default `http://localhost:11434`)
-- ~10 GB free VRAM for the 14B-model pipeline; 6 GB works on the 8B-only path
+- ~8 GB free VRAM (the tool reserves 2 GB for the desktop session via `OLLAMA_GPU_OVERHEAD`)
 - API key (free tier) for **Adzuna CA**: <https://developer.adzuna.com/>
 
 ## Install
@@ -34,9 +34,12 @@ cd Job-Seeker
 uv sync
 uv run playwright install chromium
 
-ollama pull qwen3:14b           # tailoring, cover letters
-ollama pull qwen3:8b            # scoring, classification
+ollama pull qwen3.5:9b           # single hot model — score, tailor, cover
 ollama pull nomic-embed-text    # embeddings (reserved for future use)
+
+# One-time: reserve 2 GB of VRAM for the Linux desktop so Ollama doesn't
+# evict your compositor mid-scan. Add this to ~/.zshrc or ~/.bashrc:
+export OLLAMA_GPU_OVERHEAD=2147483648
 ```
 
 ## Commands

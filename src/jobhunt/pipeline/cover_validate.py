@@ -98,52 +98,43 @@ def validate_cover(
     body_lower = body.lower()
     full_lower = _full_text(cover).lower()
 
-    # 1. Banned phrases.
     for phrase in BANNED_PHRASES:
         if phrase in full_lower:
             violations.append(f"banned phrase: {phrase!r}")
 
-    # 2. Banned form-letter openers in the first paragraph.
     if cover.body:
         first_lower = cover.body[0].lower().lstrip()
         for opener in BANNED_OPENERS:
             if first_lower.startswith(opener):
                 violations.append(f"form-letter opener: {opener!r}")
 
-    # 3. Word count.
     wc = _word_count(body)
     if wc > max_words:
         violations.append(f"body is {wc} words; max is {max_words}")
 
-    # 4. Paragraph count (3-4 per cover.md §SYSTEM).
     if not (3 <= len(cover.body) <= 4):
         violations.append(f"expected 3-4 paragraphs; got {len(cover.body)}")
 
-    # 5. Lead paragraph names the company.
-    if cover.body and company:
-        if company.lower() not in cover.body[0].lower():
-            violations.append(f"lead paragraph does not name company {company!r}")
+    if cover.body and company and company.lower() not in cover.body[0].lower():
+        violations.append(f"lead paragraph does not name company {company!r}")
 
-    # 6. Numeric facts must appear somewhere in verified.json.
+    # Numeric facts: any digit cluster in the body must trace back to
+    # verified.json, with two carve-outs — "30%" → strip to "30" before
+    # comparing, and bare single digits 1-5 are too generic to flag (they
+    # tend to appear in echoed resume phrases like "3 years").
     allowed = _verified_numbers(verified)
     for cluster in _DIGIT_CLUSTER_RE.findall(body):
-        # Strip trailing punctuation so "30%" -> "30", "14+" -> "14".
         normalized = cluster.rstrip(".,")
         if not normalized:
             continue
-        # Allow short numbers that could be ordinals/years if they appear in
-        # verified, plus a small whitelist of harmless tokens (years already
-        # appear in work_history dates, so they're allowed by `allowed`).
         if normalized in allowed:
             continue
-        # Single-digit standalone numbers ("3 years") are too generic to flag
-        # if they're in a phrase already echoed from the resume; require the
-        # cluster to be at least two digits OR be uncommon.
         if len(normalized) == 1 and normalized in {"1", "2", "3", "4", "5"}:
             continue
         violations.append(f"unverified number: {cluster!r}")
 
-    # 7. Closing must not re-recap diploma/coursework/skills (§5).
+    # cover.md §5 — closing paragraph must be forward-looking, not a
+    # diploma/coursework recap. Only check if there are ≥3 paragraphs.
     if len(cover.body) >= 3:
         closing_lower = cover.body[-1].lower()
         for token in ("dean's list", "coursework", "george brown", "diploma"):
@@ -151,16 +142,13 @@ def validate_cover(
                 violations.append(f"closing recaps resume material: {token!r}")
                 break
 
-    # 8. Salutation sanity.
     sal = cover.salutation.strip().lower()
     if "to whom it may concern" in sal:
         violations.append("salutation: 'To whom it may concern' is banned")
 
-    # 9. Exclamation marks (§7: 'No exclamation marks').
     if "!" in body:
         violations.append("body contains an exclamation mark")
 
-    # 10. Body lower used for placeholder check.
     if "{" in body_lower or "}" in body_lower:
         violations.append("body contains an unfilled template placeholder")
 
