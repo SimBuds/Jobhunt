@@ -9,6 +9,15 @@ from collections.abc import AsyncIterator
 
 import httpx
 import typer
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
@@ -19,7 +28,8 @@ from jobhunt.db import (
     upsert_job,
     write_score,
 )
-from jobhunt.errors import IngestError, JobHuntError
+from jobhunt.errors import GatewayError, IngestError, JobHuntError
+from jobhunt.gateway import complete_json
 from jobhunt.http import RateLimiter
 from jobhunt.ingest import (
     adzuna_ca,
@@ -44,7 +54,10 @@ def run(
     skip_ingest: bool = typer.Option(False, "--skip-ingest", help="Score backlog only."),
     limit: int | None = typer.Option(None, "--limit", help="Cap how many jobs to score."),
 ) -> None:
+    from jobhunt.commands import ensure_profile
+
     cfg = load_config()
+    ensure_profile(cfg)
     asyncio.run(_run(cfg, skip_score=skip_score, skip_ingest=skip_ingest, limit=limit))
 
 
@@ -74,6 +87,7 @@ async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int |
             f"({new_n} new, {stale_n} stale — profile/prompt/policy changed) "
             "(this can take a while on Ollama)"
         )
+        await _warm_model(cfg)
         ok = 0
         for row in rows:
             job = Job(
@@ -115,6 +129,30 @@ async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int |
         conn.close()
 
 
+async def _warm_model(cfg: Config) -> None:
+    """Pre-warm the score model so the first real call doesn't pay the cold-load
+    cost on top of the 180 s gateway timeout. A trivial chat with the configured
+    keep_alive leaves the model resident for subsequent scoring calls."""
+    model = cfg.gateway.tasks.get("score", "")
+    if not model:
+        return
+    typer.echo(f"score: warming {model}...")
+    try:
+        await complete_json(
+            base_url=cfg.gateway.base_url,
+            model=model,
+            system="Return JSON.",
+            user="ok",
+            schema={
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+            },
+        )
+    except GatewayError as e:
+        typer.echo(f"  ! warm-up failed (continuing): {e}", err=True)
+
+
 async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
     """Run all configured ingest adapters concurrently. Returns count inserted."""
     secrets = load_secrets()
@@ -124,33 +162,29 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(60.0), headers=headers, follow_redirects=True
     ) as client:
-        streams: list[AsyncIterator[Job]] = []
+        # Each adapter source is registered with a (source, label, fetch_iter)
+        # triple so the progress bar can show one line per adapter.
+        adapters: list[tuple[str, str, AsyncIterator[Job]]] = []
         for slug in cfg.ingest.greenhouse:
-            streams.append(
-                _safe_stream("greenhouse", slug, greenhouse.fetch(client, limiter, slug))
-            )
+            adapters.append(("greenhouse", slug, greenhouse.fetch(client, limiter, slug)))
         for slug in cfg.ingest.lever:
-            streams.append(_safe_stream("lever", slug, lever.fetch(client, limiter, slug)))
+            adapters.append(("lever", slug, lever.fetch(client, limiter, slug)))
         for slug in cfg.ingest.ashby:
-            streams.append(_safe_stream("ashby", slug, ashby.fetch(client, limiter, slug)))
+            adapters.append(("ashby", slug, ashby.fetch(client, limiter, slug)))
         for slug in cfg.ingest.smartrecruiters:
-            streams.append(
-                _safe_stream(
-                    "smartrecruiters", slug, smartrecruiters.fetch(client, limiter, slug)
-                )
+            adapters.append(
+                ("smartrecruiters", slug, smartrecruiters.fetch(client, limiter, slug))
             )
         for spec in cfg.ingest.workday:
-            streams.append(_safe_stream("workday", spec, workday.fetch(client, limiter, spec)))
+            adapters.append(("workday", spec, workday.fetch(client, limiter, spec)))
         for url in cfg.ingest.job_bank_ca:
-            streams.append(
-                _safe_stream("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url))
-            )
+            adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url)))
         for url in cfg.ingest.rss:
-            streams.append(_safe_stream("rss", url, rss_generic.fetch(client, limiter, url)))
+            adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
         if secrets.adzuna_app_id and secrets.adzuna_app_key:
             for query in cfg.ingest.adzuna.queries:
-                streams.append(
-                    _safe_stream(
+                adapters.append(
+                    (
                         "adzuna_ca",
                         query,
                         adzuna_ca.fetch(
@@ -170,7 +204,7 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
                 file=sys.stderr,
             )
 
-        if not streams:
+        if not adapters:
             typer.echo(
                 "ingest: no sources configured. Edit ~/.config/jobhunt/config.toml — "
                 "set ingest.greenhouse/lever/ashby slugs.",
@@ -181,34 +215,53 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
         # Drain all streams concurrently — adapters share the per-host
         # RateLimiter so politeness is preserved while distinct hosts overlap.
         queue: asyncio.Queue[Job | None] = asyncio.Queue()
+        console = Console(stderr=True)
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        )
 
-        async def drain(stream: AsyncIterator[Job]) -> None:
-            async for job in stream:
-                await queue.put(job)
+        with progress:
+            overall = progress.add_task("ingest", total=len(adapters))
+            task_ids: list[int] = []
+            streams: list[AsyncIterator[Job]] = []
+            for source, label, fetch in adapters:
+                tid = progress.add_task(f"  {source}/{label}", total=None, start=True)
+                task_ids.append(tid)
+                streams.append(_safe_stream(source, label, fetch, progress, tid, overall))
 
-        producers = [asyncio.create_task(drain(s)) for s in streams]
+            async def drain(stream: AsyncIterator[Job]) -> None:
+                async for job in stream:
+                    await queue.put(job)
 
-        async def closer() -> None:
-            await asyncio.gather(*producers, return_exceptions=False)
-            await queue.put(None)
+            producers = [asyncio.create_task(drain(s)) for s in streams]
 
-        closer_task = asyncio.create_task(closer())
+            async def closer() -> None:
+                await asyncio.gather(*producers, return_exceptions=False)
+                await queue.put(None)
 
-        inserted = 0
-        seen_dedup: set[str] = set()
-        while True:
-            item = await queue.get()
-            if item is None:
-                break
-            dedup_key = _dedup_key(item)
-            if dedup_key in seen_dedup:
-                continue
-            seen_dedup.add(dedup_key)
-            with conn:
-                if upsert_job(conn, item):
-                    inserted += 1
-        await closer_task
-        return inserted
+            closer_task = asyncio.create_task(closer())
+
+            inserted = 0
+            seen_dedup: set[str] = set()
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                dedup_key = _dedup_key(item)
+                if dedup_key in seen_dedup:
+                    continue
+                seen_dedup.add(dedup_key)
+                with conn:
+                    if upsert_job(conn, item):
+                        inserted += 1
+            await closer_task
+            return inserted
 
 
 _DEDUP_RE = __import__("re").compile(r"[^a-z0-9]+")
@@ -227,10 +280,35 @@ def _dedup_key(job: Job) -> str:
     return f"{title_norm}:{company_norm}"
 
 
-async def _safe_stream(source: str, label: str, stream: AsyncIterator[Job]) -> AsyncIterator[Job]:
-    """Wrap an adapter so a failure on one source doesn't kill the whole scan."""
+async def _safe_stream(
+    source: str,
+    label: str,
+    stream: AsyncIterator[Job],
+    progress: Progress,
+    task_id: int,
+    overall_id: int,
+) -> AsyncIterator[Job]:
+    """Wrap an adapter so a failure on one source doesn't kill the whole scan,
+    while updating the rich progress display with live job counts."""
+    n = 0
     try:
         async for job in stream:
+            n += 1
+            progress.update(task_id, description=f"  {source}/{label} — {n}")
             yield job
     except IngestError as e:
-        typer.echo(f"  ! {source}/{label}: {e}", err=True)
+        progress.update(
+            task_id,
+            description=f"  {source}/{label} — error: {e}",
+            completed=1,
+            total=1,
+        )
+        progress.advance(overall_id)
+        return
+    progress.update(
+        task_id,
+        description=f"  {source}/{label} — {n} job(s)",
+        completed=1,
+        total=1,
+    )
+    progress.advance(overall_id)

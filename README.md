@@ -23,7 +23,7 @@ cloud LLM calls in the runtime path.
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) for dependency management
 - [Ollama](https://ollama.com) running locally (default `http://localhost:11434`)
-- ~8 GB free VRAM (the tool reserves 2 GB for the desktop session via `OLLAMA_GPU_OVERHEAD`)
+- ~10 GB VRAM (qwen3.5:9b lands at ~9 GB resident at `num_ctx=6144`)
 - API key (free tier) for **Adzuna CA**: <https://developer.adzuna.com/>
 
 ## Install
@@ -36,10 +36,6 @@ uv run playwright install chromium
 
 ollama pull qwen3.5:9b           # single hot model — score, tailor, cover
 ollama pull nomic-embed-text    # embeddings (reserved for future use)
-
-# One-time: reserve 2 GB of VRAM for the Linux desktop so Ollama doesn't
-# evict your compositor mid-scan. Add this to ~/.zshrc or ~/.bashrc:
-export OLLAMA_GPU_OVERHEAD=2147483648
 ```
 
 ## Commands
@@ -93,6 +89,18 @@ The flag must come **before** the job id.
 uv run job-seeker config show       # writes a default config and prints it
 uv run job-seeker db init           # creates SQLite schema at data/jobhunt.db
 uv run job-seeker convert-resume    # generates kb/profile/* from the baseline
+```
+
+`scan`, `list`, and `apply` will refuse to run until `convert-resume` has been
+executed at least once — they need `kb/profile/verified.json` as the source of
+truth.
+
+To start over from scratch (drops the DB, all tailored documents, the HTTP
+cache, the browser profile, and the parsed resume):
+
+```bash
+uv run job-seeker db reset          # prompts for 'yes', then re-inits schema
+uv run job-seeker convert-resume    # regenerate kb/profile/ before scanning
 ```
 
 Edit `~/.config/jobhunt/config.toml` to add company slugs:

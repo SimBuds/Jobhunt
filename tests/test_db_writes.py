@@ -55,7 +55,7 @@ def test_unscored_jobs_excludes_scored(conn):
         reasons=["match"],
         red_flags=[],
         must_clarify=[],
-        model="qwen3:8b",
+        model="qwen3.5:9b",
         prompt_hash="abc",
     )
     rows = unscored_jobs(conn)

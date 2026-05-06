@@ -34,14 +34,14 @@ async def test_read_timeout_message_is_non_empty(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(GatewayError) as exc:
         await complete_json(
             base_url="http://localhost:11434",
-            model="qwen3:8b",
+            model="qwen3.5:9b",
             system="s",
             user="u",
             schema={"type": "object"},
         )
     msg = str(exc.value)
     assert msg
-    assert "qwen3:8b" in msg
+    assert "qwen3.5:9b" in msg
     assert "ReadTimeout" in msg
 
 
@@ -73,14 +73,14 @@ async def test_http_error_status_includes_model(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(GatewayError) as exc:
         await complete_json(
             base_url="http://localhost:11434",
-            model="qwen3:14b",
+            model="qwen3.5:9b",
             system="s",
             user="u",
             schema={"type": "object"},
         )
     msg = str(exc.value)
     assert "503" in msg
-    assert "qwen3:14b" in msg
+    assert "qwen3.5:9b" in msg
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_payload_includes_keep_alive(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("httpx.AsyncClient", lambda *a, **kw: _client(handler))
     await complete_json(
         base_url="http://localhost:11434",
-        model="qwen3:8b",
+        model="qwen3.5:9b",
         system="s",
         user="u",
         schema={"type": "object"},

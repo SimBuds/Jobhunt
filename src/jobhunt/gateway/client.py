@@ -43,6 +43,7 @@ async def complete_json(
         ],
         "stream": False,
         "format": schema,
+        "think": False,
         "keep_alive": keep_alive,
         "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
