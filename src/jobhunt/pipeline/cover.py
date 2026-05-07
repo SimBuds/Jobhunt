@@ -51,7 +51,12 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         schema=prompt.schema,
         temperature=prompt.temperature,
     )
-    body = raw["body"]
+    body = raw.get("body") or raw.get("paragraphs") or raw.get("content")
+    if body is None:
+        raise PipelineError(
+            f"cover returned malformed shape (missing 'body'); "
+            f"keys={sorted(raw.keys())}"
+        )
     if isinstance(body, str):
         body = [body]
     return CoverLetter(

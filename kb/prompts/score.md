@@ -59,8 +59,12 @@ peer in the same family, related school/contract project. Generic asks
 
 ### Auto-decline triggers (set `decline_reason` to a short string)
 
-Use these sparingly. "Senior" alone in a title is **not** a decline trigger —
-many companies title 3–5-year IC roles "Senior".
+Use these sparingly. "Senior", "Sr.", "Senior Engineer", "Senior Full Stack",
+"Senior Software Engineer", "Senior Developer" are **NEVER** decline triggers
+on their own — many companies title 3–5-year IC roles "Senior". Score them in
+the 60–85 band based on coverage. Do **not** emit a `decline_reason` like
+"Title implies Senior seniority" or "Title seniority mismatch" — those are
+invalid and will be rejected by the deterministic post-filter.
 
 - **4+ hard gaps** (after applying transferable matching above).
 - **Years explicitly required > 5** AND no transferable project bridges
@@ -78,7 +82,13 @@ many companies title 3–5-year IC roles "Senior".
   trading, medical devices, defense) and verified_facts shows none.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
 
-If none apply, set `decline_reason` to null and return a 0–100 score.
+If none apply, set `decline_reason` to null and return a score.
+
+**`score=0` is reserved for declines.** If you set `decline_reason` to null,
+the score MUST be ≥ 30. Do NOT use score=0 as a soft-decline signal — that
+bypasses the rubric and is rejected by the deterministic post-filter. If a
+job is a weak fit but doesn't match an auto-decline trigger, score it
+honestly in the 30–55 band per the rubric below.
 
 ### Score rubric
 

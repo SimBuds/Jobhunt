@@ -122,7 +122,7 @@ def test_keyword_coverage_partial(verified: dict) -> None:
 def test_keyword_coverage_empty_must_haves(verified: dict) -> None:
     tailored = _minimal_tailored(verified)
     pct, matched, missing = keyword_coverage([], tailored)
-    assert pct == 100
+    assert pct is None
     assert matched == []
     assert missing == []
 

@@ -72,8 +72,30 @@ async def tailor_resume(cfg: Config, job: Job) -> TailoredResume:
     tailored = _parse(raw, model)
     _enforce_no_fabrication(tailored, verified)
     _dedupe_education(tailored)
+    _complete_familiar_bucket(tailored, verified)
     _shrink_to_one_page(tailored)
     return tailored
+
+
+def _complete_familiar_bucket(tailored: TailoredResume, verified: dict[str, Any]) -> None:
+    """Ensure the Familiar category contains every verified `skills_familiar`.
+
+    The tailor prompt requires the Familiar bucket items to be exactly the
+    verified set (reorder allowed). The LLM occasionally drops one or two.
+    Append any missing items here. The later shrink-to-one-page pass may
+    still trim Familiar items down to `_FAMILIAR_FLOOR`, which is intended.
+    """
+    verified_familiar = list(verified.get("skills_familiar") or [])
+    if not verified_familiar:
+        return
+    for cat in tailored.skills_categories:
+        if cat.name.strip().lower() != "familiar":
+            continue
+        present = {item.strip().lower() for item in cat.items}
+        for v in verified_familiar:
+            if v.strip().lower() not in present:
+                cat.items.append(v)
+        return
 
 
 _FAMILIAR_FLOOR = 4
@@ -129,27 +151,52 @@ def _shrink_to_one_page(tailored: TailoredResume) -> None:
     )
 
 
+def _normalize_aliases(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map common qwen3.5:9b alias keys to the schema-correct ones.
+
+    The model often mirrors verified.json's keys (`skills`, `work_history`)
+    instead of the schema's (`skills_categories`, `roles`). This best-effort
+    rewrite avoids a hard crash; downstream parsing still validates shape.
+    """
+    out = dict(raw)
+    if "skills_categories" not in out and "skills" in out:
+        out["skills_categories"] = out["skills"]
+    if "roles" not in out and "work_history" in out:
+        out["roles"] = out["work_history"]
+    return out
+
+
 def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
-    return TailoredResume(
-        summary=str(raw["summary"]).strip(),
-        skills_categories=[
-            TailoredCategory(name=c["name"], items=list(c["items"]))
-            for c in raw["skills_categories"]
-        ],
-        roles=[
-            TailoredRole(
-                title=r["title"],
-                employer=r["employer"],
-                dates=r["dates"],
-                bullets=list(r["bullets"]),
-            )
-            for r in raw["roles"]
-        ],
-        certifications=list(raw.get("certifications") or []),
-        education=list(raw.get("education") or []),
-        coursework=list(raw.get("coursework") or []),
-        model=model,
-    )
+    raw = _normalize_aliases(raw)
+    try:
+        return TailoredResume(
+            summary=str(raw["summary"]).strip(),
+            skills_categories=[
+                TailoredCategory(name=c["name"], items=list(c["items"]))
+                for c in raw["skills_categories"]
+            ],
+            roles=[
+                TailoredRole(
+                    title=r["title"],
+                    employer=r["employer"],
+                    dates=r["dates"],
+                    bullets=list(r["bullets"]),
+                )
+                for r in raw["roles"]
+            ],
+            certifications=list(raw.get("certifications") or []),
+            education=list(raw.get("education") or []),
+            coursework=list(raw.get("coursework") or []),
+            model=model,
+        )
+    except (KeyError, TypeError) as e:
+        # qwen3.5:9b sometimes returns a dict that parses as JSON but is
+        # missing required keys or has wrong shapes. Convert to a domain
+        # error so apply_cmd skips the job instead of crashing.
+        raise PipelineError(
+            f"tailor returned malformed shape ({type(e).__name__}: {e}); "
+            f"keys={sorted(raw.keys())}"
+        ) from e
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
