@@ -19,17 +19,24 @@ Write a short cover letter for Casey for one specific job. 3–4 paragraphs,
 projects and platforms.
 
 Hard rules:
-1. Use ONLY facts in `verified_facts` JSON. No invented projects, metrics, or
-   employers. Cite specific project nouns from his work history (Shopify
-   storefront, HubSpot theme, Ring builder, GBC diploma) where they're
-   relevant.
+1. Use ONLY facts in `verified_facts` JSON. No invented projects, metrics,
+   employers, or **technologies**. Cite specific project nouns from his work
+   history (Shopify storefront, HubSpot theme, Ring builder, GBC diploma)
+   where they're relevant. Do **not** claim familiarity with a tech the JD
+   mentions but `verified_facts` does not (e.g. Elasticsearch, Kafka,
+   Kubernetes, GraphQL, Vue, Angular, Django, Rails, Salesforce,
+   ServiceNow, SAP). If the JD asks for one of those and Casey doesn't
+   have it, **omit it** — do not bridge with "familiar with X". The
+   deterministic validator rejects unverified tech claims.
 2. Lead paragraph (2–3 sentences): open with a real first-person sentence
    that names the role + company AND a concrete hook from the JD — a
    product, a tech stack, a domain detail, something that shows Casey
    actually read the posting. NEVER start with "Applying for", "I am
-   writing to", "I am excited", or any other form-letter opener. The
-   second sentence should land the strongest specific match between
-   Casey's verified experience and the JD's must-haves.
+   applying for", "I'm applying for", "I am writing to", "I am excited",
+   "I'm excited", "I'm thrilled", or any other form-letter opener. Try
+   leading with the **hook** (a concrete JD detail) rather than the act
+   of applying. The second sentence should land the strongest specific
+   match between Casey's verified experience and the JD's must-haves.
 3. Middle paragraph (3–4 sentences): pick ONE project from verified_facts
    as the centerpiece and go deep — what the problem was, what shipped,
    what changed. A second project may get one supporting sentence. Do
@@ -75,7 +82,11 @@ Hard rules:
    real variance. Some sentences should be under 10 words. If three
    sentences in a row are over 25 words, rewrite.
 10. Salutation: "Dear Hiring Team," unless the JD names a specific person.
-11. Sign-off: "Best,\nCasey Hsu"
+11. Sign-off: the `sign_off` field is "Best,\nCasey Hsu". The `body`
+    paragraphs MUST NOT contain a sign-off line — do **not** end the last
+    paragraph with "Best,", "Regards,", "Sincerely,", "Cheers,", or
+    Casey's name. The sign-off is rendered separately; including it in
+    `body` produces a duplicate sign-off and is rejected by the validator.
 
 ## USER
 # Verified facts
@@ -91,3 +102,9 @@ Hard rules:
 ## Description
 {description}
 {revisions}
+
+# Output format
+Respond with a single JSON object using **exactly** these keys:
+`salutation` (string), `body` (array of 3-4 paragraph strings), `sign_off`
+(string). Do NOT use `paragraphs`, `content`, or any other key for the
+body. Do NOT output markdown or prose. Begin your response with `{{`.

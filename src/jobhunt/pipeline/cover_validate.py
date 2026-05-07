@@ -43,12 +43,21 @@ BANNED_PHRASES: tuple[str, ...] = (
     "support your team's goals",
 )
 
-# Form-letter openers banned by §2.
+# Form-letter openers banned by §2. Matched after stripping a leading
+# "i am " / "i'm " so "I am applying for…" is caught the same as "Applying for…".
 BANNED_OPENERS: tuple[str, ...] = (
     "applying for",
-    "i am writing to",
-    "i am excited",
+    "applying to",
+    "writing to",
+    "excited to",
+    "thrilled to",
     "to whom it may concern",
+)
+
+_LEADING_FILLER_RE = re.compile(r"^(?:i\s*am\s+|i'?m\s+|hello,?\s*|hi,?\s*)+", re.IGNORECASE)
+_SIGNOFF_TAIL_RE = re.compile(
+    r"\b(?:best|regards|sincerely|cheers|thanks|thank you|best regards|kind regards)\s*,?\s*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 _DIGIT_CLUSTER_RE = re.compile(r"\d[\d,.]*")
@@ -65,6 +74,65 @@ def _full_text(cover: CoverLetter) -> str:
 
 def _word_count(text: str) -> int:
     return len(_WORD_RE.findall(text))
+
+
+# Tech names that frequently get fabricated in cover letters when the JD
+# mentions them but verified.json does not. If one appears in the body and
+# isn't in the verified blob, that's a fabrication.
+_FABRICATION_WATCHLIST: tuple[str, ...] = (
+    "elasticsearch",
+    "kafka",
+    "kubernetes",
+    "k8s",
+    "redis",
+    "graphql",
+    "rust",
+    "golang",
+    " go,",  # avoid "Go" the verb
+    "scala",
+    "ruby",
+    "rails",
+    "django",
+    "flask",
+    "fastapi",
+    "vue",
+    "angular",
+    "svelte",
+    "tailwind",
+    "terraform",
+    "ansible",
+    "snowflake",
+    "databricks",
+    "spark",
+    "hadoop",
+    "salesforce",
+    "servicenow",
+    "sap",
+    "dynamics 365",
+)
+
+
+def _verified_skill_blob(verified: dict[str, Any]) -> str:
+    """Lowercased blob of every verified skill, role text, and project for
+    fabrication checks. Includes summary so phrasing like 'Ollama' counts."""
+    parts: list[str] = []
+    for key in (
+        "skills_core",
+        "skills_cms",
+        "skills_data_devops",
+        "skills_ai",
+        "skills_familiar",
+    ):
+        for s in verified.get(key, []):
+            parts.append(s)
+    if isinstance(verified.get("summary"), str):
+        parts.append(verified["summary"])
+    for role in verified.get("work_history", []):
+        parts.append(role.get("title", ""))
+        parts.append(role.get("employer", ""))
+        for b in role.get("bullets", []):
+            parts.append(b)
+    return " ".join(parts).lower()
 
 
 def _verified_numbers(verified: dict[str, Any]) -> set[str]:
@@ -104,9 +172,21 @@ def validate_cover(
 
     if cover.body:
         first_lower = cover.body[0].lower().lstrip()
+        # Strip leading "I am " / "I'm " / "Hello, " etc. before matching, so
+        # "I am applying for…" is caught the same as "Applying for…".
+        first_normalized = _LEADING_FILLER_RE.sub("", first_lower).lstrip()
         for opener in BANNED_OPENERS:
-            if first_lower.startswith(opener):
+            if first_normalized.startswith(opener):
                 violations.append(f"form-letter opener: {opener!r}")
+                break
+
+    # §2 also: the body must NOT contain a sign-off line. The sign_off field
+    # is rendered separately; duplicating it here prints two sign-offs.
+    if cover.body:
+        for i, para in enumerate(cover.body):
+            if _SIGNOFF_TAIL_RE.search(para.strip()):
+                violations.append(f"paragraph {i + 1} ends with a sign-off line")
+                break
 
     wc = _word_count(body)
     if wc > max_words:
@@ -151,5 +231,12 @@ def validate_cover(
 
     if "{" in body_lower or "}" in body_lower:
         violations.append("body contains an unfilled template placeholder")
+
+    # Fabrication: check the watchlist of frequently-invented techs. If the
+    # body claims one and verified.json doesn't, that's a hard violation.
+    verified_blob = _verified_skill_blob(verified)
+    for tech in _FABRICATION_WATCHLIST:
+        if tech in body_lower and tech not in verified_blob:
+            violations.append(f"unverified tech claim: {tech.strip(', ')!r}")
 
     return violations

@@ -60,8 +60,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         temperature=prompt.temperature,
     )
     raw_score = int(result["score"])
-    llm_matched = list(result.get("matched_must_haves") or [])
-    llm_gaps = list(result.get("gaps") or [])
+    llm_matched = _coerce_phrase_list(result.get("matched_must_haves"))
+    llm_gaps = _coerce_phrase_list(result.get("gaps"))
 
     # Deterministic check: trust the LLM's extraction of which phrases are
     # must-haves (it can read the JD), but verify each against verified.json
@@ -71,14 +71,74 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     coverage_pct = _coverage_pct(matched, gaps)
     score = _clamp_by_coverage(raw_score, coverage_pct)
 
+    decline_reason = result.get("decline_reason")
+    if _is_bogus_senior_decline(decline_reason, job.title or ""):
+        decline_reason = None
+
+    # qwen3.5:9b sometimes uses score=0 as a silent decline (no decline_reason).
+    # The prompt forbids this; enforce a floor so non-declined jobs stay in
+    # the rubric's 30+ range and remain visible to calibration.
+    if decline_reason is None and score < 30:
+        score = 40
+
     return ScoreResult(
         score=score,
         matched_must_haves=matched,
         gaps=gaps,
-        decline_reason=result.get("decline_reason"),
+        decline_reason=decline_reason,
         ai_bonus_present=bool(result.get("ai_bonus_present")),
         model=model,
     )
+
+
+def _coerce_phrase_list(raw: object) -> list[str]:
+    """Schema says items are strings, but qwen sometimes returns dicts. Coerce defensively."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            s = item
+        elif isinstance(item, dict):
+            s = str(
+                item.get("phrase")
+                or item.get("name")
+                or item.get("skill")
+                or item.get("text")
+                or item.get("must_have")
+                or ""
+            )
+        else:
+            s = str(item) if item is not None else ""
+        s = s.strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _is_bogus_senior_decline(decline_reason: str | None, title: str) -> bool:
+    """True when the LLM declined solely on 'Senior' wording without a real trigger.
+
+    The score prompt is explicit that 'Senior' alone is not a decline trigger,
+    but qwen3.5:9b often ignores that rule. This guard nullifies a decline
+    when the only signal is the word 'Senior'/'Sr.'/'seniority' and neither
+    the reason nor the title cites a genuine trigger (Lead/Principal/etc.).
+    """
+    if not decline_reason:
+        return False
+    r = decline_reason.lower()
+    if not any(k in r for k in ("senior", "sr.", "seniority")):
+        return False
+    # The model often pads its reason with a generic laundry list
+    # ("Senior/Staff/Lead seniority"), so we don't trust the reason text to
+    # tell us whether a real trigger applies. Use the title instead: if the
+    # title has no Lead/Principal/Architect/Staff/Manager/Director word,
+    # the decline is bogus.
+    t = (title or "").lower()
+    title_triggers = ("lead", "principal", "architect", "staff", "manager", "director", "head of")
+    if any(k in t for k in title_triggers):
+        return False
+    return True
 
 
 def _verify_against_profile(

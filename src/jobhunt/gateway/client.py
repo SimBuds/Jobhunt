@@ -47,26 +47,49 @@ async def complete_json(
         "keep_alive": keep_alive,
         "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
+    async def _post(p: dict[str, Any]) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
+                r = await client.post(url, json=p)
+        except httpx.HTTPError as e:
+            raise GatewayError(
+                f"ollama request failed (model={model}, {type(e).__name__}): {e}"
+            ) from e
+        if r.status_code >= 400:
+            raise GatewayError(f"ollama {r.status_code} (model={model}): {r.text[:300]}")
+        body = r.json()
+        content = (body.get("message") or {}).get("content")
+        if not content:
+            raise GatewayError(f"ollama returned no content: {body!r}")
+        return content
+
+    content = await _post(payload)
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
-            r = await client.post(url, json=payload)
-    except httpx.HTTPError as e:
-        # httpx exceptions like ReadTimeout / RemoteProtocolError frequently
-        # format to an empty string. Always include the class name and the
-        # model so the failure isn't silent on the user's terminal.
-        raise GatewayError(
-            f"ollama request failed (model={model}, {type(e).__name__}): {e}"
-        ) from e
-    if r.status_code >= 400:
-        raise GatewayError(f"ollama {r.status_code} (model={model}): {r.text[:300]}")
-    body = r.json()
-    content = (body.get("message") or {}).get("content")
-    if not content:
-        raise GatewayError(f"ollama returned no content: {body!r}")
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as e:
-        raise GatewayError(f"ollama returned invalid JSON: {e} — {content[:200]}") from e
+        parsed: Any = json.loads(content)
+    except json.JSONDecodeError:
+        parsed = None
     if not isinstance(parsed, dict):
-        raise GatewayError(f"expected object, got {type(parsed).__name__}")
+        # qwen3.5:9b occasionally ignores `format=schema` and emits markdown
+        # or a JSON array. Retry once with an explicit reinforcement.
+        reinforcement = (
+            "\n\nREMINDER: Respond with a single JSON object matching the "
+            "provided schema. Do NOT output markdown, prose, or code fences. "
+            "Begin your response with `{`."
+        )
+        retry_payload = {
+            **payload,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user + reinforcement},
+            ],
+        }
+        content = await _post(retry_payload)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise GatewayError(
+                f"ollama returned invalid JSON: {e} — {content[:200]}"
+            ) from e
+        if not isinstance(parsed, dict):
+            raise GatewayError(f"expected object, got {type(parsed).__name__}")
     return parsed

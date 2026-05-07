@@ -337,7 +337,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         audit_path = write_audit(out_dir, audit_result)
         typer.echo(
             f"    audit: verdict={audit_result.verdict} "
-            f"keyword_coverage={audit_result.keyword_coverage_pct}% "
+            f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
             f"missing={len(audit_result.missing_must_haves)} "
             f"cover_violations={len(audit_result.cover_letter_violations)}"
         )

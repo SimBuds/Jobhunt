@@ -104,3 +104,30 @@ Hard rules (from kb/policies/tailoring-rules.md):
 
 ## Description
 {description}
+
+# Output format
+Respond with a single JSON object matching the schema above. Do NOT output
+markdown, prose, code fences, or the resume itself in any other form. Begin
+your response with `{{` and end it with `}}`.
+
+The output object MUST use **exactly** these top-level keys (do NOT invent
+`name`, `contact_line`, `skills`, `work_history`, or any other key — those
+are wrong):
+
+```
+{{
+  "summary": "<3-5 sentence string>",
+  "skills_categories": [
+    {{ "name": "<category name>", "items": ["<skill>", "..."] }}
+  ],
+  "roles": [
+    {{ "title": "...", "employer": "...", "dates": "...", "bullets": ["..."] }}
+  ],
+  "certifications": ["..."],
+  "education": ["..."],
+  "coursework": ["..."]
+}}
+```
+
+Do NOT include `name` or `contact_line` — those are rendered from
+verified_facts separately.

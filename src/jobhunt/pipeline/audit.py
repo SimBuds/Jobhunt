@@ -38,7 +38,7 @@ MIN_KEYWORD_COVERAGE_PCT = 70
 
 @dataclass
 class AuditResult:
-    keyword_coverage_pct: int
+    keyword_coverage_pct: int | None  # None when no must-haves were extracted
     matched_keywords: list[str]
     missing_must_haves: list[str]
     fabrication_flags: list[str]
@@ -69,10 +69,10 @@ def _resume_text(tailored: TailoredResume) -> str:
 
 def keyword_coverage(
     must_haves: list[str], tailored: TailoredResume
-) -> tuple[int, list[str], list[str]]:
-    """Return (coverage_pct, matched, missing)."""
+) -> tuple[int | None, list[str], list[str]]:
+    """Return (coverage_pct, matched, missing). pct is None when no must-haves."""
     if not must_haves:
-        return 100, [], []
+        return None, [], []
     blob = _resume_text(tailored)
     matched: list[str] = []
     missing: list[str] = []
@@ -114,7 +114,7 @@ def audit(
 
     if fabrication_flags:
         verdict = "block"
-    elif cover_violations or coverage_pct < MIN_KEYWORD_COVERAGE_PCT:
+    elif cover_violations or (coverage_pct is not None and coverage_pct < MIN_KEYWORD_COVERAGE_PCT):
         verdict = "revise"
     else:
         verdict = "ship"
