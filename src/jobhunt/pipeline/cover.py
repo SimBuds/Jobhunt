@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +11,30 @@ from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline.score import MAX_DESC_CHARS, truncate
+
+# Trailing sign-off pattern: an optional closer ("Best,", "Regards,",
+# "Sincerely,", etc.) followed optionally by Casey's name on its own line.
+# Matches at the end of a paragraph string (with or without a preceding newline).
+_TRAILING_SIGNOFF_RE = re.compile(
+    r"(?:\n+|\s+|^)"
+    r"(?:best|regards|sincerely|cheers|thanks|thank you|best regards|kind regards)"
+    r"\s*,?\s*"
+    r"(?:\n+\s*casey\s*hsu\s*)?"
+    r"\Z",
+    re.IGNORECASE,
+)
+
+
+def _strip_trailing_signoff(paragraph: str) -> str:
+    """Remove a stray sign-off line from the end of a body paragraph.
+
+    qwen3.5:9b habitually closes the last body paragraph with 'Best,' or
+    'Best,\\nCasey Hsu' even though the schema's sign_off field is rendered
+    separately. The validator catches this but the retry loop can't reliably
+    coax the model out of the habit, so we strip it deterministically.
+    """
+    cleaned = _TRAILING_SIGNOFF_RE.sub("", paragraph).rstrip()
+    return cleaned
 
 
 @dataclass
@@ -59,9 +84,11 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         )
     if isinstance(body, str):
         body = [body]
+    cleaned_body = [_strip_trailing_signoff(str(p).strip()) for p in body]
+    cleaned_body = [p for p in cleaned_body if p]
     return CoverLetter(
         salutation=str(raw.get("salutation") or "Dear Hiring Team,"),
-        body=[str(p).strip() for p in body],
+        body=cleaned_body,
         sign_off=str(raw.get("sign_off") or "Best,\nCasey Hsu"),
         model=model,
     )

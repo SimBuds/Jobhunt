@@ -60,6 +60,15 @@ _SIGNOFF_TAIL_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Phrases that indicate the candidate is disclaiming a tech, not claiming it.
+# Used to suppress fabrication false-positives like "rather than Scala".
+_NEGATION_PRECEDES_RE = re.compile(
+    r"\b(?:not|no|never|without|lack(?:ing)?|rather than|instead of|"
+    r"unverified|don['’]?t (?:have|use|know)|haven['’]?t (?:used|worked)|"
+    r"unfamiliar with|outside (?:my|of))\b[^.]*$",
+    re.IGNORECASE,
+)
+
 _DIGIT_CLUSTER_RE = re.compile(r"\d[\d,.]*")
 _WORD_RE = re.compile(r"\b\w+\b")
 
@@ -88,7 +97,6 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "graphql",
     "rust",
     "golang",
-    " go,",  # avoid "Go" the verb
     "scala",
     "ruby",
     "rails",
@@ -195,15 +203,31 @@ def validate_cover(
     if not (3 <= len(cover.body) <= 4):
         violations.append(f"expected 3-4 paragraphs; got {len(cover.body)}")
 
-    if cover.body and company and company.lower() not in cover.body[0].lower():
-        violations.append(f"lead paragraph does not name company {company!r}")
+    if cover.body and company:
+        # Companies often have separators ("PheedLoop / NordSpace", "Acme, Inc.",
+        # "Foo & Bar"). Accept any non-trivial token from the company name in
+        # the lead, since the model rarely repeats the full punctuated form.
+        first_lower = cover.body[0].lower()
+        company_tokens = [
+            t.strip().lower()
+            for t in re.split(r"[/,&|\-]| and ", company)
+            if len(t.strip()) >= 3
+        ]
+        if not any(t in first_lower for t in company_tokens):
+            violations.append(f"lead paragraph does not name company {company!r}")
 
     # Numeric facts: any digit cluster in the body must trace back to
-    # verified.json, with two carve-outs — "30%" → strip to "30" before
-    # comparing, and bare single digits 1-5 are too generic to flag (they
-    # tend to appear in echoed resume phrases like "3 years").
+    # verified.json, with carve-outs:
+    # - "30%" → strip to "30" before comparing
+    # - bare single digits 1-5 are too generic to flag (they tend to appear in
+    #   echoed resume phrases like "3 years")
+    # - numbers in the lead paragraph are exempt: the lead typically cites a
+    #   JD-stated stat about the company ("1,500 events"), which is reading the
+    #   posting back, not fabrication. Numbers in middle/closing paragraphs
+    #   describing Casey's work are still checked against verified.json.
     allowed = _verified_numbers(verified)
-    for cluster in _DIGIT_CLUSTER_RE.findall(body):
+    body_after_lead = "\n\n".join(cover.body[1:]) if len(cover.body) > 1 else ""
+    for cluster in _DIGIT_CLUSTER_RE.findall(body_after_lead):
         normalized = cluster.rstrip(".,")
         if not normalized:
             continue
@@ -234,9 +258,29 @@ def validate_cover(
 
     # Fabrication: check the watchlist of frequently-invented techs. If the
     # body claims one and verified.json doesn't, that's a hard violation.
+    # Word-boundary match avoids false positives like 'scala' matching
+    # 'scalable'. Negation context (e.g. "rather than Scala", "not Scala")
+    # is exempt — the model is correctly avoiding the claim, not making it.
     verified_blob = _verified_skill_blob(verified)
     for tech in _FABRICATION_WATCHLIST:
-        if tech in body_lower and tech not in verified_blob:
-            violations.append(f"unverified tech claim: {tech.strip(', ')!r}")
+        token = tech.strip(", ")
+        if not token:
+            continue
+        # Word-boundary search.
+        pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
+        if not pattern.search(body):
+            continue
+        if pattern.search(verified_blob):
+            continue
+        # Check whether every occurrence is in a negation context.
+        all_negated = True
+        for m in pattern.finditer(body_lower):
+            window = body_lower[max(0, m.start() - 40) : m.start()]
+            if not _NEGATION_PRECEDES_RE.search(window):
+                all_negated = False
+                break
+        if all_negated:
+            continue
+        violations.append(f"unverified tech claim: {token!r}")
 
     return violations
