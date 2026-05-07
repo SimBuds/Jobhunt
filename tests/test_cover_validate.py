@@ -107,6 +107,49 @@ def test_unverified_number_flagged(verified: dict) -> None:
     assert any("99999" in v for v in violations)
 
 
+def test_scalable_does_not_trigger_scala_fabrication(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[1] = cover.body[1] + " I write scalable e-commerce solutions for clients."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("scala" in v.lower() for v in violations)
+
+
+def test_disclaimed_tech_does_not_fire_fabrication(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[2] = "I focus on JavaScript and TypeScript rather than Scala or Kotlin for back-end work."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("unverified tech claim" in v for v in violations)
+
+
+def test_claimed_tech_still_fires_fabrication(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[2] = "I have shipped production Kafka pipelines for client analytics."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("kafka" in v.lower() for v in violations)
+
+
+def test_company_with_separator_matched_partially(verified: dict) -> None:
+    cover = _good_cover(company="PheedLoop")
+    violations = validate_cover(
+        cover, verified=verified, company="PheedLoop / NordSpace", max_words=280
+    )
+    assert not any("does not name company" in v for v in violations)
+
+
+def test_unverified_number_in_lead_paragraph_allowed(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[0] = "Acme Corp powers marketing for 1,500 events across the country, and your engineering work directly addresses problems I've solved on Shopify and HubSpot."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("1,500" in v or "1500" in v for v in violations)
+
+
+def test_unverified_number_in_middle_paragraph_still_flagged(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[1] = cover.body[1] + " I have shipped 9,999 features in my career."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("9,999" in v or "9999" in v for v in violations)
+
+
 def test_unfilled_placeholder_flagged(verified: dict) -> None:
     cover = _good_cover()
     cover.body[0] = "I am applying to {company} for the {role} position."
