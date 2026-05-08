@@ -15,6 +15,7 @@ from rich.progress import (
     MofNCompleteColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -67,7 +68,8 @@ async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int |
         migrate(conn, cfg.paths.migrations_dir)
 
         if not skip_ingest:
-            inserted = await _ingest_all(cfg, conn)
+            inserted, per_source = await _ingest_all(cfg, conn)
+            _print_ingest_summary(per_source)
             typer.echo(f"ingest: {inserted} new job(s) inserted")
         else:
             typer.echo("ingest: skipped")
@@ -153,8 +155,14 @@ async def _warm_model(cfg: Config) -> None:
         typer.echo(f"  ! warm-up failed (continuing): {e}", err=True)
 
 
-async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
-    """Run all configured ingest adapters concurrently. Returns count inserted."""
+async def _ingest_all(
+    cfg: Config, conn: sqlite3.Connection
+) -> tuple[int, list[tuple[str, str, int, str | None]]]:
+    """Run all configured ingest adapters concurrently.
+
+    Returns (inserted, per_source) where per_source is a list of
+    (source, label, count, error) tuples — error is None on success.
+    """
     secrets = load_secrets()
     limiter = RateLimiter(cfg.ingest.rate_limit_per_sec)
     headers = {"User-Agent": cfg.ingest.user_agent, "Accept": "application/json"}
@@ -210,7 +218,7 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
                 "set ingest.greenhouse/lever/ashby slugs.",
                 err=True,
             )
-            return 0
+            return 0, []
 
         # Drain all streams concurrently — adapters share the per-host
         # RateLimiter so politeness is preserved while distinct hosts overlap.
@@ -226,14 +234,19 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
             transient=False,
         )
 
+        # source/label → (count, error_message_or_None). Filled by _safe_stream.
+        results: dict[tuple[str, str], tuple[int, str | None]] = {}
+
         with progress:
             overall = progress.add_task("ingest", total=len(adapters))
-            task_ids: list[int] = []
+            task_ids: list[TaskID] = []
             streams: list[AsyncIterator[Job]] = []
             for source, label, fetch in adapters:
                 tid = progress.add_task(f"  {source}/{label}", total=None, start=True)
                 task_ids.append(tid)
-                streams.append(_safe_stream(source, label, fetch, progress, tid, overall))
+                streams.append(
+                    _safe_stream(source, label, fetch, progress, tid, overall, results)
+                )
 
             async def drain(stream: AsyncIterator[Job]) -> None:
                 async for job in stream:
@@ -261,7 +274,12 @@ async def _ingest_all(cfg: Config, conn: sqlite3.Connection) -> int:
                     if upsert_job(conn, item):
                         inserted += 1
             await closer_task
-            return inserted
+            per_source = [
+                (source, label, results.get((source, label), (0, None))[0],
+                 results.get((source, label), (0, None))[1])
+                for (source, label, _) in adapters
+            ]
+            return inserted, per_source
 
 
 _DEDUP_RE = __import__("re").compile(r"[^a-z0-9]+")
@@ -285,8 +303,9 @@ async def _safe_stream(
     label: str,
     stream: AsyncIterator[Job],
     progress: Progress,
-    task_id: int,
-    overall_id: int,
+    task_id: TaskID,
+    overall_id: TaskID,
+    results: dict[tuple[str, str], tuple[int, str | None]],
 ) -> AsyncIterator[Job]:
     """Wrap an adapter so a failure on one source doesn't kill the whole scan,
     while updating the rich progress display with live job counts."""
@@ -304,6 +323,7 @@ async def _safe_stream(
             total=1,
         )
         progress.advance(overall_id)
+        results[(source, label)] = (n, str(e))
         return
     progress.update(
         task_id,
@@ -312,3 +332,39 @@ async def _safe_stream(
         total=1,
     )
     progress.advance(overall_id)
+    results[(source, label)] = (n, None)
+
+
+def _print_ingest_summary(per_source: list[tuple[str, str, int, str | None]]) -> None:
+    """Print a one-line per-source summary after the progress bar exits.
+
+    Aggregates (source, count, errors) so multi-slug sources (e.g. 12 greenhouse
+    slugs) don't dump 12 lines. Failed sources are listed individually so the
+    user knows which slug to investigate.
+    """
+    if not per_source:
+        return
+    by_source: dict[str, dict[str, int | list[str]]] = {}
+    for source, label, n, err in per_source:
+        agg = by_source.setdefault(source, {"jobs": 0, "ok": 0, "errors": []})
+        if err is None:
+            agg["jobs"] = int(agg["jobs"]) + n  # type: ignore[arg-type]
+            agg["ok"] = int(agg["ok"]) + 1  # type: ignore[arg-type]
+        else:
+            errs = agg["errors"]
+            assert isinstance(errs, list)
+            errs.append(f"{label}: {err}")
+
+    typer.echo("ingest summary:")
+    for source in sorted(by_source):
+        agg = by_source[source]
+        jobs = agg["jobs"]
+        ok = agg["ok"]
+        errors = agg["errors"]
+        assert isinstance(errors, list)
+        bits = [f"{jobs} job(s) from {ok} slug(s)"] if ok else []
+        if errors:
+            bits.append(f"{len(errors)} failed")
+        typer.echo(f"  {source}: {', '.join(bits) or 'no slugs configured'}")
+        for line in errors:
+            typer.echo(f"    ! {line}")
