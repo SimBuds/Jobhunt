@@ -7,12 +7,14 @@ from urllib.parse import urlparse
 
 from jobhunt.browser.handlers._generic import generic_fill
 from jobhunt.browser.handlers.greenhouse import greenhouse_fill
+from jobhunt.browser.handlers.lever import lever_fill
 from jobhunt.browser.handlers.types import FieldFill, Handler
 
 # Domain → handler. Falls back to `generic_fill`.
 _BY_HOST: dict[str, Handler] = {
     "boards.greenhouse.io": greenhouse_fill,
     "job-boards.greenhouse.io": greenhouse_fill,
+    "jobs.lever.co": lever_fill,
 }
 
 
@@ -32,4 +34,5 @@ __all__ = [
     "pick_handler",
     "generic_fill",
     "greenhouse_fill",
+    "lever_fill",
 ]
