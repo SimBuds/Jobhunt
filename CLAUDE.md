@@ -192,9 +192,12 @@ to it without explicit discussion.
 2. **Cover-letter validator** (`pipeline.cover_validate`) — enforces banned
    phrases (substring tier + structural `_DEFENSIVE_PATTERNS` regex tier for
    defensive gap-volunteering like "rather than X", "the model transfers"),
-   word count, paragraph count, company name in lead, no unverified numbers
-   (digits embedded in alphanumeric tokens like ES6 are exempt), no closing
-   diploma re-recap. Verdict `revise` on violations.
+   word count, paragraph count, company name in lead (tokenized: splits on
+   whitespace+punctuation, drops corporate suffixes like `Inc`/`Technologies`
+   and TLD fragments like `.io`/`.ai` via `_COMPANY_STOPWORDS`, accepts any
+   distinctive remaining token), no unverified numbers (digits embedded in
+   alphanumeric tokens like ES6 are exempt), no closing diploma re-recap.
+   Verdict `revise` on violations.
 3. **Fabrication re-check** — `_enforce_no_fabrication` runs again on the
    tailored resume post-decode. Verdict `block` on any failure.
 4. **Verdicts:** `block` → the apply loop skips this job and logs the reason;
