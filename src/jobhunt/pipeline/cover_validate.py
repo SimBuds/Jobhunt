@@ -89,6 +89,19 @@ _NEGATION_PRECEDES_RE = re.compile(
 _DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z])\d[\d,.]*(?![A-Za-z])")
 _WORD_RE = re.compile(r"\b\w+\b")
 
+# Company-name match: drop corporate suffixes, descriptors, and TLD fragments
+# so the lead-paragraph check doesn't fail when the model writes "Appnovation"
+# instead of "Appnovation Technologies", or "Astra North" instead of
+# "Astra North Infoteck Inc.".
+_COMPANY_STOPWORDS: frozenset[str] = frozenset({
+    "inc", "ltd", "llc", "corp", "corporation", "company", "co",
+    "technologies", "technology", "solutions", "systems", "services",
+    "group", "holdings", "labs", "studio", "studios", "ventures",
+    "the", "and", "of", "for",
+    "io", "ai", "com", "net", "org",
+})
+_COMPANY_SPLIT_RE = re.compile(r"[\s/,&|\-.()]+| and ")
+
 
 def _body_text(cover: CoverLetter) -> str:
     return "\n\n".join(p for p in cover.body if p).strip()
@@ -225,15 +238,14 @@ def validate_cover(
         violations.append(f"expected 3-4 paragraphs; got {len(cover.body)}")
 
     if cover.body and company:
-        # Companies often have separators ("PheedLoop / NordSpace", "Acme, Inc.",
-        # "Foo & Bar"). Accept any non-trivial token from the company name in
-        # the lead, since the model rarely repeats the full punctuated form.
         first_lower = cover.body[0].lower()
+        raw_tokens = [t.strip().lower() for t in _COMPANY_SPLIT_RE.split(company)]
         company_tokens = [
-            t.strip().lower()
-            for t in re.split(r"[/,&|\-]| and ", company)
-            if len(t.strip()) >= 3
+            t for t in raw_tokens
+            if len(t) >= 3 and t not in _COMPANY_STOPWORDS
         ]
+        if not company_tokens:
+            company_tokens = [company.strip().lower()]
         if not any(t in first_lower for t in company_tokens):
             violations.append(f"lead paragraph does not name company {company!r}")
 

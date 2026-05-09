@@ -136,6 +136,43 @@ def test_company_with_separator_matched_partially(verified: dict) -> None:
     assert not any("does not name company" in v for v in violations)
 
 
+def test_company_descriptor_suffix_dropped(verified: dict) -> None:
+    """Real-world miss: 'Appnovation Technologies' lead used 'Appnovation' only."""
+    cover = _good_cover(company="Appnovation")
+    violations = validate_cover(
+        cover, verified=verified, company="Appnovation Technologies", max_words=280
+    )
+    assert not any("does not name company" in v for v in violations)
+
+
+def test_company_with_tld_suffix_matches_root(verified: dict) -> None:
+    """Real-world miss: 'SRED.io' lead wrote 'SRED'."""
+    cover = _good_cover(company="SRED")
+    violations = validate_cover(
+        cover, verified=verified, company="SRED.io", max_words=280
+    )
+    assert not any("does not name company" in v for v in violations)
+
+
+def test_company_with_inc_suffix_matches_partial(verified: dict) -> None:
+    """Real-world miss: 'Astra North Infoteck Inc.' lead wrote 'Astra North'."""
+    cover = _good_cover(company="Astra North")
+    violations = validate_cover(
+        cover, verified=verified, company="Astra North Infoteck Inc.", max_words=280
+    )
+    assert not any("does not name company" in v for v in violations)
+
+
+def test_company_match_still_fails_when_absent(verified: dict) -> None:
+    """Sanity: relaxing the match must not stop firing when the lead is silent."""
+    cover = _good_cover()
+    cover.body[0] = "I read the posting and the stack looks interesting."
+    violations = validate_cover(
+        cover, verified=verified, company="Appnovation Technologies", max_words=280
+    )
+    assert any("does not name company" in v for v in violations)
+
+
 def test_unverified_number_in_lead_paragraph_allowed(verified: dict) -> None:
     cover = _good_cover()
     cover.body[0] = "Acme Corp powers marketing for 1,500 events across the country, and your engineering work directly addresses problems I've solved on Shopify and HubSpot."
