@@ -1,7 +1,7 @@
 [project]
 name = "jobhunt"
-version = "0.1.0"
-description = "Local-first CLI for personal job search automation."
+version = "0.5.0"
+description = "Local LLM CLI App for personal job search automation."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
