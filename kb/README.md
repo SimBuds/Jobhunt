@@ -19,7 +19,7 @@ humans edit `policies/`.
 ## Editing workflow
 
 - **To update profile facts:** edit `Casey_Hsu_Resume_Baseline.docx`, then run
-  `uv run jobhunt convert-resume`. Never edit `profile/*.md` by hand — they
+  `jobhunt convert-resume`. Never edit `profile/*.md` by hand — they
   get overwritten.
 - **To update tailoring rules:** edit `Resume_Tailoring_Instructions.md` (the
   source of truth), then sync the trimmed mirror in `policies/tailoring-rules.md`.

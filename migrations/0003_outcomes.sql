@@ -1,6 +1,6 @@
 -- 0003_outcomes.sql — outcome tracking + audit_json column.
 -- outcome_at records when a final outcome (offer/rejected/withdrawn) was set,
--- enabling per-score-band interview-rate analysis via `job-seeker config calibrate`.
+-- enabling per-score-band interview-rate analysis via `jobhunt config calibrate`.
 
 ALTER TABLE applications ADD COLUMN outcome_at TIMESTAMP;
 ALTER TABLE applications ADD COLUMN audit_json TEXT;
