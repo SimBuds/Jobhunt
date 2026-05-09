@@ -36,7 +36,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     policy_path = cfg.paths.kb_dir / "policies" / "tailoring-rules.md"
     if not verified_path.is_file():
-        raise PipelineError(f"missing {verified_path} — run `job-seeker convert-resume` first")
+        raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")
 
     verified = verified_path.read_text(encoding="utf-8")
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""

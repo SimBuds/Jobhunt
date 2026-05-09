@@ -1,0 +1,39 @@
+[
+  {
+    "id": "abc-123",
+    "text": "Senior Software Engineer",
+    "categories": {
+      "location": "Toronto, ON",
+      "commitment": "Full-time",
+      "team": "Platform"
+    },
+    "descriptionPlain": "Build distributed systems in Python. Postgres, AWS.",
+    "description": "<p>Build distributed systems in Python.</p>",
+    "hostedUrl": "https://jobs.lever.co/example/abc-123",
+    "applyUrl": "https://jobs.lever.co/example/abc-123/apply",
+    "createdAt": 1714752000000
+  },
+  {
+    "id": "def-456",
+    "text": "Remote Backend Engineer",
+    "categories": {
+      "location": "Canada",
+      "commitment": "Full-time Remote",
+      "team": "Backend"
+    },
+    "descriptionPlain": "Remote-Canada role.",
+    "hostedUrl": "https://jobs.lever.co/example/def-456",
+    "createdAt": 1714752000000
+  },
+  {
+    "id": "ghi-789",
+    "text": "Engineer (NYC)",
+    "categories": {
+      "location": "New York, NY",
+      "commitment": "Full-time"
+    },
+    "descriptionPlain": "On-site NYC.",
+    "hostedUrl": "https://jobs.lever.co/example/ghi-789",
+    "createdAt": 1714752000000
+  }
+]

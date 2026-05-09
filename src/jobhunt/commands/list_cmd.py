@@ -1,4 +1,4 @@
-"""`job-seeker list` — pipeline view + weekly rollup."""
+"""`jobhunt list` — pipeline view + weekly rollup."""
 
 from __future__ import annotations
 

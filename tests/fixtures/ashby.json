@@ -1,0 +1,33 @@
+{
+  "jobs": [
+    {
+      "id": "ash-1",
+      "title": "Senior Full-Stack Engineer",
+      "locationName": "Toronto, Ontario, Canada",
+      "isRemote": false,
+      "descriptionPlain": "TypeScript, React, Postgres.",
+      "descriptionHtml": "<p>TypeScript, React, Postgres.</p>",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ash-1",
+      "applyUrl": "https://jobs.ashbyhq.com/example/ash-1/application",
+      "publishedAt": "2026-05-01T12:00:00Z"
+    },
+    {
+      "id": "ash-2",
+      "title": "Remote Platform Engineer",
+      "locationName": "Canada",
+      "isRemote": true,
+      "descriptionPlain": "Kubernetes, Go.",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ash-2",
+      "publishedAt": "2026-05-02T12:00:00Z"
+    },
+    {
+      "id": "ash-3",
+      "title": "London Engineer",
+      "locationName": "London, UK",
+      "isRemote": false,
+      "descriptionPlain": "On-site London.",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ash-3",
+      "publishedAt": "2026-05-03T12:00:00Z"
+    }
+  ]
+}

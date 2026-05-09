@@ -97,4 +97,4 @@ def reset(
     finally:
         conn.close()
     typer.echo(f"reset: db re-initialised ({len(result.applied)} migration(s) applied)")
-    typer.echo("next: run `job-seeker convert-resume` to regenerate kb/profile/.")
+    typer.echo("next: run `jobhunt convert-resume` to regenerate kb/profile/.")

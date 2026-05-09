@@ -45,8 +45,13 @@ Hard rules:
    Shopify storefront", "30% page load reduction") only if they appear
    in verified_facts.
 4. If the JD lists a hard skill Casey is "Familiar" with rather than Core,
-   name it honestly: "coming from <Casey's Core skill> rather than <JD skill>
-   directly, but the model transfers". Do not pretend the skill is Core.
+   **omit it from the letter entirely.** Do NOT introduce the gap
+   defensively. Phrasings like "rather than Java", "while I have... rather
+   than", "the model transfers", "coming from X rather than Y" are
+   FORBIDDEN — they volunteer weakness the reader did not ask about. Lead
+   with what Casey *does* have that maps to the role; let the resume show
+   the rest. Do not pretend a Familiar skill is Core, and do not apologize
+   for not having it.
 5. Closing paragraph (1–2 sentences): forward-looking, not a re-recap of
    the resume. If the JD gives material about the company / product /
    mission, name what specifically draws Casey to *this* role. Otherwise
@@ -64,7 +69,9 @@ Hard rules:
    ability", "deeply passionate", "hit the ground running", "value-add",
    "direct match", "mirrors the kind of", "technical rigor",
    "I'd bring to", "I'd welcome the chance", "the chance to discuss",
-   "I'm drawn to", "transform enterprises", "support your team's goals".
+   "I'm drawn to", "transform enterprises", "support your team's goals",
+   "the model transfers", "rather than" (when used to volunteer a gap),
+   "coming from", "while I have".
    No first-person superlatives. No exclamation marks.
 
 8. Anti-patterns (REWRITE if you catch yourself doing these):
@@ -77,6 +84,17 @@ Hard rules:
      welcome the chance to discuss how my hands-on experience with
      headless CMS architectures and performance optimization could
      support your team's goals"). One concrete, plain sentence.
+   - Don't volunteer gaps. If the JD asks for X and Casey doesn't have X,
+     say nothing about X. Never use "rather than", "while I have... rather
+     than", "the model transfers", "coming from X rather than Y" in any
+     form. Silence is stronger than apology.
+   - Don't shoehorn the culinary background into IC engineering roles.
+     The chef→tech bridge belongs ONLY when the JD genuinely calls for
+     people-management, cross-functional coordination, vendor wrangling,
+     or operational pressure as a JD-stated must-have. For a pure IC
+     coding role, omit the culinary clause entirely — it's already on the
+     resume. Phrasings like "my experience leading culinary teams... the
+     model transfers" are forbidden.
 
 9. Sentence rhythm: aim for an average of 15–18 words per sentence with
    real variance. Some sentences should be under 10 words. If three

@@ -52,7 +52,7 @@ class AdzunaConfig(BaseModel):
 
 
 class IngestConfig(BaseModel):
-    user_agent: str = "job-seeker/0.1 (+personal-use; caseyhsu@proton.me)"
+    user_agent: str = "jobhunt/0.1 (+personal-use; caseyhsu@proton.me)"
     rate_limit_per_sec: float = 1.0
     cache_ttl_hours: int = 6
     greenhouse: list[str] = Field(default_factory=list)
@@ -73,14 +73,14 @@ class GatewayConfig(BaseModel):
     tasks: dict[str, str] = Field(
         default_factory=lambda: {
             # qwen3.5:9b — strong open tool-use + reasoning model used as the
-            # single hot model across score/tailor/cover/qa slots. Single
-            # hot model means no reload churn between task types. Quality is
+            # single hot model across score/tailor/cover slots. Single hot
+            # model means no reload churn between task types. Quality is
             # backed by the deterministic post-processing layers (score
-            # clamp, cover validator + retry, audit).
+            # clamp, cover validator + retry, audit) — there is intentionally
+            # no LLM-based QA pass.
             "score": "qwen3.5:9b",
             "tailor": "qwen3.5:9b",
             "cover": "qwen3.5:9b",
-            "qa": "qwen3.5:9b",
             "embed": "nomic-embed-text",
         }
     )

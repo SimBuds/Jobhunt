@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-job-seeker = "jobhunt.cli:app"
+jobhunt = "jobhunt.cli:app"
 
 [dependency-groups]
 dev = [

@@ -1,4 +1,4 @@
-"""`job-seeker convert-resume` — parse Baseline.docx into kb/profile/*.md + verified.json."""
+"""`jobhunt convert-resume` — parse Baseline.docx into kb/profile/*.md + verified.json."""
 
 from __future__ import annotations
 

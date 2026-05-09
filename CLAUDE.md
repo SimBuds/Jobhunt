@@ -18,7 +18,7 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and qwen3.5:9b lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover, qa) — single hot model at `num_ctx=6144` with `keep_alive="30m"` and reasoning (`think`) disabled at the gateway; `nomic-embed-text` reserved for future embeddings
+- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover) — single hot model at `num_ctx=6144` with `keep_alive="30m"` and reasoning (`think`) disabled at the gateway; `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - One model hot in VRAM at a time. Single-model setup eliminates reload churn between task types; reload churn was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
@@ -57,7 +57,7 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 ## Project structure
 
 The package is named `jobhunt` (legacy — kept to avoid churn). The CLI script
-is `job-seeker`.
+is `jobhunt`.
 
 ```
 src/jobhunt/
@@ -108,21 +108,21 @@ src/jobhunt/
 User-facing surface is **four** commands. `db` and `config` are hidden internals.
 
 ```
-job-seeker convert-resume       # parse baseline .docx → kb/profile/
-job-seeker scan                 # ingest GTA jobs + score
-job-seeker apply <job-id>       # tailor + cover + autofill (you submit)
-job-seeker apply --top N        # auto-pick N best-fit unapplied (1..10)
-job-seeker apply --best         # interactive picker over top 10
-job-seeker list [--week N]      # pipeline view + weekly rollup
+jobhunt convert-resume       # parse baseline .docx → kb/profile/
+jobhunt scan                 # ingest GTA jobs + score
+jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
+jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
+jobhunt apply --best         # interactive picker over top 10
+jobhunt list [--week N]      # pipeline view + weekly rollup
 ```
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
 **Hidden internals:**
-- `job-seeker db init|migrate|reset` — `reset` wipes DB, `data/applications/`,
+- `jobhunt db init|migrate|reset` — `reset` wipes DB, `data/applications/`,
   `data/cache/`, the Playwright profile, **and** `kb/profile/`, then re-runs
   migrations. Use `--force` to skip the confirmation prompt.
-- `job-seeker config show|path|calibrate`.
+- `jobhunt config show|path|calibrate`.
 
 **Profile guard.** `scan`, `list`, and `apply` call `ensure_profile(cfg)` from
 `commands/__init__.py` at the top of their callbacks. If
@@ -137,7 +137,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
 4. **Respect `robots.txt`** for any non-API HTTP fetch. Use `protego`.
 5. **Rate limits:** 1 req/sec/host default. Exponential backoff on 429/5xx.
-6. **User-Agent:** identifies the tool and provides a contact, e.g. `job-seeker/0.1 (+personal-use; caseyhsu@proton.me)`.
+6. **User-Agent:** identifies the tool and provides a contact, e.g. `jobhunt/0.1 (+personal-use; caseyhsu@proton.me)`.
 7. **Cache** raw responses to `data/cache/` with a TTL; don't re-hit APIs needlessly during dev.
 
 ## Browser automation rules — non-negotiable
@@ -184,9 +184,17 @@ to it without explicit discussion.
 
 1. **Keyword coverage** — JD must-haves (from the score result) must appear in
    the tailored resume at ≥70 % (2026 ATS guideline). Verdict `revise` if below.
+   When `scores.reasons` is empty (qwen3.5:9b often ships empty arrays despite
+   the schema requiring them), `audit._extract_must_haves_from_jd` runs as a
+   deterministic fallback — intersect verified skills with the JD description
+   and use those as must-haves. Adding new tailoring capabilities must not
+   break this fallback path.
 2. **Cover-letter validator** (`pipeline.cover_validate`) — enforces banned
-   phrases, word count, paragraph count, company name in lead, no unverified
-   numbers, no closing diploma re-recap. Verdict `revise` on violations.
+   phrases (substring tier + structural `_DEFENSIVE_PATTERNS` regex tier for
+   defensive gap-volunteering like "rather than X", "the model transfers"),
+   word count, paragraph count, company name in lead, no unverified numbers
+   (digits embedded in alphanumeric tokens like ES6 are exempt), no closing
+   diploma re-recap. Verdict `revise` on violations.
 3. **Fabrication re-check** — `_enforce_no_fabrication` runs again on the
    tailored resume post-decode. Verdict `block` on any failure.
 4. **Verdicts:** `block` → the apply loop skips this job and logs the reason;

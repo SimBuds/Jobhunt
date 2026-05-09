@@ -24,7 +24,7 @@ def ensure_profile(cfg: Config) -> None:
     if not verified.is_file():
         typer.echo(
             f"error: missing {verified}\n"
-            "run `job-seeker convert-resume` first to parse your baseline resume.",
+            "run `jobhunt convert-resume` first to parse your baseline resume.",
             err=True,
         )
         raise typer.Exit(code=1)

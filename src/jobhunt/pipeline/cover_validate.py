@@ -41,6 +41,23 @@ BANNED_PHRASES: tuple[str, ...] = (
     "i'm drawn to",
     "transform enterprises",
     "support your team's goals",
+    "the model transfers",
+    "model transfers well",
+    "rather than directly",
+)
+
+
+# Defensive gap-volunteering patterns. These are matched as regex on the body,
+# not as flat substrings, because they require structural context (e.g.
+# "rather than" only counts when it disclaims a tech, not in neutral use).
+# Mirrors cover.md rule §4 + §8.
+_DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
+    # "coming from React rather than Vue" / "while I have JS rather than Java"
+    (r"\b(?:coming from|while i have)\b[^.]*\brather than\b", "defensive 'rather than' gap-volunteering"),
+    # "the model transfers" in any disclaiming context
+    (r"\bthe model transfers\b", "defensive 'the model transfers' phrasing"),
+    # Standalone "rather than <Tech>" claims about Casey's stack
+    (r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b", "defensive familiarity disclaimer"),
 )
 
 # Form-letter openers banned by §2. Matched after stripping a leading
@@ -69,7 +86,7 @@ _NEGATION_PRECEDES_RE = re.compile(
     re.IGNORECASE,
 )
 
-_DIGIT_CLUSTER_RE = re.compile(r"\d[\d,.]*")
+_DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z])\d[\d,.]*(?![A-Za-z])")
 _WORD_RE = re.compile(r"\b\w+\b")
 
 
@@ -177,6 +194,10 @@ def validate_cover(
     for phrase in BANNED_PHRASES:
         if phrase in full_lower:
             violations.append(f"banned phrase: {phrase!r}")
+
+    for pattern, label in _DEFENSIVE_PATTERNS:
+        if re.search(pattern, body_lower):
+            violations.append(label)
 
     if cover.body:
         first_lower = cover.body[0].lower().lstrip()
