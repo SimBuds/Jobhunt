@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from jobhunt.browser.autofill import looks_like_application_page
+from jobhunt.browser.handlers import pick_handler
 from jobhunt.browser.handlers._generic import generic_fill
 
 
@@ -113,3 +114,22 @@ async def test_generic_fill_skips_when_no_form():
     page = FakePage(form_inputs=[el], has_form=False)
     actions = await generic_fill(page, {"email": "casey@example.com"})
     assert actions == []
+
+
+def test_pick_handler_routes_landed_employer_url() -> None:
+    """Adzuna ingest stores the tracking URL; the autofill flow re-picks the
+    handler from page.url after Playwright follows the redirect chain. So a
+    Greenhouse landing URL must resolve to the greenhouse handler, not generic."""
+    name, _ = pick_handler("https://boards.greenhouse.io/acme/jobs/12345")
+    assert name == "boards.greenhouse.io"
+    name, _ = pick_handler("https://jobs.lever.co/acme/abc-123")
+    assert name == "jobs.lever.co"
+    name, _ = pick_handler("https://rbc.wd3.myworkdayjobs.com/en-US/foo")
+    assert name == "myworkdayjobs.com"
+
+
+def test_pick_handler_falls_through_for_adzuna_tracking_url() -> None:
+    """Sanity: the unresolved Adzuna URL falls through to generic. This is why
+    we must re-pick after page.goto rather than at ingest time."""
+    name, _ = pick_handler("https://www.adzuna.ca/details/5723869430")
+    assert name == "generic"

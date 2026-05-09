@@ -9,7 +9,7 @@ from datetime import datetime
 import httpx
 
 from jobhunt.errors import IngestError
-from jobhunt.http import RateLimiter, get_json, resolve_redirect
+from jobhunt.http import RateLimiter, get_json
 from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
@@ -54,17 +54,11 @@ async def fetch(
             if not is_gta_eligible(loc_str):
                 continue
             ext = str(j.get("id"))
-            adzuna_url = j.get("redirect_url")
-            # Adzuna's redirect_url is a tracking link that lands on
-            # adzuna.ca/details/<id> and then bounces to the employer. Chase
-            # the chain at ingest time so the apply pipeline opens the real
-            # posting page (where the Apply form actually lives). On any
-            # error we fall back to the original URL — never block ingest.
-            final_url = (
-                await resolve_redirect(client, adzuna_url, limiter)
-                if adzuna_url
-                else None
-            )
+            # Store Adzuna's tracking URL as-is. It redirects to the employer's
+            # posting page, and the autofill browser follows the redirect chain
+            # natively via Playwright — picking the ATS handler from page.url
+            # after navigation. Resolving here would cost ~1 req/sec/host on
+            # adzuna.ca for every job and dominate ingest time.
             yield Job(
                 id=f"adzuna_ca:{ext}",
                 source="adzuna_ca",
@@ -76,7 +70,7 @@ async def fetch(
                     location=loc_str, extra=j.get("title") or ""
                 ),
                 description=j.get("description"),
-                url=final_url,
+                url=j.get("redirect_url"),
                 posted_at=_parse_dt(j.get("created")),
                 raw_json=json.dumps(j),
             )

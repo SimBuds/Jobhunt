@@ -83,8 +83,6 @@ async def autofill(
     out_dir.mkdir(parents=True, exist_ok=True)
     plan_path = out_dir / "fill-plan.json"
 
-    handler_name, handler = pick_handler(url)
-
     async with async_playwright() as pw:
         if user_data_dir:
             ctx = await pw.chromium.launch_persistent_context(
@@ -104,9 +102,17 @@ async def autofill(
                 await browser.close()
             raise BrowserError(f"failed to load {url}: {e}") from e
 
+        # Pick the ATS handler from the *landed* URL, not the input URL.
+        # Adzuna and similar aggregators redirect through tracking links;
+        # Playwright follows those natively, so page.url is the canonical
+        # employer URL by the time goto() returns. Picking from the input
+        # URL would route every Adzuna job to the generic handler.
+        landed_url = page.url or url
+        handler_name, handler = pick_handler(landed_url)
+
         if not await looks_like_application_page(page):
             plan: dict[str, Any] = {
-                "url": url,
+                "url": landed_url,
                 "handler": "none",
                 "fills": [],
                 "field_map_keys": sorted(field_map.keys()),
@@ -120,7 +126,7 @@ async def autofill(
         else:
             actions = await handler(page, field_map)
             plan = {
-                "url": url,
+                "url": landed_url,
                 "handler": handler_name,
                 "fills": [asdict(a) for a in actions],
                 "field_map_keys": sorted(field_map.keys()),
