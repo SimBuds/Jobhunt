@@ -45,7 +45,7 @@ async def tailor_resume(cfg: Config, job: Job) -> TailoredResume:
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     policy_path = cfg.paths.kb_dir / "policies" / "tailoring-rules.md"
     if not verified_path.is_file():
-        raise PipelineError(f"missing {verified_path} — run `job-seeker convert-resume` first")
+        raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")
 
     verified_text = verified_path.read_text(encoding="utf-8")
     verified = json.loads(verified_text)

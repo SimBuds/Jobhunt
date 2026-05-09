@@ -1,11 +1,12 @@
-# job-seeker
+# Jobhunt
 
 A local-first CLI for Casey's Toronto-area job hunt. Pulls jobs from public ATS
-APIs (Greenhouse, Lever, Ashby, Adzuna CA) scoped to GTA + 100 km and
-Remote-Canada postings, fit-scores them against the parsed baseline resume
-using local Ollama models, drafts a tailored resume and cover letter per role,
-and assists with form autofill in the browser. **You submit every application
-yourself.** The tool fills the form; it never clicks Submit.
+APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Job Bank Canada,
+generic RSS, Adzuna CA) scoped to GTA + 100 km and Remote-Canada postings,
+fit-scores them against the parsed baseline resume using local Ollama models,
+drafts a tailored resume and cover letter per role, and assists with form
+autofill in the browser. **You submit every application yourself.** The tool
+fills the form; it never clicks Submit.
 
 Everything runs locally. No resume or job data leaves your hardware. Zero
 cloud LLM calls in the runtime path.
@@ -30,7 +31,7 @@ cloud LLM calls in the runtime path.
 
 ```bash
 git clone <this-repo>
-cd Job-Seeker
+cd jobhunt
 uv sync
 uv run playwright install chromium
 
@@ -43,12 +44,12 @@ ollama pull nomic-embed-text    # embeddings (reserved for future use)
 Four user-facing commands.
 
 ```bash
-job-seeker convert-resume       # parse Casey_Hsu_Resume_Baseline.docx → kb/profile/
-job-seeker scan                 # ingest GTA jobs + score against profile
-job-seeker apply <job-id>       # tailor + cover + autofill (you submit)
-job-seeker apply --top N        # auto-pick N best-fit unapplied jobs (1..10)
-job-seeker apply --best         # interactive pick from top 10
-job-seeker list [--week N]      # pipeline view + weekly tracking
+jobhunt convert-resume       # parse Casey_Hsu_Resume_Baseline.docx → kb/profile/
+jobhunt scan                 # ingest GTA jobs + score against profile
+jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
+jobhunt apply --top N        # auto-pick N best-fit unapplied jobs (1..10)
+jobhunt apply --best         # interactive pick from top 10
+jobhunt list [--week N]      # pipeline view + weekly tracking
 ```
 
 `db` and `config` exist as hidden internal commands for setup; they don't
@@ -67,9 +68,9 @@ Add `--no-browser` to generate the tailored docs without launching Playwright.
 Bump status after submitting (or to mark interview / offer / rejected):
 
 ```bash
-job-seeker apply --set-status applied      <job-id>
-job-seeker apply --set-status interviewing <job-id>
-job-seeker apply --set-status rejected     <job-id>
+jobhunt apply --set-status applied      <job-id>
+jobhunt apply --set-status interviewing <job-id>
+jobhunt apply --set-status rejected     <job-id>
 ```
 
 The flag must come **before** the job id.
@@ -78,7 +79,7 @@ The flag must come **before** the job id.
 
 - `--week N` — 0=current week, 1=last week, …
 - `--status drafted|applied|interviewing|offer|rejected`
-- `--min-score N`, `--source greenhouse|lever|ashby|adzuna_ca`
+- `--min-score N`, `--source greenhouse|lever|ashby|smartrecruiters|workday|job_bank_ca|rss|adzuna_ca`
 - Always renders a weekly rollup footer (scanned / declined / per-status counts).
 
 ## First run
@@ -86,9 +87,9 @@ The flag must come **before** the job id.
 > Note: `config` and `db` are setup-only commands — they're hidden from `--help` after install. Run them once during setup as shown below.
 
 ```bash
-uv run job-seeker config show       # writes a default config and prints it
-uv run job-seeker db init           # creates SQLite schema at data/jobhunt.db
-uv run job-seeker convert-resume    # generates kb/profile/* from the baseline
+uv run jobhunt config show       # writes a default config and prints it
+uv run jobhunt db init           # creates SQLite schema at data/jobhunt.db
+uv run jobhunt convert-resume    # generates kb/profile/* from the baseline
 ```
 
 `scan`, `list`, and `apply` will refuse to run until `convert-resume` has been
@@ -99,22 +100,47 @@ To start over from scratch (drops the DB, all tailored documents, the HTTP
 cache, the browser profile, and the parsed resume):
 
 ```bash
-uv run job-seeker db reset          # prompts for 'yes', then re-inits schema
-uv run job-seeker convert-resume    # regenerate kb/profile/ before scanning
+uv run jobhunt db reset          # prompts for 'yes', then re-inits schema
+uv run jobhunt convert-resume    # regenerate kb/profile/ before scanning
 ```
 
-Edit `~/.config/jobhunt/config.toml` to add company slugs:
+### Configure ingest sources
+
+Adzuna CA covers a broad slice of public postings, but for direct ATS feeds
+you need to add per-employer slugs. Edit `~/.config/jobhunt/config.toml`:
 
 ```toml
 [ingest]
-greenhouse = ["stripe", "shopify", "1password"]
-lever      = ["benchsci", "ada"]
-ashby      = ["ramp", "linear"]
+greenhouse      = ["shopify", "1password", "wealthsimple", "faire"]
+lever           = ["benchsci", "ada"]
+ashby           = ["cohere"]
+smartrecruiters = []   # company slugs, e.g. "Bosch", "Visa"
+workday         = []   # "tenant:host:site" triples, see ingest/workday.py
+job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
+rss             = []   # generic employer career-page RSS/Atom URLs
+
+[ingest.adzuna]
+queries = ["javascript developer", "react developer", "shopify developer"]
 
 [applicant]
 phone = "(416) 555-0123"
 salary_expectation_cad = "100k–120k"
 ```
+
+**Finding slugs:**
+- **Greenhouse**: visit `<company>.com/careers` — if it redirects to or
+  embeds `boards.greenhouse.io/<slug>`, that's the slug.
+- **Lever**: same idea — look for `jobs.lever.co/<slug>`.
+- **Ashby**: look for `jobs.ashbyhq.com/<slug>`.
+- **SmartRecruiters**: `careers.smartrecruiters.com/<Company>` — slug is
+  the path segment after the host.
+- **Workday**: harder. Open the company careers page, copy the
+  `tenant:host:site` triple from the Workday URL (see comments in
+  `src/jobhunt/ingest/workday.py`).
+
+If only `adzuna_ca` is configured, `scan` prints a warning — single-source
+scans are biased and miss large GTA employers (Shopify, RBC, etc.) that
+publish only via their own ATS.
 
 API keys live in `~/.config/jobhunt/secrets.toml` (chmod 0600) or env vars:
 
@@ -126,11 +152,11 @@ adzuna_app_key = "..."
 ## Daily flow
 
 ```bash
-uv run job-seeker scan                      # pulls new jobs + scores them
-uv run job-seeker list --min-score 70       # see today's high-fit subset
-uv run job-seeker apply --best              # pick which to apply to
+uv run jobhunt scan                      # pulls new jobs + scores them
+uv run jobhunt list --min-score 70       # see today's high-fit subset
+uv run jobhunt apply --best              # pick which to apply to
 # Browser opens. You review, click Submit yourself.
-uv run job-seeker list --week 0             # weekly pipeline view
+uv run jobhunt list --week 0             # weekly pipeline view
 ```
 
 ## Data layout
@@ -156,9 +182,19 @@ uv run job-seeker list --week 0             # weekly pipeline view
 - Skill items must match `verified.json` (substring tolerance for parenthetical
   variants).
 - "Familiar" skills cannot appear in any non-Familiar category.
-- Score prompt sets `decline_reason` when 3+ JD must-haves are gaps, years gap
-  > 2x, senior title, regulated domain, or location ineligible. Declined jobs
-  are excluded from `apply --top` / `apply --best`.
+- Score prompt sets `decline_reason` for: 4+ hard gaps after transferable
+  matching, years explicitly required > 5 with no project bridge,
+  Lead/Principal/Architect/Staff title with stated team-leadership scope,
+  people-management title, non-engineering function, regulated-domain
+  experience required, or location ineligible. Bare "Senior" alone is
+  **not** a decline trigger. Declined jobs are excluded from
+  `apply --top` / `apply --best`.
+- Post-generation audit (`pipeline.audit`) checks JD must-have keyword
+  coverage against the rendered resume at ≥70%, re-runs the no-fabrication
+  enforcement, and runs the cover-letter validator. If `scores.reasons` is
+  empty (qwen sometimes ships empty arrays despite the schema), the audit
+  falls back to deterministic must-have extraction by intersecting verified
+  skills with the JD description.
 
 See [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md) for
 the full rule set; [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md)

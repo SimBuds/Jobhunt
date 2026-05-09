@@ -85,6 +85,31 @@ def keyword_coverage(
     return pct, matched, missing
 
 
+def _verified_skills(verified: dict[str, Any]) -> list[str]:
+    skills: list[str] = []
+    for key in ("skills_core", "skills_cms", "skills_data_devops", "skills_ai", "skills_familiar"):
+        for s in verified.get(key, []) or []:
+            if isinstance(s, str) and s.strip():
+                skills.append(s.strip())
+    return skills
+
+
+def _extract_must_haves_from_jd(
+    job_description: str | None, verified: dict[str, Any]
+) -> list[str]:
+    """Deterministic fallback when the score LLM returns empty must-haves.
+
+    Returns verified skills that appear in the JD — those are the JD's
+    must-haves the candidate satisfies. Used to drive keyword coverage when
+    `scores.reasons` is `[]` (qwen3.5:9b often emits empty arrays even though
+    the schema requires the field).
+    """
+    if not job_description:
+        return []
+    blob = job_description.lower()
+    return [s for s in _verified_skills(verified) if phrase_present(s, blob)]
+
+
 def audit(
     *,
     tailored: TailoredResume,
@@ -93,12 +118,16 @@ def audit(
     verified: dict[str, Any],
     company: str | None,
     cover_max_words: int,
+    job_description: str | None = None,
 ) -> AuditResult:
     must_haves = list(score.matched_must_haves) if score else []
     if score and score.gaps:
         # Treat gaps as additional candidate keywords — if the tailor surfaced
         # any of them via adjacent skills, count it.
         must_haves = must_haves + list(score.gaps)
+
+    if not must_haves:
+        must_haves = _extract_must_haves_from_jd(job_description, verified)
 
     coverage_pct, matched, missing = keyword_coverage(must_haves, tailored)
 

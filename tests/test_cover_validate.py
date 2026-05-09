@@ -150,6 +150,43 @@ def test_unverified_number_in_middle_paragraph_still_flagged(verified: dict) -> 
     assert any("9,999" in v or "9999" in v for v in violations)
 
 
+def test_defensive_rather_than_phrasing_flagged(verified: dict) -> None:
+    """Regression: covers were volunteering gaps with 'rather than' / 'the
+    model transfers' phrasing (cover.md §4 + §8)."""
+    cover = _good_cover()
+    cover.body[2] = (
+        "I am familiar with Java and Spring Boot rather than those directly, "
+        "but the model transfers from my nine years leading culinary teams."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("the model transfers" in v.lower() for v in violations) or any(
+        "defensive" in v.lower() for v in violations
+    )
+
+
+def test_neutral_rather_than_not_flagged(verified: dict) -> None:
+    """A neutral 'rather than' (not disclaiming a tech) should pass."""
+    cover = _good_cover()
+    cover.body[1] = (
+        cover.body[1] + " I prefer concrete examples rather than abstract claims."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("rather than" in v.lower() for v in violations)
+
+
+def test_es6_in_body_does_not_flag_unverified_number(verified: dict) -> None:
+    """Regression: 'ES6+' was being parsed as the digit cluster '6' and flagged.
+
+    The digit-cluster regex must skip digits embedded in alphanumeric tokens
+    like ES6, v8, ES2015. Only standalone numbers like '30%' or '200+' should
+    be subject to verification.
+    """
+    cover = _good_cover()
+    cover.body[1] = "I use JavaScript ES6+ and TypeScript daily for client work."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("unverified number: '6'" in v for v in violations)
+
+
 def test_unfilled_placeholder_flagged(verified: dict) -> None:
     cover = _good_cover()
     cover.body[0] = "I am applying to {company} for the {role} position."

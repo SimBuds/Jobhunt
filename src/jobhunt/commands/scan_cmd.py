@@ -1,4 +1,4 @@
-"""`job-seeker scan` — pull GTA jobs from configured sources and score the unscored."""
+"""`jobhunt scan` — pull GTA jobs from configured sources and score the unscored."""
 
 from __future__ import annotations
 
@@ -219,6 +219,16 @@ async def _ingest_all(
                 err=True,
             )
             return 0, []
+
+        non_adzuna = [a for a in adapters if a[0] != "adzuna_ca"]
+        if not non_adzuna:
+            typer.echo(
+                "ingest: only adzuna_ca is configured — your scan will be biased toward "
+                "one source. Add greenhouse/lever/ashby/smartrecruiters slugs to "
+                "~/.config/jobhunt/config.toml under [ingest]. See README §Configure "
+                "ingest sources for how to find slugs.",
+                err=True,
+            )
 
         # Drain all streams concurrently — adapters share the per-host
         # RateLimiter so politeness is preserved while distinct hosts overlap.

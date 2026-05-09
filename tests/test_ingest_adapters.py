@@ -184,6 +184,63 @@ def test_workday_location_text_handles_list_and_str() -> None:
     assert _location_text({}) is None
 
 
+# ---------------------------------------------------------------------------
+# lever / ashby adapters — drive the async iterator with a mocked get_json
+# ---------------------------------------------------------------------------
+
+
+def _drain(agen: Any) -> list[Job]:
+    import asyncio
+
+    async def _go() -> list[Job]:
+        out: list[Job] = []
+        async for j in agen:
+            out.append(j)
+        return out
+
+    return asyncio.run(_go())
+
+
+def test_lever_fixture_filters_to_gta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.ingest import lever
+
+    raw = json.loads((FIXTURES / "lever.json").read_text())
+
+    async def fake_get_json(*args: Any, **kwargs: Any) -> Any:
+        return raw
+
+    monkeypatch.setattr(lever, "get_json", fake_get_json)
+    jobs = _drain(lever.fetch(client=None, limiter=None, slug="example"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    assert "Senior Software Engineer" in titles
+    assert "Remote Backend Engineer" in titles
+    assert "Engineer (NYC)" not in titles
+    first = next(j for j in jobs if j.title == "Senior Software Engineer")
+    assert first.id == "lever:example:abc-123"
+    assert first.source == "lever"
+    assert first.url and "abc-123" in first.url
+
+
+def test_ashby_fixture_filters_to_gta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.ingest import ashby
+
+    raw = json.loads((FIXTURES / "ashby.json").read_text())
+
+    async def fake_get_json(*args: Any, **kwargs: Any) -> Any:
+        return raw
+
+    monkeypatch.setattr(ashby, "get_json", fake_get_json)
+    jobs = _drain(ashby.fetch(client=None, limiter=None, slug="example"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    assert "Senior Full-Stack Engineer" in titles
+    assert "Remote Platform Engineer" in titles
+    assert "London Engineer" not in titles
+    remote_job = next(j for j in jobs if j.title == "Remote Platform Engineer")
+    assert remote_job.remote_type == "remote"
+
+
 def test_workday_fixture_filters_to_gta() -> None:
     """Walk the fixture the same way the adapter does — confirm the GTA filter
     keeps the Toronto + Remote-Canada postings and drops the NY one."""

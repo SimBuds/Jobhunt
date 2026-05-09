@@ -1,4 +1,4 @@
-"""`job-seeker apply` — tailor + cover letter + autofill the form (human submits).
+"""`jobhunt apply` — tailor + cover letter + autofill the form (human submits).
 
 Three selection modes (mutually exclusive):
 - `apply <job-id>`              — single job by id.
@@ -31,9 +31,9 @@ from jobhunt.db import connect, upsert_application
 from jobhunt.errors import BrowserError, JobHuntError, PipelineError
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import audit, write_audit
-from jobhunt.pipeline.cover import write_cover_with_retry
+from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult
-from jobhunt.pipeline.tailor import tailor_resume
+from jobhunt.pipeline.tailor import TailoredResume, tailor_resume
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
 
@@ -45,7 +45,7 @@ app = typer.Typer(
 
 @app.callback(invoke_without_command=True)
 def run(
-    job_id: str | None = typer.Argument(None, help="Specific job id from `job-seeker list`."),
+    job_id: str | None = typer.Argument(None, help="Specific job id from `jobhunt list`."),
     top: int | None = typer.Option(
         None, "--top", min=1, max=10, help="Auto-pick the N best-fit unapplied jobs (1..10)."
     ),
@@ -289,162 +289,224 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
 
     for row in rows:
         job = _row_to_job(row)
-        out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
-        out_dir.mkdir(parents=True, exist_ok=True)
+        await _apply_one(cfg, job, verified=verified, no_browser=no_browser)
 
-        typer.echo(f"\n=== {job.id} ===")
-        typer.echo(f"    {job.title} @ {job.company}")
 
-        typer.echo("    … tailoring resume (LLM, ~1–2 min)")
-        try:
-            tailored = await tailor_resume(cfg, job)
-        except JobHuntError as e:
-            typer.echo(f"    ! tailor failed: {e}", err=True)
-            continue
+async def _apply_one(
+    cfg: Config,
+    job: Job,
+    *,
+    verified: dict[str, object],
+    no_browser: bool,
+) -> None:
+    """Run the tailor → cover → audit → render → autofill → DB pipeline for one job.
 
-        typer.echo("    … writing cover letter (LLM, ~1 min)")
-        try:
-            cover, cover_violations, cover_attempts = await write_cover_with_retry(
-                cfg,
-                job,
-                verified=verified,
-                company=job.company,
-                max_words=cfg.pipeline.cover_max_words,
-                max_attempts=cfg.pipeline.cover_retry_attempts,
+    Side effects:
+      - writes audit.json, tailored-resume.json, cover-letter.md, *.docx files;
+      - on `block` verdict: returns early after writing audit.json (no docs);
+      - launches a headed browser unless `no_browser` is set or job has no URL;
+      - upserts an `applications` row.
+    """
+    out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    typer.echo(f"\n=== {job.id} ===")
+    typer.echo(f"    {job.title} @ {job.company}")
+
+    typer.echo("    … tailoring resume (LLM, ~1–2 min)")
+    try:
+        tailored = await tailor_resume(cfg, job)
+    except JobHuntError as e:
+        typer.echo(f"    ! tailor failed: {e}", err=True)
+        return
+
+    typer.echo("    … writing cover letter (LLM, ~1 min)")
+    try:
+        cover, cover_violations, cover_attempts = await write_cover_with_retry(
+            cfg,
+            job,
+            verified=verified,
+            company=job.company,
+            max_words=cfg.pipeline.cover_max_words,
+            max_attempts=cfg.pipeline.cover_retry_attempts,
+        )
+    except JobHuntError as e:
+        typer.echo(f"    ! cover letter failed: {e}", err=True)
+        return
+    if cover_attempts > 1:
+        tag = "clean" if not cover_violations else f"{len(cover_violations)} violations remain"
+        typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
+
+    # Audit pass — deterministic, fast, no LLM call.
+    score_result = _load_score(cfg, job.id)
+    try:
+        audit_result = audit(
+            tailored=tailored,
+            cover=cover,
+            score=score_result,
+            verified=verified,
+            company=job.company,
+            cover_max_words=cfg.pipeline.cover_max_words,
+            job_description=job.description,
+        )
+    except PipelineError as e:
+        typer.echo(f"    ! audit failed: {e}", err=True)
+        return
+
+    audit_path = write_audit(out_dir, audit_result)
+    typer.echo(
+        f"    audit: verdict={audit_result.verdict} "
+        f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
+        f"missing={len(audit_result.missing_must_haves)} "
+        f"cover_violations={len(audit_result.cover_letter_violations)}"
+    )
+    if audit_result.verdict == "block":
+        for flag in audit_result.fabrication_flags:
+            typer.echo(f"    BLOCK: {flag}", err=True)
+        typer.echo(f"    + {audit_path.name} (see for details)")
+        return
+    if audit_result.verdict == "revise":
+        for v in audit_result.cover_letter_violations:
+            typer.echo(f"    revise: {v}", err=True)
+        if audit_result.missing_must_haves:
+            typer.echo(
+                f"    revise: {len(audit_result.missing_must_haves)} JD must-haves not in resume "
+                f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
+                err=True,
             )
-        except JobHuntError as e:
-            typer.echo(f"    ! cover letter failed: {e}", err=True)
-            continue
-        if cover_attempts > 1:
-            tag = "clean" if not cover_violations else f"{len(cover_violations)} violations remain"
-            typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
 
-        # Audit pass — deterministic, fast, no LLM call.
-        score_result = _load_score(cfg, job.id)
-        try:
-            audit_result = audit(
-                tailored=tailored,
-                cover=cover,
-                score=score_result,
-                verified=verified,
-                company=job.company,
-                cover_max_words=cfg.pipeline.cover_max_words,
+    resume_path, cover_docx_path = _render_artifacts(cfg, job, tailored, cover, out_dir)
+    typer.echo(f"    + {resume_path.name}")
+    typer.echo(f"    + {cover_docx_path.name}")
+
+    plan_path = await _run_browser_step(
+        cfg, job, resume_path=resume_path, cover_path=cover_docx_path, out_dir=out_dir,
+        no_browser=no_browser,
+    )
+
+    status = _confirm_submission_status(plan_path)
+    _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
+
+
+def _render_artifacts(
+    cfg: Config,
+    job: Job,
+    tailored: TailoredResume,
+    cover: CoverLetter,
+    out_dir: Path,
+) -> tuple[Path, Path]:
+    """Write resume + cover .docx, cover-letter.md, and tailored-resume.json."""
+    import json as _json
+
+    company_slug = _company_slug(job.company)
+    contact_line = (
+        cfg.applicant.email
+        + ("  |  " + cfg.applicant.phone if cfg.applicant.phone else "")
+        + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
+        + cfg.applicant.github_url
+    )
+    resume_path = out_dir / f"Casey_Hsu_Resume_-_{company_slug}.docx"
+    render(
+        tailored,
+        contact_line=contact_line,
+        name=cfg.applicant.full_name,
+        out_path=resume_path,
+    )
+    cover_docx_path = out_dir / f"Casey_Hsu_Cover_Letter_-_{company_slug}.docx"
+    render_cover(
+        cover,
+        contact_line=contact_line,
+        name=cfg.applicant.full_name,
+        out_path=cover_docx_path,
+    )
+    (out_dir / "cover-letter.md").write_text(cover.to_markdown(), encoding="utf-8")
+    (out_dir / "tailored-resume.json").write_text(
+        _json.dumps(asdict(tailored), indent=2), encoding="utf-8"
+    )
+    return resume_path, cover_docx_path
+
+
+async def _run_browser_step(
+    cfg: Config,
+    job: Job,
+    *,
+    resume_path: Path,
+    cover_path: Path,
+    out_dir: Path,
+    no_browser: bool,
+) -> Path | None:
+    if no_browser:
+        typer.echo("    (browser skipped via --no-browser)")
+        return None
+    if not job.url:
+        typer.echo("    ! no URL on this job — browser skipped", err=True)
+        return None
+    typer.echo("    … launching browser autofill")
+    try:
+        plan_path = await autofill(
+            url=job.url,
+            profile=cfg.applicant,
+            resume_path=resume_path,
+            cover_path=cover_path,
+            out_dir=out_dir,
+            headed=cfg.browser.headed,
+            user_data_dir=cfg.browser.user_data_dir,
+        )
+        typer.echo(f"    + {plan_path.name}")
+        return plan_path
+    except BrowserError as e:
+        typer.echo(f"    ! browser step failed: {e}", err=True)
+        return None
+
+
+def _confirm_submission_status(plan_path: Path | None) -> str:
+    if plan_path is None:
+        return "drafted"
+    answer = (
+        typer.prompt(
+            "    did you submit this application? [y/N/w(ithdrawn)]",
+            default="n",
+            show_default=False,
+        )
+        .strip()
+        .lower()
+    )
+    status = "drafted"
+    if answer in ("y", "yes"):
+        status = "applied"
+    elif answer in ("w", "withdrawn"):
+        status = "withdrawn"
+    typer.echo(f"    status: {status}")
+    return status
+
+
+def _record_application(
+    cfg: Config,
+    job: Job,
+    status: str,
+    resume_path: Path,
+    cover_docx_path: Path,
+    plan_path: Path | None,
+) -> None:
+    from datetime import date
+
+    iso = date.today().isocalendar()
+    week_label = f"{iso.year}-W{iso.week:02d}"
+    conn = connect(cfg.paths.db_path)
+    try:
+        with conn:
+            upsert_application(
+                conn,
+                application_id=str(uuid.uuid4()),
+                job_id=job.id,
+                status=status,
+                resume_path=str(resume_path),
+                cover_path=str(cover_docx_path),
+                fill_plan_path=str(plan_path) if plan_path else None,
+                applied_week=week_label if status == "applied" else None,
             )
-        except PipelineError as e:
-            typer.echo(f"    ! audit failed: {e}", err=True)
-            continue
-
-        audit_path = write_audit(out_dir, audit_result)
-        typer.echo(
-            f"    audit: verdict={audit_result.verdict} "
-            f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
-            f"missing={len(audit_result.missing_must_haves)} "
-            f"cover_violations={len(audit_result.cover_letter_violations)}"
-        )
-        if audit_result.verdict == "block":
-            for flag in audit_result.fabrication_flags:
-                typer.echo(f"    BLOCK: {flag}", err=True)
-            typer.echo(f"    + {audit_path.name} (see for details)")
-            continue
-        if audit_result.verdict == "revise":
-            for v in audit_result.cover_letter_violations:
-                typer.echo(f"    revise: {v}", err=True)
-            if audit_result.missing_must_haves:
-                typer.echo(
-                    f"    revise: {len(audit_result.missing_must_haves)} JD must-haves not in resume "
-                    f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
-                    err=True,
-                )
-
-        # Render artifacts.
-        company_slug = _company_slug(job.company)
-        contact_line = (
-            cfg.applicant.email
-            + ("  |  " + cfg.applicant.phone if cfg.applicant.phone else "")
-            + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
-            + cfg.applicant.github_url
-        )
-        resume_path = out_dir / f"Casey_Hsu_Resume_-_{company_slug}.docx"
-        render(
-            tailored,
-            contact_line=contact_line,
-            name=cfg.applicant.full_name,
-            out_path=resume_path,
-        )
-        cover_docx_path = out_dir / f"Casey_Hsu_Cover_Letter_-_{company_slug}.docx"
-        render_cover(
-            cover,
-            contact_line=contact_line,
-            name=cfg.applicant.full_name,
-            out_path=cover_docx_path,
-        )
-        cover_md_path = out_dir / "cover-letter.md"
-        cover_md_path.write_text(cover.to_markdown(), encoding="utf-8")
-        (out_dir / "tailored-resume.json").write_text(
-            __import__("json").dumps(asdict(tailored), indent=2), encoding="utf-8"
-        )
-        typer.echo(f"    + {resume_path.name}")
-        typer.echo(f"    + {cover_docx_path.name}")
-
-        # Browser step.
-        plan_path: Path | None = None
-        if not no_browser and job.url:
-            typer.echo("    … launching browser autofill")
-            try:
-                plan_path = await autofill(
-                    url=job.url,
-                    profile=cfg.applicant,
-                    resume_path=resume_path,
-                    cover_path=cover_docx_path,
-                    out_dir=out_dir,
-                    headed=cfg.browser.headed,
-                    user_data_dir=cfg.browser.user_data_dir,
-                )
-                typer.echo(f"    + {plan_path.name}")
-            except BrowserError as e:
-                typer.echo(f"    ! browser step failed: {e}", err=True)
-        elif no_browser:
-            typer.echo("    (browser skipped via --no-browser)")
-        elif not job.url:
-            typer.echo("    ! no URL on this job — browser skipped", err=True)
-
-        # Confirm submission after the user closes the browser.
-        status = "drafted"
-        if plan_path is not None:
-            answer = (
-                typer.prompt(
-                    "    did you submit this application? [y/N/w(ithdrawn)]",
-                    default="n",
-                    show_default=False,
-                )
-                .strip()
-                .lower()
-            )
-            if answer in ("y", "yes"):
-                status = "applied"
-            elif answer in ("w", "withdrawn"):
-                status = "withdrawn"
-            typer.echo(f"    status: {status}")
-
-        from datetime import date
-
-        iso = date.today().isocalendar()
-        week_label = f"{iso.year}-W{iso.week:02d}"
-        conn = connect(cfg.paths.db_path)
-        try:
-            with conn:
-                upsert_application(
-                    conn,
-                    application_id=str(uuid.uuid4()),
-                    job_id=job.id,
-                    status=status,
-                    resume_path=str(resume_path),
-                    cover_path=str(cover_docx_path),
-                    fill_plan_path=str(plan_path) if plan_path else None,
-                    applied_week=week_label if status == "applied" else None,
-                )
-        finally:
-            conn.close()
+    finally:
+        conn.close()
 
 
 def _load_score(cfg: Config, job_id: str) -> ScoreResult | None:

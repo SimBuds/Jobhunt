@@ -56,7 +56,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         raise PipelineError(f"job {job.id} has no description")
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     if not verified_path.is_file():
-        raise PipelineError(f"missing {verified_path} — run `job-seeker convert-resume`")
+        raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume`")
 
     prompt = load_prompt(cfg.paths.kb_dir, "cover")
     user = prompt.render_user(

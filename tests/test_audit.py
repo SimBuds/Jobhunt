@@ -172,6 +172,35 @@ def test_audit_revise_on_cover_violation(verified: dict) -> None:
     assert result.cover_letter_violations
 
 
+def test_audit_falls_back_to_jd_when_score_must_haves_empty(verified: dict) -> None:
+    """When the score LLM returns empty matched_must_haves (qwen3.5:9b often
+    does this even though the schema requires it), the audit must extract
+    must-haves deterministically from the JD by intersecting verified skills
+    with the JD text — otherwise the 70% coverage gate is silently bypassed.
+    """
+    empty_score = ScoreResult(
+        score=85,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="test",
+    )
+    jd = "We need a TypeScript and React developer with Shopify experience."
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=empty_score,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+        job_description=jd,
+    )
+    assert result.keyword_coverage_pct is not None
+    assert "TypeScript" in result.matched_keywords
+    assert "React" in result.matched_keywords
+
+
 def test_audit_block_on_fabrication(verified: dict) -> None:
     tailored = _minimal_tailored(verified)
     tailored.roles.append(

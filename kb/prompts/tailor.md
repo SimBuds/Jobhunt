@@ -51,9 +51,21 @@ Hard rules (from kb/policies/tailoring-rules.md):
    skills can appear ONLY in a category named exactly "Familiar".
 3. Roles list MUST contain EVERY role in verified_facts.work_history with the
    exact same `employer` and `dates`. You may reword `title` slightly only if
-   the verified title is preserved in meaning. Bullets must be reworded /
-   reordered versions of the verified bullets — same facts, surfaced for the
-   JD. Do not move bullets between roles.
+   the verified title is preserved in meaning. **Bullets must be actively
+   rewritten — not echoed.** Specifically:
+   - Each tailored bullet MUST differ in wording from its verified source.
+     Returning a bullet byte-identical to the verified text is a failure.
+     Reorder clauses, swap the verb, lead with the JD-relevant outcome.
+   - When the JD names a verified tech in a different surface form (e.g.
+     "JS" vs "JavaScript", "GH Actions" vs "GitHub Actions CI/CD",
+     "Postgres" vs "PostgreSQL", "headless CMS" vs "Contentful"), use the
+     JD's exact surface form in the rewritten bullet so ATS keyword
+     matchers latch on. Same fact, JD's wording.
+   - Lead each role's first bullet with the verified accomplishment most
+     relevant to this specific JD. The order of bullets within a role
+     should reflect JD relevance, not the verified order.
+   - Same facts only. Do not invent metrics, scope, or scope-changes.
+     Do not move bullets between roles.
 4. Skill categories: keep "Familiar" as a separate category whose items are
    exactly the items in verified_facts.skills_familiar (you may reorder).
 5. Education: include EXACTLY ONE entry — the GBC diploma line (e.g.
