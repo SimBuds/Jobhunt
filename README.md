@@ -1,4 +1,4 @@
-# Jobhunt
+# jobhunt
 
 A local-first CLI for Casey's Toronto-area job hunt. Pulls jobs from public ATS
 APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Job Bank Canada,
@@ -33,11 +33,16 @@ cloud LLM calls in the runtime path.
 git clone <this-repo>
 cd jobhunt
 uv sync
-uv run playwright install chromium
+source .venv/bin/activate        # activates the jobhunt venv; `jobhunt` is now on PATH
+playwright install chromium
 
 ollama pull qwen3.5:9b           # single hot model — score, tailor, cover
 ollama pull nomic-embed-text    # embeddings (reserved for future use)
 ```
+
+After `uv sync`, the `jobhunt` script is installed into `.venv/bin`. Activate the
+venv once per shell (`source .venv/bin/activate`) and use `jobhunt` directly. If
+you'd rather not activate, prefix any command with `uv run` (e.g. `uv run jobhunt scan`).
 
 ## Commands
 
@@ -87,9 +92,9 @@ The flag must come **before** the job id.
 > Note: `config` and `db` are setup-only commands — they're hidden from `--help` after install. Run them once during setup as shown below.
 
 ```bash
-uv run jobhunt config show       # writes a default config and prints it
-uv run jobhunt db init           # creates SQLite schema at data/jobhunt.db
-uv run jobhunt convert-resume    # generates kb/profile/* from the baseline
+jobhunt config show       # writes a default config and prints it
+jobhunt db init           # creates SQLite schema at data/jobhunt.db
+jobhunt convert-resume    # generates kb/profile/* from the baseline
 ```
 
 `scan`, `list`, and `apply` will refuse to run until `convert-resume` has been
@@ -100,8 +105,8 @@ To start over from scratch (drops the DB, all tailored documents, the HTTP
 cache, the browser profile, and the parsed resume):
 
 ```bash
-uv run jobhunt db reset          # prompts for 'yes', then re-inits schema
-uv run jobhunt convert-resume    # regenerate kb/profile/ before scanning
+jobhunt db reset          # prompts for 'yes', then re-inits schema
+jobhunt convert-resume    # regenerate kb/profile/ before scanning
 ```
 
 ### Configure ingest sources
@@ -152,11 +157,11 @@ adzuna_app_key = "..."
 ## Daily flow
 
 ```bash
-uv run jobhunt scan                      # pulls new jobs + scores them
-uv run jobhunt list --min-score 70       # see today's high-fit subset
-uv run jobhunt apply --best              # pick which to apply to
+jobhunt scan                      # pulls new jobs + scores them
+jobhunt list --min-score 70       # see today's high-fit subset
+jobhunt apply --best              # pick which to apply to
 # Browser opens. You review, click Submit yourself.
-uv run jobhunt list --week 0             # weekly pipeline view
+jobhunt list --week 0             # weekly pipeline view
 ```
 
 ## Data layout
