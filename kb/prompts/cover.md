@@ -62,16 +62,28 @@ Hard rules:
    contractions where natural ("I've", "I'm", "don't", "it's"). Vary
    sentence length — short punchy lines are fine. Direct, concrete, no
    buzzwords.
-7. Banned phrases (do NOT use any of these): "passionate", "synergy",
-   "leveraged", "spearheaded", "results-driven", "I'm excited", "I
-   believe", "aligns with", "core requirements", "production-grade",
+7. Banned phrases. The model has historically reached for these on every
+   attempt — they are auto-rejected by a downstream validator, so using
+   them wastes a retry. Read this list before you start writing, and
+   before you submit. **NEVER write any of these, in any form:**
+
+   - "aligns with"  ← recurring offender, do NOT use
+   - "passionate" / "deeply passionate"
+   - "I believe"
+   - "I'm excited" / "thrilled"
+   - "leveraged" / "spearheaded"
+   - "the model transfers" / "model transfers well"
+   - "rather than" (when disclaiming a tech you don't have)
+
+   Also banned (less common but still rejected): "synergy",
+   "results-driven", "core requirements", "production-grade",
    "complementing my practical experience", "track record", "proven
-   ability", "deeply passionate", "hit the ground running", "value-add",
-   "direct match", "mirrors the kind of", "technical rigor",
-   "I'd bring to", "I'd welcome the chance", "the chance to discuss",
-   "I'm drawn to", "transform enterprises", "support your team's goals",
-   "the model transfers", "rather than" (when used to volunteer a gap),
-   "coming from", "while I have".
+   ability", "hit the ground running", "value-add", "direct match",
+   "mirrors the kind of", "technical rigor", "I'd bring to", "I'd
+   welcome the chance", "the chance to discuss", "I'm drawn to",
+   "transform enterprises", "support your team's goals", "coming from",
+   "while I have".
+
    No first-person superlatives. No exclamation marks.
 
 8. Anti-patterns (REWRITE if you catch yourself doing these):
