@@ -6,6 +6,23 @@ from pathlib import Path
 
 from jobhunt.config import ApplicantProfile
 
+_ARRANGEMENT_LABELS = {"onsite": "On-site", "hybrid": "Hybrid", "remote": "Remote"}
+_EMPLOYMENT_LABELS = {
+    "full_time": "Full-time",
+    "part_time": "Part-time",
+    "contract": "Contract",
+    "internship": "Internship",
+    "temporary": "Temporary",
+}
+
+
+def _pretty_arrangement(value: str) -> str:
+    return _ARRANGEMENT_LABELS.get(value, value)
+
+
+def _pretty_employment(value: str) -> str:
+    return _EMPLOYMENT_LABELS.get(value, value)
+
 
 def build_field_map(
     profile: ApplicantProfile,
@@ -32,6 +49,8 @@ def build_field_map(
         "requires_visa_sponsorship": "Yes" if profile.requires_visa_sponsorship else "No",
         "salary_expectation": profile.salary_expectation_cad,
         "pronouns": profile.pronouns,
+        "work_arrangement": ", ".join(_pretty_arrangement(a) for a in profile.work_arrangements),
+        "employment_type": ", ".join(_pretty_employment(t) for t in profile.employment_types),
         "resume_path": str(resume_path),
         "cover_letter_path": str(cover_path),
     }

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import tomli_w
 from pydantic import BaseModel, Field
@@ -45,6 +45,8 @@ class AdzunaConfig(BaseModel):
             "frontend developer",
             "full stack developer",
             "shopify developer",
+            "hubspot developer",
+            "wordpress developer",
         ]
     )
     pages: int = 3
@@ -115,6 +117,12 @@ class ApplicantProfile(BaseModel):
     requires_visa_sponsorship: bool = False
     salary_expectation_cad: str = ""
     pronouns: str = ""
+    work_arrangements: list[Literal["onsite", "hybrid", "remote"]] = Field(
+        default_factory=lambda: ["onsite", "hybrid", "remote"]
+    )
+    employment_types: list[
+        Literal["full_time", "part_time", "contract", "internship", "temporary"]
+    ] = Field(default_factory=lambda: ["full_time", "contract"])
 
 
 class Config(BaseModel):

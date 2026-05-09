@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from jobhunt.config import Config, config_path, load_config
+from pydantic import ValidationError
+
+from jobhunt.config import ApplicantProfile, Config, config_path, load_config
 
 
 def test_default_config_writes_and_loads(tmp_config_dir: Path) -> None:
@@ -26,6 +28,35 @@ def test_example_toml_is_parseable(tmp_config_dir: Path) -> None:
     text = Config.example_toml()
     assert "[gateway]" in text
     assert "[paths]" in text
+
+
+def test_applicant_profile_defaults() -> None:
+    p = ApplicantProfile()
+    assert p.work_arrangements == ["onsite", "hybrid", "remote"]
+    assert p.employment_types == ["full_time", "contract"]
+    assert p.portfolio_url == "https://caseyhsu.com"
+
+
+def test_applicant_profile_overrides_round_trip() -> None:
+    cfg = Config.model_validate(
+        {
+            "applicant": {
+                "salary_expectation_cad": "50,000 - 90,000 CAD",
+                "work_arrangements": ["hybrid", "remote"],
+                "employment_types": ["contract"],
+            }
+        }
+    )
+    assert cfg.applicant.salary_expectation_cad == "50,000 - 90,000 CAD"
+    assert cfg.applicant.work_arrangements == ["hybrid", "remote"]
+    assert cfg.applicant.employment_types == ["contract"]
+
+
+def test_applicant_profile_rejects_invalid_literal() -> None:
+    with pytest.raises(ValidationError):
+        ApplicantProfile(employment_types=["casual"])  # type: ignore[list-item]
+    with pytest.raises(ValidationError):
+        ApplicantProfile(work_arrangements=["anywhere"])  # type: ignore[list-item]
 
 
 def test_invalid_toml_raises(tmp_config_dir: Path) -> None:

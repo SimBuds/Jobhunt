@@ -125,11 +125,11 @@ job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
 rss             = []   # generic employer career-page RSS/Atom URLs
 
 [ingest.adzuna]
-queries = ["javascript developer", "react developer", "shopify developer"]
+queries = ["javascript developer", "react developer", "shopify developer", "hubspot developer", "wordpress developer"]
 
 [applicant]
 phone = "(416) 555-0123"
-salary_expectation_cad = "100k–120k"
+salary_expectation_cad = "50k–90k"
 ```
 
 **Finding slugs:**

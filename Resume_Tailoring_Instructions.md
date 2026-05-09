@@ -35,11 +35,11 @@ Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
 ### Skills Casey actually uses (Core / production)
 
-JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, Shopify (Liquid, custom themes), HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, local LLM hosting (Ollama, GPU optimization), prompt engineering, Stripe integration, Google Tag Manager, RESTful APIs, SEO.
+JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, Shopify (Liquid, custom themes), HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, local LLM hosting (Ollama, GPU optimization), prompt engineering, Stripe integration, Google Tag Manager.
 
 ### Skills Casey is "Familiar" with (academic / light use)
 
-Java, Spring Boot, Python, Agile/Scrum, Headless Architecture, Figma. **Do not promote these to "Proficient" or "Strong."** They can be elevated honestly when the job requires them — see Section 4.
+Java, Spring Boot, Python, Agile/Scrum, Headless Architecture, RESTful APIs, SEO, Figma. **Do not promote these to "Proficient" or "Strong."** They can be elevated honestly when the job requires them — see Section 4.
 
 ### Certifications and education
 
