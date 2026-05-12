@@ -158,6 +158,77 @@ async def test_falls_back_after_max_attempts(
     assert cover.body  # not raised, not empty
 
 
+@pytest.mark.asyncio
+async def test_company_name_deterministic_patch(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If all retries fail to name the company, a deterministic
+    'At {Company}, ' prepend is applied and the violation is dropped."""
+
+    def payload_without_company() -> dict[str, Any]:
+        # Same structure as _clean_payload but with no 'Acme' anywhere.
+        return {
+            "salutation": "Dear Hiring Team,",
+            "body": [
+                "Your team is building solid e-commerce platforms, and I have been "
+                "shipping Shopify storefronts and migrations for two years.",
+                "The most recent project moved a WordPress site to Shopify across three "
+                "phases; I owned scoping through deployment as the sole developer.",
+                "Happy to walk through what I shipped if useful.",
+            ],
+            "sign_off": "Best,\nCasey Hsu",
+        }
+
+    async def fake(**_: Any) -> dict[str, Any]:
+        return payload_without_company()
+
+    monkeypatch.setattr(cover_mod, "complete_json", fake)
+    cover, violations, attempts = await write_cover_with_retry(
+        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
+        max_words=280, max_attempts=3,
+    )
+    assert attempts == 3  # all three model attempts were used
+    # The patch dropped the company-name violation.
+    assert not any("does not name company" in v for v in violations)
+    # The lead paragraph now begins with the deterministic prepend.
+    assert cover.body[0].startswith("At Acme, ")
+
+
+@pytest.mark.asyncio
+async def test_company_name_patch_skipped_when_other_violations_remain(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the LLM produced both a company-missing AND a banned-phrase
+    violation, the patch only resolves company-missing — banned phrases
+    still surface so audit verdict stays `revise`."""
+
+    def payload_two_violations() -> dict[str, Any]:
+        return {
+            "salutation": "Dear Hiring Team,",
+            "body": [
+                "Your team builds solid systems and I'd bring two years of Shopify "
+                "experience.",
+                "The migration aligns with the modern stack — owned scoping through "
+                "deployment as the sole developer over three phases.",
+                "Happy to walk through what I shipped if useful.",
+            ],
+            "sign_off": "Best,\nCasey Hsu",
+        }
+
+    async def fake(**_: Any) -> dict[str, Any]:
+        return payload_two_violations()
+
+    monkeypatch.setattr(cover_mod, "complete_json", fake)
+    cover, violations, attempts = await write_cover_with_retry(
+        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
+        max_words=280, max_attempts=3,
+    )
+    # Company-missing got patched; banned-phrase 'aligns with' still flagged.
+    assert cover.body[0].startswith("At Acme, ")
+    assert any("aligns with" in v for v in violations)
+    assert not any("does not name company" in v for v in violations)
+
+
 def test_format_revision_hint_lists_each_violation() -> None:
     hint = _format_revision_hint(
         ["banned phrase: 'aligns with'", "banned phrase: 'direct match'"], attempt=1

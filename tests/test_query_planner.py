@@ -32,7 +32,7 @@ def test_derive_from_current_baseline() -> None:
     for required in (
         "cms developer",
         "ai engineer",
-        "seo specialist",
+        "technical seo developer",
         "javascript developer",
         "java developer",
         "react developer",
@@ -55,12 +55,12 @@ def test_empty_skills_returns_only_baseline() -> None:
 
 def test_seo_trigger_requires_bullet_mention() -> None:
     base = {"skills_core": ["Java"]}
-    assert "seo specialist" not in derive_adzuna_queries(base)
+    assert "technical seo developer" not in derive_adzuna_queries(base)
     base_with_seo = {
         "skills_core": ["Java"],
         "work_history": [{"bullets": ["Ran technical SEO audits."]}],
     }
-    assert "seo specialist" in derive_adzuna_queries(base_with_seo)
+    assert "technical seo developer" in derive_adzuna_queries(base_with_seo)
 
 
 def test_ai_trigger_via_skills_ai_or_familiar() -> None:

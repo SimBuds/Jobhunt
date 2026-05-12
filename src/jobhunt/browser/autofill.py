@@ -95,12 +95,18 @@ async def autofill(
         page = await ctx.new_page()
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            await page.wait_for_load_state("networkidle", timeout=10_000)
         except Exception as e:  # noqa: BLE001
             await ctx.close()
             if browser:
                 await browser.close()
             raise BrowserError(f"failed to load {url}: {e}") from e
+        try:
+            await page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception:  # noqa: BLE001
+            # SPA-heavy ATS pages (Intuit, Workday, iCIMS) fire analytics
+            # requests long after the form is visible — swallow the networkidle
+            # timeout so a chatty tail doesn't abort the autofill session.
+            pass
 
         # Pick the ATS handler from the *landed* URL, not the input URL.
         # Adzuna and similar aggregators redirect through tracking links;
@@ -110,29 +116,33 @@ async def autofill(
         landed_url = page.url or url
         handler_name, handler = pick_handler(landed_url)
 
-        if not await looks_like_application_page(page):
-            plan: dict[str, Any] = {
-                "url": landed_url,
-                "handler": "none",
-                "fills": [],
-                "field_map_keys": sorted(field_map.keys()),
-                "warning": (
-                    "No application form detected on this page. This URL is likely a "
-                    "job listing — find the 'Apply' link and open the employer's "
-                    "application page manually. Browser left open."
-                ),
-            }
-            plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
-        else:
-            actions = await handler(page, field_map)
-            plan = {
-                "url": landed_url,
-                "handler": handler_name,
-                "fills": [asdict(a) for a in actions],
-                "field_map_keys": sorted(field_map.keys()),
-                "warning": "Browser left open. You must review and click Submit yourself.",
-            }
-            plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        try:
+            if not await looks_like_application_page(page):
+                plan: dict[str, Any] = {
+                    "url": landed_url,
+                    "handler": "none",
+                    "fills": [],
+                    "field_map_keys": sorted(field_map.keys()),
+                    "warning": (
+                        "No application form detected on this page. This URL is likely a "
+                        "job listing — find the 'Apply' link and open the employer's "
+                        "application page manually. Browser left open."
+                    ),
+                }
+                plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+            else:
+                actions = await handler(page, field_map)
+                plan = {
+                    "url": landed_url,
+                    "handler": handler_name,
+                    "fills": [asdict(a) for a in actions],
+                    "field_map_keys": sorted(field_map.keys()),
+                    "warning": "Browser left open. You must review and click Submit yourself.",
+                }
+                plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        except Exception as e:
+            # Browser was closed early by the user or the page crashed.
+            raise BrowserError(f"browser closed before autofill completed: {e}") from e
 
         # Wait for the user to close the browser.
         with contextlib.suppress(Exception):
