@@ -182,7 +182,13 @@ job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
 rss             = []   # generic employer career-page RSS/Atom URLs
 
 [ingest.adzuna]
-queries = ["javascript developer", "react developer", "shopify developer", "hubspot developer", "wordpress developer"]
+# Leave `queries = []` (or omit entirely) to auto-derive from
+# `kb/profile/verified.json` — the planner walks skills_core / skills_cms /
+# work bullets and emits up to 10 role-suffixed queries including umbrella
+# signals ("cms developer", "ai engineer", "seo specialist"). Populate to
+# override with a verbatim list, e.g.:
+#   queries = ["javascript developer", "react developer", "ai engineer"]
+queries = []
 
 [applicant]
 phone = "(416) 555-0123"
