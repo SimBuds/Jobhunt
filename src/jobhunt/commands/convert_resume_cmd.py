@@ -1,4 +1,4 @@
-"""`jobhunt convert-resume` — parse Baseline.docx into kb/profile/*.md + verified.json."""
+"""`jobhunt convert-resume` — parse Resume.docx into kb/profile/*.md + verified.json."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from jobhunt.config import load_config
 from jobhunt.resume.parse_docx import parse_baseline, write_kb_markdown, write_verified_json
 
 app = typer.Typer(
-    help="Parse Casey_Hsu_Resume_Baseline.docx into the KB.",
+    help="Parse Resume.docx into the KB.",
     invoke_without_command=True,
 )
 
@@ -18,7 +18,7 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def run(
     docx: Path = typer.Option(
-        Path("Casey_Hsu_Resume_Baseline.docx"),
+        Path("Resume.docx"),
         "--docx",
         help="Path to the baseline resume .docx.",
     ),

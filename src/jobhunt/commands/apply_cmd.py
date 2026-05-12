@@ -8,7 +8,7 @@ Three selection modes (mutually exclusive):
 Per selected job:
   1. tailor resume (pipeline.tailor)
   2. write cover letter (pipeline.cover)
-  3. render Casey_Hsu_Resume_<RoleSlug>.docx (resume.render_docx)
+  3. render <Name>_Resume.docx (resume.render_docx)
   4. save cover-letter.md
   5. open Playwright headed at job.url, run the matching ATS handler
   6. log fill-plan.json, mark application status=drafted
@@ -485,14 +485,16 @@ def _render_artifacts(
         + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
         + cfg.applicant.github_url
     )
-    resume_path = out_dir / "Casey_Hsu_Resume.docx"
+    name_slug = "_".join(cfg.applicant.full_name.split()) if cfg.applicant.full_name else ""
+    prefix = f"{name_slug}_" if name_slug else ""
+    resume_path = out_dir / f"{prefix}Resume.docx"
     render(
         tailored,
         contact_line=contact_line,
         name=cfg.applicant.full_name,
         out_path=resume_path,
     )
-    cover_docx_path = out_dir / "Casey_Hsu_Cover_Letter.docx"
+    cover_docx_path = out_dir / f"{prefix}Cover_Letter.docx"
     render_cover(
         cover,
         contact_line=contact_line,

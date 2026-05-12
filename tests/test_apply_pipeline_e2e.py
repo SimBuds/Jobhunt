@@ -156,8 +156,8 @@ def test_apply_one_ship_renders_and_records(
     assert calls["autofill"] == 1
     out = cfg.paths.data_dir / "applications" / "test_1"
     assert (out / "audit.json").is_file()
-    assert (out / "Casey_Hsu_Resume.docx").exists()
-    assert (out / "Casey_Hsu_Cover_Letter.docx").exists()
+    assert (out / "Resume.docx").exists()
+    assert (out / "Cover_Letter.docx").exists()
     assert _count_apps(cfg.paths.db_path) == 1
 
 

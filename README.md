@@ -80,7 +80,7 @@ you'd rather not activate, prefix any command with `uv run` (e.g. `uv run jobhun
 Four user-facing commands.
 
 ```bash
-jobhunt convert-resume       # parse Casey_Hsu_Resume_Baseline.docx → kb/profile/
+jobhunt convert-resume       # parse Resume.docx → kb/profile/
 jobhunt scan                 # ingest GTA jobs + score against profile
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
 jobhunt apply --top N        # auto-pick N best-fit unapplied jobs (1..10)
@@ -108,7 +108,7 @@ When a posting isn't in the scan results — a friend's tip, a direct careers
 page, a LinkedIn link — bypass `scan` and feed the URL straight in:
 
 ```bash
-jobhunt apply --url https://boards.greenhouse.io/<employer>/jobs/<id>
+jobhunt apply --url "https://boards.greenhouse.io/<employer>/jobs/<id>"
 ```
 
 The fetcher renders the page in headless Chromium via Playwright (so
@@ -231,7 +231,7 @@ jobhunt list --week 0             # weekly pipeline view
 
 | Path | What lives there |
 |---|---|
-| `Casey_Hsu_Resume_Baseline.docx` | Source-of-truth resume. Hand-edited. |
+| `Resume.docx` | Source-of-truth resume. Hand-edited. |
 | `Resume_Tailoring_Instructions.md` | Hard rules (no fabrication, ATS-safe, auto-decline). |
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. Tailoring is constrained to this. |
 | `kb/policies/tailoring-rules.md` | Prompt-injectable mirror of the Tailoring Instructions. |

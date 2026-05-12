@@ -12,7 +12,7 @@ import httpx
 
 from jobhunt.errors import IngestError
 
-DEFAULT_UA = "jobhunt/0.1 (+personal-use; caseyhsu@proton.me)"
+DEFAULT_UA = "jobhunt/0.1 (+personal-use; your-email@example.com)"
 
 
 class RateLimiter:
