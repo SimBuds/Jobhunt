@@ -16,9 +16,19 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 ## Hardware context
 
-- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and qwen3.5:9b lands at ~9.1 GB resident with comfortable headroom.
+- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and the active model lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: `qwen3.5:9b` for all task slots (score, tailor, cover) — single hot model at `num_ctx=6144` with `keep_alive="30m"` and reasoning (`think`) disabled at the gateway; `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: `qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` that bakes in the user's personal prompt stack (persona, formatting, knowledge). The gateway always sends a system message, which overrides the Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into scoring/tailoring/cover outputs. Bare `qwen3.5:9b` is the documented fallback if the custom variant isn't built — same base weights, same VRAM footprint, same quirks. All three task slots (score, tailor, cover) run the same hot model at `num_ctx=16384` (matching `OLLAMA_CONTEXT_LENGTH=16384`) with `keep_alive=-1` (load forever, matching `OLLAMA_KEEP_ALIVE=-1`) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
+  ```
+  Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default
+  Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
+  Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
+  Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context; gateway sends num_ctx=16384 to match
+  Environment="OLLAMA_KEEP_ALIVE=-1"           # never unload; gateway also sends keep_alive=-1
+  Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one model in VRAM at a time
+  ```
+  Changing any of these requires updating the matching gateway-level value (or vice versa) so JD truncation thresholds and the cold-start budget stay aligned.
 - One model hot in VRAM at a time. Single-model setup eliminates reload churn between task types; reload churn was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
@@ -81,7 +91,8 @@ src/jobhunt/
 │   ├── adzuna_ca.py
 │   ├── smartrecruiters.py     # SmartRecruiters public Posting API (no key needed)
 │   ├── job_bank_ca.py         # Government of Canada Job Bank RSS
-│   └── rss_generic.py         # generic employer career RSS/Atom feeds
+│   ├── rss_generic.py         # generic employer career RSS/Atom feeds
+│   └── manual.py              # --url: ad-hoc single-JD synth into a Job
 ├── gateway/                   # Ollama client + prompt loader
 │   ├── client.py              # complete_json (POST /api/chat with format=schema)
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
@@ -113,8 +124,16 @@ jobhunt scan                 # ingest GTA jobs + score
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
 jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
+jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt list [--week N]      # pipeline view + weekly rollup
 ```
+
+`apply --url` is a user-initiated single-shot fetch. It synthesizes a
+`Job(source="manual", id="manual:<sha1-12>")`, upserts it into the DB so it
+shows up in `list` and re-applies are idempotent, then runs the normal
+tailor/cover/audit pipeline. `--no-score` skips the score pass (audit's
+coverage falls back to the title/JD intersect). `--force-robots` overrides
+the robots.txt check — personal-use single-shot only.
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
@@ -135,7 +154,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
 2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
-4. **Respect `robots.txt`** for any non-API HTTP fetch. Use `protego`.
+4. **Respect `robots.txt`** for any non-API HTTP fetch. The `--url` ad-hoc path checks via stdlib `urllib.robotparser` and accepts `--force-robots` for personal-use override only; this carve-out does **not** apply to `scan` ingest adapters. (CLAUDE.md historically calls for `protego`; the project hasn't taken that dep yet — stdlib is the current implementation.)
 5. **Rate limits:** 1 req/sec/host default. Exponential backoff on 429/5xx.
 6. **User-Agent:** identifies the tool and provides a contact, e.g. `jobhunt/0.1 (+personal-use; caseyhsu@proton.me)`.
 7. **Cache** raw responses to `data/cache/` with a TTL; don't re-hit APIs needlessly during dev.
@@ -152,16 +171,21 @@ top-level commands that touch scoring/listing/applying must call it too.
 
 1. **Every structured call uses a JSON schema.** `gateway.client.complete_json(schema=...)` posts to Ollama `/api/chat` with `format: <schema>`. No free-form JSON parsing.
 2. **Reasoning disabled.** The gateway sends `"think": false` so qwen3.5's
-   reasoning trace doesn't blow past the timeout on structured calls. Quality
-   is held by the deterministic post-processing layers (score clamp, cover
-   validator + retry, audit), not by reasoning tokens. If a future task slot
-   needs thinking, plumb it through as a per-call kwarg — don't flip the
-   default.
-3. **Keep-alive + warm-up.** `keep_alive="30m"` in the payload so the model
-   stays resident across a scan. `scan_cmd._warm_model()` fires a tiny chat
-   before the scoring loop so the first real call doesn't pay cold-load on
-   top of the 180 s gateway timeout.
-4. **Truncate inputs** to fit `num_ctx` (default 6144). The score/tailor pipelines truncate description to 6000 chars and policy to 4000 — see `pipeline.score.truncate`.
+   reasoning trace doesn't blow past the timeout on structured calls (this
+   applies to bare `qwen3.5:9b` and the project default `qwen-custom:latest`,
+   which is derived from it). Quality is held by the deterministic
+   post-processing layers (score clamp, cover validator + retry, audit), not
+   by reasoning tokens. If a future task slot needs thinking, plumb it
+   through as a per-call kwarg — don't flip the default.
+3. **Keep-alive + warm-up.** `keep_alive=-1` in the payload so the model
+   stays resident indefinitely (mirrors the server-side `OLLAMA_KEEP_ALIVE=-1`).
+   `scan_cmd._warm_model()` fires a tiny chat before the scoring loop so the
+   first real call doesn't pay cold-load on top of the 180 s gateway timeout.
+4. **Truncate inputs** to fit `num_ctx` (default 16384 — matches
+   `OLLAMA_CONTEXT_LENGTH=16384`). The score/tailor pipelines truncate
+   description to `MAX_DESC_CHARS=14000` and policy to `MAX_POLICY_CHARS=6000`
+   — see `pipeline.score`. If you bump `num_ctx` again, bump these in
+   step so the prompts use the additional room rather than leaving it idle.
 5. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
 6. **Honesty enforcement is structural.** The tailor pipeline's
    `_enforce_no_fabrication` rejects any role/employer/dates that diverge from
@@ -186,8 +210,10 @@ to it without explicit discussion.
    the tailored resume at ≥70 % (2026 ATS guideline). Verdict `revise` if below.
    When `scores.reasons` is empty (qwen3.5:9b often ships empty arrays despite
    the schema requiring them), `audit._extract_must_haves_from_jd` runs as a
-   deterministic fallback — intersect verified skills with the JD description
-   and use those as must-haves. Adding new tailoring capabilities must not
+   deterministic fallback — intersect verified skills with `job_title ∪
+   job_description`. Title is part of the source because Adzuna ships ~500-char
+   description snippets where canonical tech names ("Java", "React") often
+   only survive in the title. Adding new tailoring capabilities must not
    break this fallback path.
 2. **Cover-letter validator** (`pipeline.cover_validate`) — enforces banned
    phrases (substring tier + structural `_DEFENSIVE_PATTERNS` regex tier for
@@ -197,6 +223,17 @@ to it without explicit discussion.
    and TLD fragments like `.io`/`.ai` via `_COMPANY_STOPWORDS`, accepts any
    distinctive remaining token), no unverified numbers (digits embedded in
    alphanumeric tokens like ES6 are exempt), no closing diploma re-recap.
+   Two preprocess steps run before matching to defang model quirks:
+   - **Apostrophe normalization** — `_normalize()` collapses curly/smart
+     apostrophes (U+2019 and variants) to ASCII `'` before banned-phrase /
+     opener / closing / salutation / company-name checks. Without this,
+     qwen's typographic output (e.g. `team's goals`) bypasses the substring
+     tier whose constants use ASCII `'`.
+   - **Time-of-day stripping** — `_TIME_OF_DAY_RE` removes clock references
+     (`11:00 AM`, `9 a.m.`, `5pm`, bare `12:30`) before the unverified-numbers
+     digit-cluster pass. The cluster regex breaks on `:`, so without this
+     stripping a JD stand-up reference (`11:00`) flagged as two fabricated
+     numbers (`11`, `00`).
    Verdict `revise` on violations.
 3. **Fabrication re-check** — `_enforce_no_fabrication` runs again on the
    tailored resume post-decode. Verdict `block` on any failure.
@@ -207,6 +244,18 @@ to it without explicit discussion.
    band from `applications`. Use after ≥20 applications to tune `pipeline.min_score`.
 6. **`pipeline.min_score`** is now set in `config.toml` under `[pipeline]`
    (default 65). The `--min-score` CLI flag overrides it per run.
+7. **One-page guarantee** — `tailor._shrink_to_one_page` enforces a hard
+   single-page output via `render_docx.fits_one_page` (48-line budget,
+   wrap-aware). The shrink ladder runs in this fixed order — adding new
+   content-density features must respect it:
+   1. Trim summary down to ≥3 sentences.
+   2. Trim Familiar skills down to ≥4 items.
+   3. Drop the last bullet of the role with the highest current line-cost
+      (each role keeps ≥1 bullet — the JD-relevant lead).
+   4. Drop the coursework block.
+   If the resume still overflows after step 4, the tailor raises
+   `PipelineError` — caller surfaces the failure and the user is expected to
+   tighten verified.json bullets at the .docx source.
 
 ## Testing
 

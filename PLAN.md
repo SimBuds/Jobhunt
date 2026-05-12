@@ -37,13 +37,18 @@ the hot path.
 parameter with a JSON schema from the prompt's frontmatter.
 
 **Single hot model.** All three task slots (score, tailor, cover) run on one
-model — `qwen3.5:9b`. No reload churn between tasks. Quality is held by
-deterministic post-processing (score clamp, cover validator + retry, audit)
-together with the model's tool-use + reasoning capability. The
-cascade-by-difficulty design (8B for scoring, 14B for generation) was
-abandoned in May 2026 once the guardrail layers made model-size differential
-less load-bearing than the 5-15 s reload cost between every call.
-Set in config (`gateway.tasks`).
+model — `qwen-custom:latest` by default, with bare `qwen3.5:9b` as the
+documented fallback. The custom variant is a Modelfile-derived `qwen3.5:9b`
+that bakes in the user's prompt stack (persona, formatting, knowledge); the
+gateway always sends a system message, which overrides the Modelfile SYSTEM
+for structured tasks, so the persona doesn't bleed into scored output. Same
+base weights, same VRAM footprint, same quirks. No reload churn between
+tasks. Quality is held by deterministic post-processing (score clamp, cover
+validator + retry, audit) together with the model's tool-use + reasoning
+capability. The cascade-by-difficulty design (8B for scoring, 14B for
+generation) was abandoned in May 2026 once the guardrail layers made
+model-size differential less load-bearing than the 5-15 s reload cost
+between every call. Set in config (`gateway.tasks`).
 
 **Knowledge base is markdown + JSON.** No model-specific syntax baked in.
 
@@ -51,7 +56,7 @@ Set in config (`gateway.tasks`).
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset — qwen3.5:9b lands at ~9.1 GB resident at `num_ctx=6144` with comfortable headroom. Single hot model; never unloads mid-scan (`keep_alive="30m"` plus a warm-up call at scan start). Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
+| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset — `qwen-custom:latest` (base: `qwen3.5:9b`) lands at ~9.1 GB resident at `num_ctx=16384` with a `q5_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q5_0` + `OLLAMA_FLASH_ATTENTION=1`). Single hot model; never unloads (`keep_alive=-1` per call + `OLLAMA_KEEP_ALIVE=-1` server-side) plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU; SQLite cache; Playwright when active. |
 | Disk | Models in `~/.ollama/models`; project DB in `data/jobhunt.db`. |
 
@@ -59,7 +64,7 @@ Set in config (`gateway.tasks`).
 
 | Task | Model | Why |
 |---|---|---|
-| Fit-score / tailor / cover / qa | `qwen3.5:9b` | Single hot model — no reload churn. Strong open tool-use model; reasoning is disabled (`think: false`) at the gateway since structured-output latency under thinking blew past the 180 s timeout. Post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. |
+| Fit-score / tailor / cover | `qwen-custom:latest` (default) — a Modelfile-derived `qwen3.5:9b` baking the user's prompt stack. Fallback: bare `qwen3.5:9b`. | Single hot model — no reload churn. Strong open tool-use model; reasoning is disabled (`think: false`) at the gateway since structured-output latency under thinking blew past the 180 s timeout. Post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. The custom variant's baked SYSTEM is overridden per-call by gateway system messages, so structured outputs stay clean. |
 | Embeddings | `nomic-embed-text` | CPU. Reserved for future kb retrieval. |
 
 All overridable in `~/.config/jobhunt/config.toml`. Per-call override via

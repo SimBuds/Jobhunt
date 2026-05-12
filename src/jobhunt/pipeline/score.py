@@ -11,9 +11,11 @@ from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
 
-# Cap inputs to keep prompts within the configured num_ctx.
-MAX_DESC_CHARS = 6000
-MAX_POLICY_CHARS = 4000
+# Cap inputs to keep prompts within the configured num_ctx (16384 tokens).
+# Rule of thumb: ~4 chars/token. Combined desc + policy + verified + prompt
+# bodies should leave headroom for the model's structured-JSON output.
+MAX_DESC_CHARS = 14000
+MAX_POLICY_CHARS = 6000
 
 
 def truncate(s: str, limit: int) -> str:

@@ -18,18 +18,23 @@ async def complete_json(
     user: str,
     schema: dict[str, Any],
     temperature: float = 0.0,
-    num_ctx: int = 6144,
+    num_ctx: int = 16384,
     timeout_s: float = 180.0,
-    keep_alive: str = "30m",
+    keep_alive: str | int = -1,
 ) -> dict[str, Any]:
     """Send a chat completion to Ollama and return the parsed JSON object.
 
     `base_url` may end with `/v1` (OpenAI-compatible) or be a bare host. We hit the
     native /api/chat endpoint either way for the format-as-schema feature.
 
-    `keep_alive` defaults to 30m so the model stays resident across a long
-    `scan` run instead of unloading after Ollama's 5-minute default and
-    burning 5-15s on a reload between every job.
+    `num_ctx` defaults to 16384 to match the user's `OLLAMA_CONTEXT_LENGTH=16384`
+    server setting. Pair with a roomier `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` so the
+    JD and policy aren't truncated for the score/tailor/cover slots.
+
+    `keep_alive` defaults to `-1` (load forever) so the hot model stays resident
+    across scan/apply runs without paying a 5-15 s reload. This matches the
+    server-side `OLLAMA_KEEP_ALIVE=-1`; the per-call value is what Ollama uses,
+    so making it explicit here keeps behavior consistent regardless of env.
     """
     host = base_url.rstrip("/")
     if host.endswith("/v1"):
