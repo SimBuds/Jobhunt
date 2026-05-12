@@ -88,6 +88,13 @@ _NEGATION_PRECEDES_RE = re.compile(
 
 _DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z])\d[\d,.]*(?![A-Za-z])")
 _WORD_RE = re.compile(r"\b\w+\b")
+# Clock-style time references: "11:00 AM", "9 a.m.", "5pm", "12:30". Stripped
+# before the digit-cluster pass so the colon-split doesn't fabricate "11"/"00"
+# violations from "11:00 AM".
+_TIME_OF_DAY_RE = re.compile(
+    r"\b\d{1,2}(?::\d{2})?\s*(?:[ap]\.?\s*m\.?|am|pm)\b|\b\d{1,2}:\d{2}\b",
+    re.IGNORECASE,
+)
 
 # qwen-custom emits curly apostrophes (U+2019) and friends; BANNED_PHRASES use
 # ASCII '. Normalize input into ASCII space before matching so phrases like
@@ -295,6 +302,10 @@ def validate_cover(
     #   describing Casey's work are still checked against verified.json.
     allowed = _verified_numbers(verified)
     body_after_lead = "\n\n".join(cover.body[1:]) if len(cover.body) > 1 else ""
+    # Strip clock-style time references first — "11:00 AM", "9 a.m.", "10pm"
+    # are reading-back-the-JD, not fabricated metrics. Without this, the digit
+    # cluster regex splits "11:00" into "11" and "00" and flags both.
+    body_after_lead = _TIME_OF_DAY_RE.sub(" ", body_after_lead)
     for cluster in _DIGIT_CLUSTER_RE.findall(body_after_lead):
         normalized = cluster.rstrip(".,")
         if not normalized:
