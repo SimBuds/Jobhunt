@@ -1,8 +1,10 @@
 {
   "name": "Casey Hsu",
-  "contact_line": "Toronto, ON  |  casey-hsu@outlook.com  |  caseyhsu.com  |  LinkedIn  |  GitHub",
-  "summary": "Full-stack JavaScript developer with 2+ years of professional client work delivering e-commerce storefronts, custom CMS themes, and platform migrations across Shopify, HubSpot, and WordPress. Owns the full project lifecycle as sole developer — scoping, technical planning, deployment, and ongoing maintenance. Contentful Certified Professional. Nine years leading culinary teams of 5–20, managing budgets and vendor relationships, experience now applied to stakeholder communication.",
+  "contact_line": "Toronto, ON  |  casey-hsu@outlook.com  |  https://caseyhsu.com  |  https://www.linkedin.com/in/casey-hsu/  |  https://github.com/SimBuds",
+  "summary": "Full-Stack Developer & Contentful Certified Professional with 2+ years of professional client experience specializing in e-commerce storefronts, custom CMS theme development, and platform migrations across Shopify, HubSpot, and WordPress. Hands-on with local LLMs and prompt optimizations, with applied interest in AI/generative search readiness. Former culinary team leader with 9 years managing teams of 5–20, overseeing budgets and vendor relationships now applied to stakeholder communication and project management.",
   "skills_core": [
+    "Java",
+    "Spring Boot",
     "JavaScript (ES6+)",
     "TypeScript",
     "React",
@@ -10,7 +12,8 @@
     "Node.js",
     "Express",
     "HTML5",
-    "CSS3/Sass"
+    "CSS3/Sass",
+    "RESTful APIs"
   ],
   "skills_cms": [
     "Shopify (Liquid, Custom Themes)",
@@ -34,34 +37,32 @@
     "Local LLM hosting with Ollama and GPU optimization; prompt engineering for code generation, testing, and debugging"
   ],
   "skills_familiar": [
-    "Java",
-    "Spring Boot",
     "Python",
+    "MCP (Model Context Protocol) Servers",
+    "Ollama via Arch Linux",
     "Agile/Scrum",
     "Headless Architecture",
-    "RESTful APIs",
-    "SEO",
     "Figma"
   ],
   "work_history": [
     {
       "title": "Web Developer (Contract)",
-      "employer": "Custom Jewelry Brand (NDA)",
+      "employer": "Custom Jewelry Brand (Atelier Dacko)",
       "dates": "2023 – Present",
       "bullets": [
         "Built and maintained a 14+ page Shopify storefront with 200+ product SKUs serving 500+ monthly visitors, migrating from WordPress through three project phases over 2+ years.",
         "Designed and shipped an interactive ring builder that lets customers configure stone, band, and size options directly, replacing the legacy manual quote request workflow.",
-        "Developed custom Liquid templates, integrated Stripe payments, and own all ongoing feature development, bug fixes, and client communication as sole developer."
+        "Developed Liquid templates, integrated Stripe payments, and owned client communication as sole developer."
       ]
     },
     {
       "title": "Web Developer (Contract)",
       "employer": "AI Agency (NDA)",
-      "dates": "2026",
+      "dates": "2025 – 2026",
       "bullets": [
-        "Developed a custom 8-page HubSpot theme from scratch with full CRM integration, managing the complete legacy-to-custom migration: content mapping, page restructuring, and reusable HubL module architecture.",
+        "Built a custom 8-page HubSpot theme with full CRM integration, owning the legacy-to-custom migration: content mapping, page restructuring, and reusable HubL modules.",
         "Cut page load time by 30% and lifted PageSpeed scores above 90 through image optimization, lazy loading, and caching, improving Core Web Vitals and organic search rankings.",
-        "Configured Google Tag Manager for conversion tracking and analytics; set up GitHub Actions CI pipeline with automated linting before deploying to production."
+        "Set up GitHub Actions CI pipeline with automated linting before deploying to production."
       ]
     },
     {

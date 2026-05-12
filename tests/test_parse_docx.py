@@ -25,12 +25,12 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert len(facts.work_history) == 4
 
     employers = {r.employer for r in facts.work_history}
-    assert "Custom Jewelry Brand (NDA)" in employers
+    assert "Custom Jewelry Brand (Atelier Dacko)" in employers
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
     # Familiar must stay separate.
-    assert "Java" in facts.skills_familiar
-    assert "Java" not in facts.skills_core
+    assert "Python" in facts.skills_familiar
+    assert "Python" not in facts.skills_core
 
     # Round-trip via verified.json.
     out = tmp_path / "verified.json"

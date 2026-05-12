@@ -117,6 +117,27 @@ def _dedupe_education(tailored: TailoredResume) -> None:
     tailored.education = cleaned
 
 
+def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
+    """Drop the last bullet of the role with the highest current line-cost.
+    Preserves each role's lead bullet (which the tailor places JD-first).
+    Returns True if a bullet was dropped, False if no role has spare bullets."""
+    from jobhunt.resume.render_docx import BULLET_CHARS_PER_LINE, _wrapped_lines
+
+    worst_role = None
+    worst_cost = 0
+    for r in tailored.roles:
+        if len(r.bullets) <= 1:
+            continue
+        cost = sum(_wrapped_lines(b, BULLET_CHARS_PER_LINE) for b in r.bullets)
+        if cost > worst_cost:
+            worst_cost = cost
+            worst_role = r
+    if worst_role is None:
+        return False
+    worst_role.bullets.pop()
+    return True
+
+
 def _shrink_to_one_page(tailored: TailoredResume) -> None:
     """Hard one-page guarantee. Apply trims in order until the resume fits."""
     from jobhunt.resume.render_docx import fits_one_page  # avoid import cycle
@@ -137,6 +158,14 @@ def _shrink_to_one_page(tailored: TailoredResume) -> None:
         while len(cat.items) > _FAMILIAR_FLOOR and not fits_one_page(tailored):
             cat.items.pop()
         break
+    if fits_one_page(tailored):
+        return
+
+    # Drop trailing bullets from the heaviest role until we fit or run out.
+    # Each role keeps its lead bullet (the JD-relevant one).
+    while not fits_one_page(tailored):
+        if not _try_drop_weakest_bullet(tailored):
+            break
     if fits_one_page(tailored):
         return
 

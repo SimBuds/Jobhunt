@@ -348,6 +348,7 @@ async def _apply_one(
             company=job.company,
             cover_max_words=cfg.pipeline.cover_max_words,
             job_description=job.description,
+            job_title=job.title,
         )
     except PipelineError as e:
         typer.echo(f"    ! audit failed: {e}", err=True)

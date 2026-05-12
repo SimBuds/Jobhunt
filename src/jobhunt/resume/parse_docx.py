@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
 
 from jobhunt.errors import PipelineError
 
@@ -49,7 +50,13 @@ class VerifiedFacts:
 
 
 _SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
-_ROLE_LINE_RE = re.compile(r"^(?P<title>.+?)\s*\|\s*(?P<employer>.+?)\s*\t\s*(?P<dates>.+)$")
+# Supports two formats:
+#   "Title | Employer\tDates"  (tab-separated — original)
+#   "Title | Employer  Dates"  (trailing date after employer, space-separated)
+# Dates anchored to a 4-digit year so the employer name is captured greedily first.
+_ROLE_LINE_RE = re.compile(
+    r"^(?P<title>.+?)\s*\|\s*(?P<employer>.+?)\s*(?:\t\s*|\s{2,}|\s+(?=\d{4}))(?P<dates>\d{4}.*)$"
+)
 
 
 def _split_skills(value: str) -> list[str]:
@@ -77,21 +84,48 @@ def _split_skills(value: str) -> list[str]:
     return out
 
 
+def _paragraph_text_with_links(p) -> str:
+    """Return paragraph text with hyperlink visible-text replaced by the
+    hyperlink's target URL. `mailto:` prefixes are stripped so email addresses
+    remain readable. Falls back to visible text if a hyperlink has no
+    resolvable relationship target."""
+    rels = p.part.rels
+    parts: list[str] = []
+    for child in p._element.iterchildren():
+        tag = child.tag
+        if tag == qn("w:hyperlink"):
+            rid = child.get(qn("r:id"))
+            visible = "".join(t.text or "" for t in child.iter(qn("w:t")))
+            target = rels[rid].target_ref if rid and rid in rels else ""
+            if not target:
+                parts.append(visible)
+            elif target.lower().startswith("mailto:"):
+                parts.append(target[len("mailto:") :])
+            else:
+                # Source .docx still links http://caseyhsu.com; canonical is https.
+                if target.lower().startswith("http://caseyhsu.com"):
+                    target = "https://" + target[len("http://") :]
+                parts.append(target)
+        elif tag == qn("w:r"):
+            parts.append("".join(t.text or "" for t in child.iter(qn("w:t"))))
+    return "".join(parts).strip()
+
+
 def parse_baseline(docx_path: Path) -> VerifiedFacts:
     if not docx_path.is_file():
         raise PipelineError(f"baseline resume not found: {docx_path}")
 
     doc = Document(str(docx_path))
-    paras: list[tuple[str, str]] = [
-        ((p.style.name if p.style else ""), p.text.strip())
-        for p in doc.paragraphs
-        if p.text.strip()
-    ]
-    if not paras:
+    non_empty = [p for p in doc.paragraphs if p.text.strip()]
+    if len(non_empty) < 2:
         raise PipelineError(f"baseline resume is empty: {docx_path}")
 
-    name = paras[0][1]
-    contact_line = paras[1][1] if len(paras) > 1 else ""
+    paras: list[tuple[str, str]] = [
+        ((p.style.name if p.style else ""), p.text.strip()) for p in non_empty
+    ]
+
+    name = non_empty[0].text.strip()
+    contact_line = _paragraph_text_with_links(non_empty[1])
 
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
     current: str | None = None
@@ -130,12 +164,14 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     work_history: list[Role] = []
     current_role: Role | None = None
     for style, text in sections["PROFESSIONAL EXPERIENCE"]:
-        if style == "List Paragraph":
+        m = _ROLE_LINE_RE.match(text)
+        if style == "List Paragraph" or (m is None and "|" not in text):
+            # Treat as a bullet: either explicitly styled as one, or doesn't
+            # match a role header (some resumes use 'normal' style throughout).
             if current_role is None:
                 raise PipelineError(f"orphan bullet before any role header: {text!r}")
             current_role.bullets.append(text)
             continue
-        m = _ROLE_LINE_RE.match(text)
         if not m:
             raise PipelineError(f"unparseable role header: {text!r}")
         if current_role is not None:
@@ -223,7 +259,7 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
     history_lines = ["# Work History\n"]
     for role in facts.work_history:
         history_lines.append(f"## {role.title} — {role.employer}")
-        history_lines.append(f"_{role.dates}_\n")
+        history_lines.append(f"{role.dates}\n")
         history_lines.extend(f"- {b}" for b in role.bullets)
         history_lines.append("")
     history_md = profile / "work-history.md"

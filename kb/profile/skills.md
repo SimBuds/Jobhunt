@@ -5,6 +5,8 @@ skill into a Core category. See `kb/policies/tailoring-rules.md`.
 
 ## Core
 
+- Java
+- Spring Boot
 - JavaScript (ES6+)
 - TypeScript
 - React
@@ -13,6 +15,7 @@ skill into a Core category. See `kb/policies/tailoring-rules.md`.
 - Express
 - HTML5
 - CSS3/Sass
+- RESTful APIs
 
 ## CMS & E-Commerce
 
@@ -40,11 +43,9 @@ skill into a Core category. See `kb/policies/tailoring-rules.md`.
 
 ## Familiar
 
-- Java
-- Spring Boot
 - Python
+- MCP (Model Context Protocol) Servers
+- Ollama via Arch Linux
 - Agile/Scrum
 - Headless Architecture
-- RESTful APIs
-- SEO
 - Figma

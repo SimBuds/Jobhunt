@@ -63,7 +63,7 @@ def _minimal_tailored(verified: dict) -> TailoredResume:
             TailoredCategory("Familiar", ["Python"]),
         ],
         roles=[TailoredRole(**r) for r in [
-            {"title": "Web Developer (Contract)", "employer": "Custom Jewelry Brand (NDA)", "dates": "2023 – Present", "bullets": ["Built Shopify storefront."]},
+            {"title": "Web Developer (Contract)", "employer": "Custom Jewelry Brand (Atelier Dacko)", "dates": "2023 – Present", "bullets": ["Built Shopify storefront."]},
             {"title": "Web Developer (Contract)", "employer": "AI Agency (NDA)", "dates": "2026", "bullets": ["Built HubSpot theme."]},
             {"title": "Web Developer (Contract)", "employer": "Vintage Gaming Retailer (NDA)", "dates": "2024", "bullets": ["Built Shopify layouts."]},
             {"title": "Sous Chef & Team Lead", "employer": "Multiple Venues, Toronto", "dates": "2015 – 2024", "bullets": ["Led culinary teams."]},

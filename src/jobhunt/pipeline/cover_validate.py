@@ -89,6 +89,15 @@ _NEGATION_PRECEDES_RE = re.compile(
 _DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z])\d[\d,.]*(?![A-Za-z])")
 _WORD_RE = re.compile(r"\b\w+\b")
 
+# qwen-custom emits curly apostrophes (U+2019) and friends; BANNED_PHRASES use
+# ASCII '. Normalize input into ASCII space before matching so phrases like
+# "team's goals" / "i'm excited" can't slip past the substring check.
+_APOSTROPHE_RE = re.compile(r"[‘’‛ʼ`´]")
+
+
+def _normalize(text: str) -> str:
+    return _APOSTROPHE_RE.sub("'", text).lower()
+
 # Company-name match: drop corporate suffixes, descriptors, and TLD fragments
 # so the lead-paragraph check doesn't fail when the model writes "Appnovation"
 # instead of "Appnovation Technologies", or "Astra North" instead of
@@ -118,13 +127,27 @@ def _word_count(text: str) -> int:
 # Tech names that frequently get fabricated in cover letters when the JD
 # mentions them but verified.json does not. If one appears in the body and
 # isn't in the verified blob, that's a fabrication.
+#
+# Curated against the current baseline: Casey's verified stack covers
+# Java/Spring Boot, JS/TS + React/Next, Node/Express, Shopify/HubSpot/
+# Contentful/WordPress, MongoDB/MySQL/Postgres, Docker, AWS, Azure, Jest,
+# Playwright, Ollama, Python (familiar). Anything else common in JDs gets
+# listed here so qwen overclaims become hard violations.
 _FABRICATION_WATCHLIST: tuple[str, ...] = (
+    # Data / infra
     "elasticsearch",
     "kafka",
     "kubernetes",
     "k8s",
     "redis",
     "graphql",
+    "terraform",
+    "ansible",
+    "snowflake",
+    "databricks",
+    "spark",
+    "hadoop",
+    # Backend langs / frameworks not in verified
     "rust",
     "golang",
     "scala",
@@ -133,16 +156,28 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "django",
     "flask",
     "fastapi",
+    "php",
+    "laravel",
+    "c#",
+    "dotnet",
+    # Frontend frameworks not in verified (React + Next are; nothing else is)
     "vue",
     "angular",
     "svelte",
+    "nuxt",
+    "gatsby",
+    "remix",
+    "ember",
     "tailwind",
-    "terraform",
-    "ansible",
-    "snowflake",
-    "databricks",
-    "spark",
-    "hadoop",
+    # Mobile — Casey has no mobile experience
+    "kotlin",
+    "swift",
+    "flutter",
+    "react native",
+    # Cloud beyond AWS + Azure
+    "gcp",
+    "google cloud",
+    # Enterprise platforms
     "salesforce",
     "servicenow",
     "sap",
@@ -201,8 +236,8 @@ def validate_cover(
     """Return a list of violation strings. Empty list = clean."""
     violations: list[str] = []
     body = _body_text(cover)
-    body_lower = body.lower()
-    full_lower = _full_text(cover).lower()
+    body_lower = _normalize(body)
+    full_lower = _normalize(_full_text(cover))
 
     for phrase in BANNED_PHRASES:
         if phrase in full_lower:
@@ -213,7 +248,7 @@ def validate_cover(
             violations.append(label)
 
     if cover.body:
-        first_lower = cover.body[0].lower().lstrip()
+        first_lower = _normalize(cover.body[0]).lstrip()
         # Strip leading "I am " / "I'm " / "Hello, " etc. before matching, so
         # "I am applying for…" is caught the same as "Applying for…".
         first_normalized = _LEADING_FILLER_RE.sub("", first_lower).lstrip()
@@ -238,7 +273,7 @@ def validate_cover(
         violations.append(f"expected 3-4 paragraphs; got {len(cover.body)}")
 
     if cover.body and company:
-        first_lower = cover.body[0].lower()
+        first_lower = _normalize(cover.body[0])
         raw_tokens = [t.strip().lower() for t in _COMPANY_SPLIT_RE.split(company)]
         company_tokens = [
             t for t in raw_tokens
@@ -273,13 +308,13 @@ def validate_cover(
     # cover.md §5 — closing paragraph must be forward-looking, not a
     # diploma/coursework recap. Only check if there are ≥3 paragraphs.
     if len(cover.body) >= 3:
-        closing_lower = cover.body[-1].lower()
+        closing_lower = _normalize(cover.body[-1])
         for token in ("dean's list", "coursework", "george brown", "diploma"):
             if token in closing_lower:
                 violations.append(f"closing recaps resume material: {token!r}")
                 break
 
-    sal = cover.salutation.strip().lower()
+    sal = _normalize(cover.salutation.strip())
     if "to whom it may concern" in sal:
         violations.append("salutation: 'To whom it may concern' is banned")
 

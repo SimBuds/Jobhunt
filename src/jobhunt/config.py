@@ -74,15 +74,15 @@ class GatewayConfig(BaseModel):
     api_key: str = "ollama"
     tasks: dict[str, str] = Field(
         default_factory=lambda: {
-            # qwen3.5:9b — strong open tool-use + reasoning model used as the
-            # single hot model across score/tailor/cover slots. Single hot
-            # model means no reload churn between task types. Quality is
-            # backed by the deterministic post-processing layers (score
-            # clamp, cover validator + retry, audit) — there is intentionally
-            # no LLM-based QA pass.
-            "score": "qwen3.5:9b",
-            "tailor": "qwen3.5:9b",
-            "cover": "qwen3.5:9b",
+            # qwen-custom:latest — Modelfile-derived qwen3.5:9b with a baked
+            # prompt stack (personality, formatting, safety, memory, knowledge).
+            # Single hot model across score/tailor/cover slots; no reload churn.
+            # Baked SYSTEM prompt is overridden per-call by task prompts in
+            # kb/prompts/. Quality backed by deterministic post-processing layers
+            # (score clamp, cover validator + retry, audit) — no LLM QA pass.
+            "score": "qwen-custom:latest",
+            "tailor": "qwen-custom:latest",
+            "cover": "qwen-custom:latest",
             "embed": "nomic-embed-text",
         }
     )
@@ -107,7 +107,7 @@ class ApplicantProfile(BaseModel):
     full_name: str = "Casey Hsu"
     email: str = "casey-hsu@outlook.com"
     phone: str = ""
-    linkedin_url: str = "https://linkedin.com/in/casey-hsu"
+    linkedin_url: str = "https://www.linkedin.com/in/casey-hsu/"
     github_url: str = "https://github.com/SimBuds"
     portfolio_url: str = "https://caseyhsu.com"
     city: str = "Toronto"
