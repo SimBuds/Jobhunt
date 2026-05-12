@@ -38,17 +38,10 @@ class PathsConfig(BaseModel):
 
 
 class AdzunaConfig(BaseModel):
-    queries: list[str] = Field(
-        default_factory=lambda: [
-            "javascript developer",
-            "react developer",
-            "frontend developer",
-            "full stack developer",
-            "shopify developer",
-            "hubspot developer",
-            "wordpress developer",
-        ]
-    )
+    # Empty list → auto-derive from `kb/profile/verified.json` via
+    # `ingest._query_planner.derive_adzuna_queries`. Populate to override
+    # with a verbatim list. See README §Configure ingest sources.
+    queries: list[str] = Field(default_factory=list)
     pages: int = 3
     results_per_page: int = 50
 

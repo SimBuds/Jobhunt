@@ -189,8 +189,21 @@ async def _ingest_all(
             adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url)))
         for url in cfg.ingest.rss:
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
+        adzuna_queries = cfg.ingest.adzuna.queries
+        if not adzuna_queries:
+            from jobhunt.ingest._query_planner import derive_adzuna_queries
+            import json as _json
+            verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+            if verified_path.is_file():
+                verified = _json.loads(verified_path.read_text(encoding="utf-8"))
+                adzuna_queries = derive_adzuna_queries(verified)
+                if adzuna_queries:
+                    typer.echo(
+                        f"adzuna: auto-derived queries from profile "
+                        f"({len(adzuna_queries)}): {', '.join(adzuna_queries)}"
+                    )
         if secrets.adzuna_app_id and secrets.adzuna_app_key:
-            for query in cfg.ingest.adzuna.queries:
+            for query in adzuna_queries:
                 adapters.append(
                     (
                         "adzuna_ca",
@@ -206,7 +219,7 @@ async def _ingest_all(
                         ),
                     )
                 )
-        elif cfg.ingest.adzuna.queries:
+        elif adzuna_queries:
             print(
                 "  ! adzuna: skipped — set adzuna_app_id/adzuna_app_key in secrets.toml",
                 file=sys.stderr,
