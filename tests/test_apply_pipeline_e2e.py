@@ -110,7 +110,7 @@ def _patch_pipeline(monkeypatch: pytest.MonkeyPatch, *, audit_verdict: str) -> d
         plan.write_text("{}", encoding="utf-8")
         return plan
 
-    def fake_prompt(*args: Any, **kwargs: Any) -> str:
+    def fake_input(*args: Any, **kwargs: Any) -> str:
         calls["prompt"] += 1
         return "n"  # not submitted
 
@@ -120,7 +120,7 @@ def _patch_pipeline(monkeypatch: pytest.MonkeyPatch, *, audit_verdict: str) -> d
     monkeypatch.setattr(apply_cmd, "render", fake_render)
     monkeypatch.setattr(apply_cmd, "render_cover", fake_render_cover)
     monkeypatch.setattr(apply_cmd, "autofill", fake_autofill)
-    monkeypatch.setattr(apply_cmd.typer, "prompt", fake_prompt)
+    monkeypatch.setattr("builtins.input", fake_input)
 
     return calls
 
@@ -156,7 +156,8 @@ def test_apply_one_ship_renders_and_records(
     assert calls["autofill"] == 1
     out = cfg.paths.data_dir / "applications" / "test_1"
     assert (out / "audit.json").is_file()
-    assert any(out.glob("Casey_Hsu_Resume_*.docx"))
+    assert (out / "Casey_Hsu_Resume.docx").exists()
+    assert (out / "Casey_Hsu_Cover_Letter.docx").exists()
     assert _count_apps(cfg.paths.db_path) == 1
 
 

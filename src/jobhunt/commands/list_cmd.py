@@ -123,12 +123,12 @@ def _render_weekly_footer(conn: sqlite3.Connection, week_label: str) -> None:
         counts[r["status"]] = r["n"]
 
     scanned = conn.execute(
-        "SELECT COUNT(*) AS n FROM jobs WHERE strftime('%Y-W%W', ingested_at) = ?",
+        "SELECT COUNT(*) AS n FROM jobs WHERE strftime('%G-W%V', ingested_at) = ?",
         (week_label,),
     ).fetchone()
     declined = conn.execute(
         "SELECT COUNT(*) AS n FROM jobs WHERE decline_reason IS NOT NULL "
-        "AND strftime('%Y-W%W', ingested_at) = ?",
+        "AND strftime('%G-W%V', ingested_at) = ?",
         (week_label,),
     ).fetchone()
 

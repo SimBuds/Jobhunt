@@ -39,11 +39,11 @@ skill into a Core category. See `kb/policies/tailoring-rules.md`.
 
 ## AI & Tooling
 
-- Local LLM hosting with Ollama and GPU optimization; prompt engineering for code generation, testing, and debugging
+- Local LLM hosting with Ollama and GPU optimization; prompt engineering for code generation, testing, and debugging; Python scripting for AI workflows and automation
 
 ## Familiar
 
-- Python
+- Python (AI/LLM scripting)
 - MCP (Model Context Protocol) Servers
 - Ollama via Arch Linux
 - Agile/Scrum

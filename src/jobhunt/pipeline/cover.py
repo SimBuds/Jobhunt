@@ -128,7 +128,48 @@ async def write_cover_with_retry(
         last_violations = violations
         revisions = _format_revision_hint(violations, attempt)
     assert last_cover is not None  # loop runs at least once
+
+    # Last-resort patch: short single-word company names (Mercor, Xplor) and
+    # 2-word names with a generic second token (Cleo Consulting) sometimes
+    # survive all retries without the LLM naming the company in the lead.
+    # If the ONLY surviving issue is the company-name violation, prepend an
+    # "At {Company}, " sentence-leader to paragraph 1 and re-validate. Other
+    # violation classes are left alone — they need real prompt-level fixes.
+    if company and last_cover.body:
+        patched = _patch_company_in_lead(last_cover, company)
+        if patched is not None:
+            new_violations = validate_cover(
+                patched, verified=verified, company=company, max_words=max_words
+            )
+            if len(new_violations) < len(last_violations):
+                return patched, new_violations, attempts
     return last_cover, last_violations, attempts
+
+
+def _patch_company_in_lead(cover: CoverLetter, company: str) -> CoverLetter | None:
+    """Prepend ``At {company}, `` to paragraph 1 if the company name doesn't
+    already appear there. Returns None if the lead already names the company
+    (the validator wouldn't have flagged it in that case) — caller treats None
+    as "no patch needed". The first letter of the original paragraph is
+    lowercased unless it is the pronoun ``I`` so the joined sentence reads
+    grammatically (``At Xplor, your team…`` not ``At Xplor, Your team…``)."""
+    if not cover.body:
+        return None
+    first = cover.body[0]
+    if company.lower() in first.lower():
+        return None
+    # Lowercase the first character unless it's the standalone pronoun "I"
+    # (e.g. "I bring…" → keep "I"; "Your team…" → "your team…").
+    if first and not first.startswith("I ") and not first.startswith("I'"):
+        first = first[0].lower() + first[1:]
+    patched_first = f"At {company}, {first}"
+    new_body = [patched_first, *cover.body[1:]]
+    return CoverLetter(
+        salutation=cover.salutation,
+        body=new_body,
+        sign_off=cover.sign_off,
+        model=cover.model,
+    )
 
 
 def _format_revision_hint(violations: list[str], attempt: int) -> str:

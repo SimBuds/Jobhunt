@@ -69,7 +69,7 @@ def run(
         ),
     ),
     url: str | None = typer.Option(
-        None, "--url", help="Fetch a single JD from this URL, score it, then apply."
+        None, "--url", help='Fetch a single JD from this URL, score it, then apply. Quote the URL if it contains & characters, e.g. --url "https://..."'
     ),
     title: str | None = typer.Option(
         None, "--title",
@@ -149,7 +149,8 @@ def run(
     typer.echo(f"\nselected {len(jobs)} job(s):")
     for j in jobs:
         score = j["score"] if j["score"] is not None else "—"
-        typer.echo(f"  • [{score}] {j['title']} @ {j['company']} — {j['id']}")
+        suffix = "" if str(j["source"]) == "manual" else f" — {j['id']}"
+        typer.echo(f"  • [{score}] {j['title']} @ {j['company']}{suffix}")
 
     asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser))
 
@@ -219,7 +220,7 @@ async def _resolve_manual(
             err=True,
         )
         raise typer.Exit(code=2)
-    typer.echo("  fetching (headless browser, ~5–10s)...")
+    typer.echo("  fetching job page...")
     try:
         job = await fetch_url_as_job(
             url,
@@ -238,16 +239,11 @@ async def _resolve_manual(
         )
         raise typer.Exit(code=2)
 
-    typer.echo(
-        f"  ingested {job.id} — {job.title} @ {job.company} "
-        f"({len(job.description or '')} chars)"
-    )
-
     conn = connect(cfg.paths.db_path)
     try:
         upsert_job(conn, job)
         if not no_score:
-            typer.echo("  scoring (LLM, ~30–60s)...")
+            typer.echo("  scoring...")
             try:
                 result = await score_job(cfg, job)
             except JobHuntError as e:
@@ -266,7 +262,7 @@ async def _resolve_manual(
                         prompt_hash=ph,
                     )
                     set_decline_reason(conn, job.id, result.decline_reason)
-                tag = f"DECLINE: {result.decline_reason}" if result.decline_reason else f"score={result.score}"
+                tag = f"DECLINE: {result.decline_reason}" if result.decline_reason else str(result.score)
                 typer.echo(f"  scored [{tag}]")
         rows = list(
             conn.execute(
@@ -362,40 +358,6 @@ def _parse_picks(raw: str, max_n: int) -> list[int]:
 
 # --- apply each --------------------------------------------------------------
 
-_NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9]+")
-_LEGAL_SUFFIX_RE = re.compile(
-    r"(?:^|[\s,_-]+)("
-    r"incorporated|corporation|limited|"
-    r"inc|llc|ltd|corp|co|gmbh|plc|sa|pty(?:\s+ltd)?"
-    r")\.?$",
-    flags=re.IGNORECASE,
-)
-_MAX_COMPANY_SLUG = 40
-
-
-def _company_slug(company: str | None) -> str:
-    """Normalize a company name into a recruiter-friendly filename slug.
-
-    - Strips trailing legal suffixes (Inc, LLC, Ltd, Corp, …).
-    - Collapses runs of non-alphanumerics to a single underscore.
-    - Caps length, truncating at the last underscore boundary.
-    - Falls back to "Company" if normalization yields an empty string.
-    """
-    if not company:
-        return "Company"
-    s = company.strip()
-    prev = ""
-    while s and s != prev:
-        prev = s
-        s = _LEGAL_SUFFIX_RE.sub("", s).strip()
-    s = _NON_ALNUM_RE.sub("_", s).strip("_")
-    if not s:
-        return "Company"
-    if len(s) > _MAX_COMPANY_SLUG:
-        cut = s[:_MAX_COMPANY_SLUG].rsplit("_", 1)[0]
-        s = cut or s[:_MAX_COMPANY_SLUG]
-    return s
-
 
 async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool) -> None:
     import json as _json
@@ -428,17 +390,16 @@ async def _apply_one(
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    typer.echo(f"\n=== {job.id} ===")
-    typer.echo(f"    {job.title} @ {job.company}")
+    typer.echo(f"\n=== {job.title} @ {job.company} ===")
 
-    typer.echo("    … tailoring resume (LLM, ~1–2 min)")
+    typer.echo("    … tailoring resume (LLM, ~30–60s)")
     try:
         tailored = await tailor_resume(cfg, job)
     except JobHuntError as e:
         typer.echo(f"    ! tailor failed: {e}", err=True)
         return
 
-    typer.echo("    … writing cover letter (LLM, ~1 min)")
+    typer.echo("    … writing cover letter (LLM, ~30s)")
     try:
         cover, cover_violations, cover_attempts = await write_cover_with_retry(
             cfg,
@@ -452,7 +413,8 @@ async def _apply_one(
         typer.echo(f"    ! cover letter failed: {e}", err=True)
         return
     if cover_attempts > 1:
-        tag = "clean" if not cover_violations else f"{len(cover_violations)} violations remain"
+        n = len(cover_violations)
+        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
         typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
 
     # Audit pass — deterministic, fast, no LLM call.
@@ -503,7 +465,7 @@ async def _apply_one(
         no_browser=no_browser,
     )
 
-    status = _confirm_submission_status(plan_path)
+    status = _confirm_submission_status(plan_path, browser_attempted=not no_browser and bool(job.url))
     _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
 
 
@@ -517,21 +479,20 @@ def _render_artifacts(
     """Write resume + cover .docx, cover-letter.md, and tailored-resume.json."""
     import json as _json
 
-    company_slug = _company_slug(job.company)
     contact_line = (
         cfg.applicant.email
         + ("  |  " + cfg.applicant.phone if cfg.applicant.phone else "")
         + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
         + cfg.applicant.github_url
     )
-    resume_path = out_dir / f"Casey_Hsu_Resume_-_{company_slug}.docx"
+    resume_path = out_dir / "Casey_Hsu_Resume.docx"
     render(
         tailored,
         contact_line=contact_line,
         name=cfg.applicant.full_name,
         out_path=resume_path,
     )
-    cover_docx_path = out_dir / f"Casey_Hsu_Cover_Letter_-_{company_slug}.docx"
+    cover_docx_path = out_dir / "Casey_Hsu_Cover_Letter.docx"
     render_cover(
         cover,
         contact_line=contact_line,
@@ -560,43 +521,55 @@ async def _run_browser_step(
     if not job.url:
         typer.echo("    ! no URL on this job — browser skipped", err=True)
         return None
-    typer.echo("    … launching browser autofill")
-    try:
-        plan_path = await autofill(
-            url=job.url,
-            profile=cfg.applicant,
-            resume_path=resume_path,
-            cover_path=cover_path,
-            out_dir=out_dir,
-            headed=cfg.browser.headed,
-            user_data_dir=cfg.browser.user_data_dir,
-        )
-        typer.echo(f"    + {plan_path.name}")
-        return plan_path
-    except BrowserError as e:
-        typer.echo(f"    ! browser step failed: {e}", err=True)
-        return None
+    import sys as _sys
+    while True:
+        typer.echo("    … launching browser autofill")
+        try:
+            plan_path = await autofill(
+                url=job.url,
+                profile=cfg.applicant,
+                resume_path=resume_path,
+                cover_path=cover_path,
+                out_dir=out_dir,
+                headed=cfg.browser.headed,
+                user_data_dir=cfg.browser.user_data_dir,
+            )
+            typer.echo(f"    + {plan_path.name}")
+            return plan_path
+        except BrowserError as e:
+            typer.echo(f"    ! browser step failed: {e}", err=True)
+            if not _sys.stdin.isatty():
+                return None
+            try:
+                raw = input("    try again? [r]etry / [s]kip: ").strip().lower()
+            except EOFError:
+                return None
+            if raw in ("r", "retry"):
+                continue
+            return None
 
 
-def _confirm_submission_status(plan_path: Path | None) -> str:
-    if plan_path is None:
+def _confirm_submission_status(
+    plan_path: Path | None, *, browser_attempted: bool = False
+) -> str:
+    # Skip the prompt entirely when --no-browser was passed (plan_path is None
+    # and the browser was never launched). The user will submit manually later
+    # and can update with `apply --set-status applied <id>`.
+    if not browser_attempted and plan_path is None:
         return "drafted"
-    answer = (
-        typer.prompt(
-            "    did you submit this application? [y/N/w(ithdrawn)]",
-            default="n",
-            show_default=False,
-        )
-        .strip()
-        .lower()
-    )
-    status = "drafted"
-    if answer in ("y", "yes"):
-        status = "applied"
-    elif answer in ("w", "withdrawn"):
-        status = "withdrawn"
-    typer.echo(f"    status: {status}")
-    return status
+    import sys as _sys
+    if not _sys.stdin.isatty():
+        typer.echo("    (non-interactive — status set to drafted; update with --set-status)")
+        return "drafted"
+    try:
+        raw = input("    did you submit? [y]es / [n]o / [w]ithdrawn: ").strip().lower()
+    except EOFError:
+        raw = "n"
+    if raw in ("y", "yes"):
+        return "applied"
+    if raw in ("w", "withdrawn"):
+        return "withdrawn"
+    return "drafted"
 
 
 def _record_application(
@@ -622,7 +595,7 @@ def _record_application(
                 resume_path=str(resume_path),
                 cover_path=str(cover_docx_path),
                 fill_plan_path=str(plan_path) if plan_path else None,
-                applied_week=week_label if status == "applied" else None,
+                applied_week=week_label,
             )
     finally:
         conn.close()

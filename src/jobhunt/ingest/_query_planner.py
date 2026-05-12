@@ -79,7 +79,11 @@ def _has_seo_signal(verified: dict[str, Any]) -> bool:
 _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     (lambda v: bool(v.get("skills_cms")), ["cms developer"]),
     (_has_ai_signal,                       ["ai engineer"]),
-    (_has_seo_signal,                      ["seo specialist"]),
+    # Casey's SEO experience is technical (audits + security hardening), not
+    # marketing/content. `seo specialist` returned 5/5 declines on the first
+    # auto-derived scan — all non-IC marketing or content roles. Narrowing
+    # the query to "technical seo developer" filters to engineering postings.
+    (_has_seo_signal,                      ["technical seo developer"]),
 ]
 
 _BASELINE_QUERIES = ["full stack developer"]

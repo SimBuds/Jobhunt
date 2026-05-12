@@ -316,14 +316,21 @@ def validate_cover(
             continue
         violations.append(f"unverified number: {cluster!r}")
 
-    # cover.md §5 — closing paragraph must be forward-looking, not a
-    # diploma/coursework recap. Only check if there are ≥3 paragraphs.
+    # cover.md §5 — no paragraph (except the lead) may recap diploma /
+    # coursework. Originally only checked the last paragraph; extended to all
+    # non-lead paragraphs because the model started placing recap in paragraph 3
+    # of 4 to evade the check.
+    _RECAP_TOKENS = ("dean's list", "coursework", "george brown", "diploma")
     if len(cover.body) >= 3:
-        closing_lower = _normalize(cover.body[-1])
-        for token in ("dean's list", "coursework", "george brown", "diploma"):
-            if token in closing_lower:
-                violations.append(f"closing recaps resume material: {token!r}")
-                break
+        for para in cover.body[1:]:  # skip lead
+            para_lower = _normalize(para)
+            for token in _RECAP_TOKENS:
+                if token in para_lower:
+                    violations.append(f"body recaps resume material: {token!r}")
+                    break
+            else:
+                continue
+            break  # one violation is enough
 
     sal = _normalize(cover.salutation.strip())
     if "to whom it may concern" in sal:

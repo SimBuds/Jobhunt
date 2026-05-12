@@ -1,6 +1,6 @@
 # Work History
 
-## Web Developer (Contract) — Custom Jewelry Brand (Atelier Dacko)
+## Web Developer (Contract) — Atelier Dacko
 2023 – Present
 
 - Built and maintained a 14+ page Shopify storefront with 200+ product SKUs serving 500+ monthly visitors, migrating from WordPress through three project phases over 2+ years.

@@ -16,6 +16,7 @@ Scope deliberately small:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 from html.parser import HTMLParser
@@ -220,6 +221,8 @@ async def _fetch_rendered_html(
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
+        html = ""
+        final_url = url
         try:
             ctx = await browser.new_context(user_agent=user_agent)
             page = await ctx.new_page()
@@ -232,9 +235,11 @@ async def _fetch_rendered_html(
                 html = await page.content()
                 final_url = page.url
             finally:
-                await ctx.close()
+                with contextlib.suppress(Exception):
+                    await ctx.close()
         finally:
-            await browser.close()
+            with contextlib.suppress(Exception):
+                await browser.close()
     return html, final_url
 
 

@@ -97,7 +97,7 @@ def test_closing_diploma_recap_flagged(verified: dict) -> None:
     cover = _good_cover()
     cover.body[-1] = "My George Brown diploma and dean's list standing make me a strong candidate."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
-    assert any("closing recaps" in v for v in violations)
+    assert any("recaps resume material" in v for v in violations)
 
 
 def test_unverified_number_flagged(verified: dict) -> None:
