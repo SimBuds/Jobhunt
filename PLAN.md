@@ -16,7 +16,7 @@ guardrails, project structure). `README.md` is for end-users.
    tailoring, and cover letters all run on Ollama. Token cost at runtime is
    zero.
 2. **Future-proof the knowledge layer.** Profile facts live in
-   `kb/profile/verified.json` (regenerated from `Casey_Hsu_Resume_Baseline.docx`).
+   `kb/profile/verified.json` (regenerated from `Resume.docx`).
    Prompts live in `kb/prompts/*.md` with JSON-schema frontmatter. Model swaps
    don't break them.
 3. **Stay ToS-defensible.** Public ATS APIs only. No LinkedIn / Indeed /

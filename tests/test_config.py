@@ -34,7 +34,7 @@ def test_applicant_profile_defaults() -> None:
     p = ApplicantProfile()
     assert p.work_arrangements == ["onsite", "hybrid", "remote"]
     assert p.employment_types == ["full_time", "contract"]
-    assert p.portfolio_url == "https://caseyhsu.com"
+    assert p.portfolio_url == ""
 
 
 def test_applicant_profile_overrides_round_trip() -> None:

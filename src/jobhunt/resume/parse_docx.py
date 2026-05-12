@@ -1,4 +1,4 @@
-"""Parse Casey_Hsu_Resume_Baseline.docx into structured `verified.json` + KB markdown.
+"""Parse Resume.docx into structured `verified.json` + KB markdown.
 
 The output of this module is the single source of truth for tailoring. Downstream
 prompts must only use facts present in `verified.json` — that is the structural
@@ -102,9 +102,9 @@ def _paragraph_text_with_links(p) -> str:
             elif target.lower().startswith("mailto:"):
                 parts.append(target[len("mailto:") :])
             else:
-                # Source .docx still links http://caseyhsu.com; canonical is https.
-                if target.lower().startswith("http://caseyhsu.com"):
-                    target = "https://" + target[len("http://") :]
+                # Normalize http:// hyperlinks to https://.
+                if target.lower().startswith("http://"):
+                    target = "https://" + target[len("http://"):]
                 parts.append(target)
         elif tag == qn("w:r"):
             parts.append("".join(t.text or "" for t in child.iter(qn("w:t"))))

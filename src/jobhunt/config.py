@@ -47,7 +47,7 @@ class AdzunaConfig(BaseModel):
 
 
 class IngestConfig(BaseModel):
-    user_agent: str = "jobhunt/0.1 (+personal-use; caseyhsu@proton.me)"
+    user_agent: str = "jobhunt/0.1 (+personal-use; your-email@example.com)"
     rate_limit_per_sec: float = 1.0
     cache_ttl_hours: int = 6
     greenhouse: list[str] = Field(default_factory=list)
@@ -97,12 +97,12 @@ class BrowserConfig(BaseModel):
 class ApplicantProfile(BaseModel):
     """Answers to common application form questions that aren't on the resume."""
 
-    full_name: str = "Casey Hsu"
-    email: str = "casey-hsu@outlook.com"
+    full_name: str = ""
+    email: str = ""
     phone: str = ""
-    linkedin_url: str = "https://www.linkedin.com/in/casey-hsu/"
-    github_url: str = "https://github.com/SimBuds"
-    portfolio_url: str = "https://caseyhsu.com"
+    linkedin_url: str = ""
+    github_url: str = ""
+    portfolio_url: str = ""
     city: str = "Toronto"
     region: str = "Ontario"
     country: str = "Canada"
