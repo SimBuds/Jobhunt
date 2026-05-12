@@ -31,12 +31,19 @@ Hard rules:
 2. Lead paragraph (2–3 sentences): open with a real first-person sentence
    that names the role + company AND a concrete hook from the JD — a
    product, a tech stack, a domain detail, something that shows Casey
-   actually read the posting. NEVER start with "Applying for", "I am
-   applying for", "I'm applying for", "I am writing to", "I am excited",
-   "I'm excited", "I'm thrilled", or any other form-letter opener. Try
-   leading with the **hook** (a concrete JD detail) rather than the act
-   of applying. The second sentence should land the strongest specific
-   match between Casey's verified experience and the JD's must-haves.
+   actually read the posting. **The literal company name MUST appear in
+   paragraph 1 as a written-out token — not a pronoun ("you"), not a
+   product name, not a description ("the AI platform"), the actual
+   company name. Single-word company names (e.g. "Mercor", "Pigment",
+   "Stripe") still appear verbatim. A deterministic validator rejects
+   the letter if the company name is missing from the lead, and the
+   retry budget is small — do not skip this.** NEVER start with
+   "Applying for", "I am applying for", "I'm applying for", "I am
+   writing to", "I am excited", "I'm excited", "I'm thrilled", or any
+   other form-letter opener. Try leading with the **hook** (a concrete
+   JD detail) rather than the act of applying. The second sentence
+   should land the strongest specific match between Casey's verified
+   experience and the JD's must-haves.
 3. Middle paragraph (3–4 sentences): pick ONE project from verified_facts
    as the centerpiece and go deep — what the problem was, what shipped,
    what changed. A second project may get one supporting sentence. Do

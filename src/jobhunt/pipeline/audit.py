@@ -95,7 +95,9 @@ def _verified_skills(verified: dict[str, Any]) -> list[str]:
 
 
 def _extract_must_haves_from_jd(
-    job_description: str | None, verified: dict[str, Any]
+    job_description: str | None,
+    verified: dict[str, Any],
+    job_title: str | None = None,
 ) -> list[str]:
     """Deterministic fallback when the score LLM returns empty must-haves.
 
@@ -103,10 +105,19 @@ def _extract_must_haves_from_jd(
     must-haves the candidate satisfies. Used to drive keyword coverage when
     `scores.reasons` is `[]` (qwen3.5:9b often emits empty arrays even though
     the schema requires the field).
+
+    Adzuna returns ~500-char description snippets, so we also intersect with
+    `job_title`, which is not truncated and almost always names canonical tech
+    ("Java", "Front-end", "React", "Full Stack").
     """
-    if not job_description:
+    parts: list[str] = []
+    if job_title:
+        parts.append(job_title)
+    if job_description:
+        parts.append(job_description)
+    if not parts:
         return []
-    blob = job_description.lower()
+    blob = "\n".join(parts).lower()
     return [s for s in _verified_skills(verified) if phrase_present(s, blob)]
 
 
@@ -119,6 +130,7 @@ def audit(
     company: str | None,
     cover_max_words: int,
     job_description: str | None = None,
+    job_title: str | None = None,
 ) -> AuditResult:
     must_haves = list(score.matched_must_haves) if score else []
     if score and score.gaps:
@@ -127,7 +139,7 @@ def audit(
         must_haves = must_haves + list(score.gaps)
 
     if not must_haves:
-        must_haves = _extract_must_haves_from_jd(job_description, verified)
+        must_haves = _extract_must_haves_from_jd(job_description, verified, job_title)
 
     coverage_pct, matched, missing = keyword_coverage(must_haves, tailored)
 
