@@ -104,4 +104,4 @@ async def test_payload_includes_keep_alive(monkeypatch: pytest.MonkeyPatch) -> N
         user="u",
         schema={"type": "object"},
     )
-    assert captured.get("keep_alive") == "30m"
+    assert captured.get("keep_alive") == -1

@@ -27,12 +27,13 @@ import typer
 
 from jobhunt.browser import autofill
 from jobhunt.config import Config, load_config
-from jobhunt.db import connect, upsert_application
-from jobhunt.errors import BrowserError, JobHuntError, PipelineError
+from jobhunt.db import connect, set_decline_reason, upsert_application, upsert_job, write_score
+from jobhunt.errors import BrowserError, IngestError, JobHuntError, PipelineError
+from jobhunt.ingest.manual import fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
-from jobhunt.pipeline.score import ScoreResult
+from jobhunt.pipeline.score import ScoreResult, prompt_hash, score_job
 from jobhunt.pipeline.tailor import TailoredResume, tailor_resume
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
@@ -67,6 +68,25 @@ def run(
             "One of: drafted, applied, interviewing, offer, rejected, withdrawn."
         ),
     ),
+    url: str | None = typer.Option(
+        None, "--url", help="Fetch a single JD from this URL, score it, then apply."
+    ),
+    title: str | None = typer.Option(
+        None, "--title",
+        help="Override the auto-detected job title (with --url).",
+    ),
+    company: str | None = typer.Option(
+        None, "--company",
+        help="Override the auto-detected company name (with --url).",
+    ),
+    no_score: bool = typer.Option(
+        False, "--no-score",
+        help="Skip the score pass for ad-hoc jobs. Audit falls back to title/JD-only must-haves.",
+    ),
+    force_robots: bool = typer.Option(
+        False, "--force-robots",
+        help="Fetch a URL even if robots.txt disallows. Personal-use override only.",
+    ),
 ) -> None:
     if set_status is not None:
         if job_id is None:
@@ -78,12 +98,19 @@ def run(
         _run_set_status(job_id, set_status)
         return
 
-    flags = sum(x is not None and x is not False for x in (job_id, top, best))
+    manual_mode = url is not None
+    flags = sum(x is not None and x is not False for x in (job_id, top, best, url))
     if flags == 0:
-        typer.echo("error: pass <job-id>, --top N, or --best.", err=True)
+        typer.echo(
+            "error: pass <job-id>, --top N, --best, or --url.",
+            err=True,
+        )
         raise typer.Exit(code=2)
     if flags > 1:
-        typer.echo("error: <job-id>, --top, and --best are mutually exclusive.", err=True)
+        typer.echo(
+            "error: selection modes (<job-id>, --top, --best, --url) are mutually exclusive.",
+            err=True,
+        )
         raise typer.Exit(code=2)
 
     from jobhunt.commands import ensure_profile
@@ -91,16 +118,29 @@ def run(
     cfg = load_config()
     ensure_profile(cfg)
     effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
-    conn = connect(cfg.paths.db_path)
-    try:
-        if job_id is not None:
-            jobs = _resolve_by_id(conn, job_id)
-        elif top is not None:
-            jobs = _resolve_top_n(conn, n=top, min_score=effective_min_score)
-        else:
-            jobs = _resolve_interactive(conn, min_score=effective_min_score)
-    finally:
-        conn.close()
+
+    if manual_mode:
+        jobs = asyncio.run(
+            _resolve_manual(
+                cfg,
+                url=url,
+                title=title,
+                company=company,
+                no_score=no_score,
+                force_robots=force_robots,
+            )
+        )
+    else:
+        conn = connect(cfg.paths.db_path)
+        try:
+            if job_id is not None:
+                jobs = _resolve_by_id(conn, job_id)
+            elif top is not None:
+                jobs = _resolve_top_n(conn, n=top, min_score=effective_min_score)
+            else:
+                jobs = _resolve_interactive(conn, min_score=effective_min_score)
+        finally:
+            conn.close()
 
     if not jobs:
         typer.echo("nothing to apply to.")
@@ -160,6 +200,84 @@ def _run_set_status(job_id: str, status: str) -> None:
 
 
 # --- selection helpers --------------------------------------------------------
+
+
+async def _resolve_manual(
+    cfg: Config,
+    *,
+    url: str,
+    title: str | None,
+    company: str | None,
+    no_score: bool,
+    force_robots: bool,
+) -> list[sqlite3.Row]:
+    """Build a Job from --url, upsert it, optionally score it, and return a
+    row-list matching the shape `_apply_each` expects."""
+    if not force_robots and not robots_allowed(url, cfg.ingest.user_agent):
+        typer.echo(
+            f"error: robots.txt disallows {url}; re-run with --force-robots to override.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    typer.echo("  fetching (headless browser, ~5–10s)...")
+    try:
+        job = await fetch_url_as_job(
+            url,
+            user_agent=cfg.ingest.user_agent,
+            title_override=title,
+            company_override=company,
+        )
+    except IngestError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    if not job.title or not job.company:
+        typer.echo(
+            "error: could not auto-detect title/company from the page. "
+            "Re-run with --title and --company.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    typer.echo(
+        f"  ingested {job.id} — {job.title} @ {job.company} "
+        f"({len(job.description or '')} chars)"
+    )
+
+    conn = connect(cfg.paths.db_path)
+    try:
+        upsert_job(conn, job)
+        if not no_score:
+            typer.echo("  scoring (LLM, ~30–60s)...")
+            try:
+                result = await score_job(cfg, job)
+            except JobHuntError as e:
+                typer.echo(f"  ! score failed: {e}", err=True)
+            else:
+                ph = prompt_hash(cfg.paths.kb_dir)
+                with conn:
+                    write_score(
+                        conn,
+                        job_id=job.id,
+                        score=result.score,
+                        reasons=result.matched_must_haves,
+                        red_flags=[result.decline_reason] if result.decline_reason else [],
+                        must_clarify=result.gaps,
+                        model=result.model,
+                        prompt_hash=ph,
+                    )
+                    set_decline_reason(conn, job.id, result.decline_reason)
+                tag = f"DECLINE: {result.decline_reason}" if result.decline_reason else f"score={result.score}"
+                typer.echo(f"  scored [{tag}]")
+        rows = list(
+            conn.execute(
+                "SELECT j.*, s.score AS score FROM jobs j "
+                "LEFT JOIN scores s ON s.job_id = j.id WHERE j.id = ?",
+                (job.id,),
+            )
+        )
+    finally:
+        conn.close()
+    return rows
 
 
 def _resolve_by_id(conn: sqlite3.Connection, job_id: str) -> list[sqlite3.Row]:

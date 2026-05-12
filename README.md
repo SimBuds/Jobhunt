@@ -24,7 +24,7 @@ cloud LLM calls in the runtime path.
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) for dependency management
 - [Ollama](https://ollama.com) running locally (default `http://localhost:11434`)
-- ~10 GB VRAM (qwen3.5:9b lands at ~9 GB resident at `num_ctx=6144`)
+- ~10 GB VRAM (`qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` — lands at ~9 GB resident at `num_ctx=16384` with a `q5_0` KV cache; bare `qwen3.5:9b` works too as a fallback)
 - API key (free tier) for **Adzuna CA**: <https://developer.adzuna.com/>
 
 ## Install
@@ -36,9 +36,40 @@ uv sync
 source .venv/bin/activate        # activates the jobhunt venv; `jobhunt` is now on PATH
 playwright install chromium
 
-ollama pull qwen3.5:9b           # single hot model — score, tailor, cover
+ollama pull qwen3.5:9b           # base model — score, tailor, cover
 ollama pull nomic-embed-text    # embeddings (reserved for future use)
 ```
+
+### Ollama systemd settings
+
+The gateway is tuned to a specific server configuration. Mirror these
+(Arch / systemd: `sudo systemctl edit ollama.service`):
+
+```ini
+[Service]
+Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache — ~30% VRAM saving
+Environment="OLLAMA_FLASH_ATTENTION=1"       # required for a quantized KV cache
+Environment="OLLAMA_NUM_PARALLEL=1"          # one concurrent request
+Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context window
+Environment="OLLAMA_KEEP_ALIVE=-1"           # never unload the hot model
+Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one model in VRAM at a time
+```
+
+The gateway sends matching per-call values (`num_ctx=16384`, `keep_alive=-1`)
+so behavior stays consistent regardless of which side has the policy. If
+you change one side, change the other.
+
+### Model variant
+
+Default model in config is `qwen-custom:latest` — a Modelfile-derived
+`qwen3.5:9b` that bakes in personal prompt context (see your AI context stack
+build script). The gateway always sends a system message, which overrides the
+Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into
+tailoring/scoring output.
+
+If you haven't built `qwen-custom`, point all three slots back at `qwen3.5:9b`
+in `~/.config/jobhunt/config.toml` under `[gateway.tasks]`. Same VRAM
+footprint and quirks either way — they share base weights.
 
 After `uv sync`, the `jobhunt` script is installed into `.venv/bin`. Activate the
 venv once per shell (`source .venv/bin/activate`) and use `jobhunt` directly. If
@@ -54,6 +85,7 @@ jobhunt scan                 # ingest GTA jobs + score against profile
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
 jobhunt apply --top N        # auto-pick N best-fit unapplied jobs (1..10)
 jobhunt apply --best         # interactive pick from top 10
+jobhunt apply --url <URL>    # ad-hoc: fetch JD from URL, score, tailor (you submit)
 jobhunt list [--week N]      # pipeline view + weekly tracking
 ```
 
@@ -69,6 +101,31 @@ appear in `--help`.
   `1,3,7` or `2-5`.
 
 Add `--no-browser` to generate the tailored docs without launching Playwright.
+
+### Manual applying (one-off URL)
+
+When a posting isn't in the scan results — a friend's tip, a direct careers
+page, a LinkedIn link — bypass `scan` and feed the URL straight in:
+
+```bash
+jobhunt apply --url https://boards.greenhouse.io/<employer>/jobs/<id>
+```
+
+The fetcher renders the page in headless Chromium via Playwright (so
+JS-heavy career portals like Workday, Phenom, iCIMS, SuccessFactors actually
+load their JD content), extracts title/company/body from the rendered HTML,
+persists as `source=manual`, scores it, then runs the normal
+tailor/cover/audit pipeline.
+
+Auto-detection of title/company from the URL's `<title>` / OG tags is
+best-effort. If it fails, pass `--title` and `--company` explicitly. Both
+override auto-detection when used with `--url`.
+
+Escape hatches:
+- `--no-score` — skip the ~30–60 s scoring pass. Audit's keyword-coverage falls
+  back to title/JD-only must-haves.
+- `--force-robots` — fetch a URL even when robots.txt disallows. Personal-use
+  single-shot only; does not relax the rule for `scan` adapters.
 
 Bump status after submitting (or to mark interview / offer / rejected):
 
@@ -199,7 +256,19 @@ jobhunt list --week 0             # weekly pipeline view
   enforcement, and runs the cover-letter validator. If `scores.reasons` is
   empty (qwen sometimes ships empty arrays despite the schema), the audit
   falls back to deterministic must-have extraction by intersecting verified
-  skills with the JD description.
+  skills with **both** `job.title` and `job.description` — title is included
+  because some sources (e.g. Adzuna) ship truncated 500-char descriptions
+  where canonical tech names like "Java" or "React" only appear in the title.
+- Cover-letter validator normalizes curly/smart apostrophes (`'` → `'`)
+  before banned-phrase matching, so qwen's typographic output can't sneak
+  phrases like "team's goals" past the substring check.
+- Clock-style time references in the cover body (`11:00 AM`, `9 a.m.`, `5pm`,
+  bare `12:30`) are stripped before the unverified-numbers pass — a JD
+  stand-up reference shouldn't be flagged as fabrication.
+- One-page guarantee is enforced by `pipeline.tailor._shrink_to_one_page`:
+  trim summary to ≥3 sentences → trim Familiar to ≥4 items → drop the last
+  bullet of the heaviest role (preserves each role's JD-relevant lead) → drop
+  the coursework block. If the resume still overflows, the tailor raises.
 
 See [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md) for
 the full rule set; [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md)
