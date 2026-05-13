@@ -12,7 +12,7 @@ import typer
 
 from jobhunt.config import Config, _to_toml_dict, config_path, load_config
 from jobhunt.db import connect
-from jobhunt.discover.probe import DiscoverReport, ProbeOutcome, discover_with_report
+from jobhunt.discover.probe import ProbeOutcome, discover
 from jobhunt.errors import JobHuntError
 from jobhunt.http import DEFAULT_UA
 
@@ -68,22 +68,18 @@ def slugs(
 
     conn = connect(cfg.paths.db_path)
     try:
-        report = asyncio.run(
-            _run(cfg, conn, atses=atses, limit=limit, include_cached=include_cached)
-        )
+        hits = asyncio.run(_run(cfg, conn, atses=atses, limit=limit, include_cached=include_cached))
     finally:
         conn.close()
 
-    _print_summary(report, atses=atses, limit=limit, include_cached=include_cached)
-
-    if not report.hits:
-        _print_empty_result_hint(report, include_cached=include_cached)
+    if not hits:
+        typer.echo("no new slugs discovered.")
         raise typer.Exit(code=0)
 
-    _print_table(report)
+    _print_table(hits)
 
     if apply:
-        added = _apply_to_config(cfg, report.hits)
+        added = _apply_to_config(cfg, hits)
         if added:
             typer.echo(
                 f"\nupdated {config_path()} (+{added['greenhouse']} greenhouse, "
@@ -102,13 +98,13 @@ async def _run(
     atses: list[str],
     limit: int,
     include_cached: bool,
-) -> DiscoverReport:
+) -> list[ProbeOutcome]:
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0),
         headers={"User-Agent": cfg.ingest.user_agent or DEFAULT_UA, "Accept": "application/json"},
         follow_redirects=True,
     ) as client:
-        return await discover_with_report(
+        return await discover(
             client,
             cfg,
             conn,
@@ -118,61 +114,8 @@ async def _run(
         )
 
 
-def _print_summary(
-    report: DiscoverReport,
-    *,
-    atses: list[str],
-    limit: int,
-    include_cached: bool,
-) -> None:
-    typer.echo(
-        "discover: "
-        f"checked {report.companies_seen} compan"
-        f"{'y' if report.companies_seen == 1 else 'ies'} "
-        f"(limit {limit}; ats={','.join(atses)})"
-    )
-    typer.echo(
-        "discover: "
-        f"probed {report.companies_probed}, "
-        f"skipped {report.companies_skipped_configured} configured, "
-        f"{report.companies_skipped_no_candidates} staffing/unparseable"
-        + (
-            ""
-            if include_cached
-            else f", {report.companies_skipped_cached} cached miss"
-            f"{'' if report.companies_skipped_cached == 1 else 'es'}"
-        )
-    )
-    typer.echo(
-        "discover: "
-        f"requests {report.probes_attempted} "
-        f"({report.probe_hits} hit, {report.probe_misses} miss, {report.probe_errors} error)"
-    )
-
-
-def _print_empty_result_hint(report: DiscoverReport, *, include_cached: bool) -> None:
-    typer.echo("discover: no unapplied slugs found.")
-    if report.companies_skipped_cached and not include_cached:
-        typer.echo(
-            "discover: re-run with --include-cached to retry "
-            f"{report.companies_skipped_cached} cached miss"
-            f"{'' if report.companies_skipped_cached == 1 else 'es'}."
-        )
-    elif report.companies_probed == 0 and report.companies_skipped_configured:
-        typer.echo("discover: candidate slugs are already present in config.toml.")
-
-
-def _print_table(report: DiscoverReport) -> None:
-    hits = report.hits
-    prefix = (
-        f"{len(hits)} slug(s) ready to apply"
-        if report.cached_hits_reused == 0
-        else (
-            f"{len(hits)} slug(s) ready to apply "
-            f"({report.cached_hits_reused} cached from earlier runs)"
-        )
-    )
-    typer.echo(f"\n{prefix}:\n")
+def _print_table(hits: list[ProbeOutcome]) -> None:
+    typer.echo(f"{len(hits)} slug(s) ready to apply (fresh + cached hits not yet in config):\n")
     company_w = max(7, max(len(h.company) for h in hits))
     ats_w = max(3, max(len(h.ats) for h in hits))
     slug_w = max(4, max(len(h.slug) for h in hits))
