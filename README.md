@@ -87,7 +87,7 @@ jobhunt convert-resume
 
 ## Commands
 
-Five user-facing commands. Run `<command> --help` for full flags.
+Six user-facing commands. Run `<command> --help` for full flags.
 
 ```bash
 jobhunt convert-resume                     # parse Resume.docx → kb/profile/
@@ -98,6 +98,7 @@ jobhunt apply --best                       # interactive pick from top 10
 jobhunt apply --url <URL>                  # manual application from a URL
 jobhunt list [--week N] [--status ...]     # pipeline view + weekly tracking
 jobhunt analyze certs [--top N]            # frequency of certifications in scanned jobs
+jobhunt discover slugs [--apply]           # probe Greenhouse/Ashby for ATS slugs
 ```
 
 ### `apply` selection modes
@@ -125,6 +126,25 @@ jobhunt apply --set-status rejected     <job-id>
 ```
 
 The flag must come **before** the job id.
+
+### `discover slugs`
+
+Adzuna ships short JD snippets (~500 chars). Greenhouse and Ashby return full
+descriptions, but each employer needs a slug in `config.toml`. `discover slugs`
+automates the slug-hunting: it reads distinct company names from your jobs DB,
+normalizes each (e.g. `"Konrad Group"` → `konradgroup`, `konrad`), and probes
+the public Greenhouse and Ashby APIs.
+
+```bash
+jobhunt discover slugs                     # print suggestions (default --limit 100)
+jobhunt discover slugs --apply             # also append to config.toml (.bak written)
+jobhunt discover slugs --ats greenhouse    # restrict probe targets
+jobhunt discover slugs --include-cached    # re-probe past misses
+```
+
+Misses are cached in the `slug_probes` table so repeat runs only probe new
+companies. Staffing-agency names (Astra North, Targeted Talent, etc.) are
+filtered at the candidate stage and never hit the network.
 
 ### `list` filters
 
