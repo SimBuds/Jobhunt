@@ -84,6 +84,7 @@ src/jobhunt/
 │   ├── scan_cmd.py            # P2: ingest + score + cross-source dedupe
 │   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
+│   ├── discover_cmd.py        # `discover slugs`: auto-find ATS slugs from past results
 │   ├── db_cmd.py              # hidden internal
 │   └── config_cmd.py          # hidden internal
 ├── resume/
@@ -105,6 +106,9 @@ src/jobhunt/
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
 ├── analyze/                   # deterministic aggregations over the jobs DB (no LLM)
 │   └── certs.py               # cert keyword extractor + per-job tally
+├── discover/                  # probes external ATS APIs to auto-find slugs
+│   ├── slug_candidates.py     # pure name→slug normalizer (staffing-agency filter)
+│   └── probe.py               # async Greenhouse/Ashby probe + slug_probes cache
 ├── pipeline/                  # score, tailor, cover, audit, cover_validate
 │   ├── score.py
 │   ├── tailor.py              # enforces no-fabrication invariants
@@ -125,7 +129,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **five** commands. `db` and `config` are hidden internals.
+User-facing surface is **six** commands. `db` and `config` are hidden internals.
 
 ```
 jobhunt convert-resume       # parse baseline .docx → kb/profile/
@@ -136,11 +140,22 @@ jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt list [--week N]      # pipeline view + weekly rollup
 jobhunt analyze certs [--top N]  # frequency of certifications across scanned jobs
+jobhunt discover slugs       # probe Greenhouse/Ashby for ATS slugs of past companies
 ```
 
 `analyze` is a deterministic, LLM-free aggregation surface — do not add an
 Ollama call to any `analyze` subcommand without explicit discussion. It mirrors
 the audit philosophy: regex + counters over existing DB rows, no network I/O.
+
+`discover slugs` reads distinct companies from the jobs DB (sorted by post
+count), normalizes each name via `discover.slug_candidates.candidates()` to up
+to 3 candidate slugs, then probes the Greenhouse and Ashby public APIs.
+Hits are printed; `--apply` appends them to `config.toml` (after writing a
+`.bak`). Misses persist to the `slug_probes` table and are skipped on
+subsequent runs unless `--include-cached`. Staffing-agency names are filtered
+out at the candidate stage — they never run public ATS boards. Per-host rate
+limit + per-company 15 s timeout + bounded concurrency keep wall time
+predictable; `--limit 100` is the default run cap.
 
 `apply --url` is a user-initiated single-shot fetch. It synthesizes a
 `Job(source="manual", id="manual:<sha1-12>")`, upserts it into the DB so it

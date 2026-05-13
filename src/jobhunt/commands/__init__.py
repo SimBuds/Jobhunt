@@ -8,6 +8,7 @@ from jobhunt.commands import (
     config_cmd,
     convert_resume_cmd,
     db_cmd,
+    discover_cmd,
     list_cmd,
     scan_cmd,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "config_cmd",
     "convert_resume_cmd",
     "db_cmd",
+    "discover_cmd",
     "ensure_profile",
     "list_cmd",
     "scan_cmd",
