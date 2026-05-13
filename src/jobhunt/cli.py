@@ -7,6 +7,7 @@ import sys
 import typer
 
 from jobhunt.commands import (
+    analyze_cmd,
     apply_cmd,
     config_cmd,
     convert_resume_cmd,
@@ -25,6 +26,7 @@ app.command("convert-resume", help=convert_resume_cmd.app.info.help)(convert_res
 app.command("scan", help=scan_cmd.app.info.help)(scan_cmd.run)
 app.command("apply", help=apply_cmd.app.info.help)(apply_cmd.run)
 app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
+app.add_typer(analyze_cmd.app, name="analyze")
 app.add_typer(db_cmd.app, name="db", hidden=True)
 app.add_typer(config_cmd.app, name="config", hidden=True)
 

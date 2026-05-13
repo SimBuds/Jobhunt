@@ -1,12 +1,19 @@
-# CLAUDE.md
+# AGENTS.md
 
-**Source of truth for agents working in this repo.** Auto-loaded by Claude Code on every session. Defines the architecture, conventions, and non-negotiable guardrails for `jobhunt`.
+**Source of truth for agents working in this repo.** Recognized by the
+cross-tool `AGENTS.md` convention (Cursor, Aider, Codex, etc.) and pulled into
+Claude Code via a small `CLAUDE.md` stub that imports this file. Defines the
+architecture, conventions, and non-negotiable guardrails for `jobhunt`.
 
 If anything in `PLAN.md` contradicts this file, **this file wins** — open a PR to reconcile rather than working around it.
 
-- `PLAN.md` — design rationale and reference for implementation choices.
-- `README.md` — end-user install and usage. Don't put dev/agent guidance there.
-- `Resume_Tailoring_Instructions.md` — non-negotiable rules for tailoring (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
+## Documentation map
+
+- `AGENTS.md` (this file) — agent guardrails and conventions. The *how*.
+- `PLAN.md` — design rationale. The *why* decisions were made.
+- `README.md` — install + usage for developers running the app locally.
+- `Resume_Tailoring_Instructions.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
+- `CLAUDE.md` — tiny stub that `@`-imports this file so Claude Code's auto-load still works. Don't edit it; edit this file.
 
 ---
 
@@ -96,6 +103,8 @@ src/jobhunt/
 ├── gateway/                   # Ollama client + prompt loader
 │   ├── client.py              # complete_json (POST /api/chat with format=schema)
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
+├── analyze/                   # deterministic aggregations over the jobs DB (no LLM)
+│   └── certs.py               # cert keyword extractor + per-job tally
 ├── pipeline/                  # score, tailor, cover, audit, cover_validate
 │   ├── score.py
 │   ├── tailor.py              # enforces no-fabrication invariants
@@ -116,7 +125,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **four** commands. `db` and `config` are hidden internals.
+User-facing surface is **five** commands. `db` and `config` are hidden internals.
 
 ```
 jobhunt convert-resume       # parse baseline .docx → kb/profile/
@@ -126,7 +135,12 @@ jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt list [--week N]      # pipeline view + weekly rollup
+jobhunt analyze certs [--top N]  # frequency of certifications across scanned jobs
 ```
+
+`analyze` is a deterministic, LLM-free aggregation surface — do not add an
+Ollama call to any `analyze` subcommand without explicit discussion. It mirrors
+the audit philosophy: regex + counters over existing DB rows, no network I/O.
 
 `apply --url` is a user-initiated single-shot fetch. It synthesizes a
 `Job(source="manual", id="manual:<sha1-12>")`, upserts it into the DB so it
@@ -154,7 +168,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
 2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
-4. **Respect `robots.txt`** for any non-API HTTP fetch. The `--url` ad-hoc path checks via stdlib `urllib.robotparser` and accepts `--force-robots` for personal-use override only; this carve-out does **not** apply to `scan` ingest adapters. (CLAUDE.md historically calls for `protego`; the project hasn't taken that dep yet — stdlib is the current implementation.)
+4. **Respect `robots.txt`** for any non-API HTTP fetch. The `--url` ad-hoc path checks via stdlib `urllib.robotparser` and accepts `--force-robots` for personal-use override only; this carve-out does **not** apply to `scan` ingest adapters. (this file historically called for `protego`; the project hasn't taken that dep yet — stdlib is the current implementation.)
 5. **Rate limits:** 1 req/sec/host default. Exponential backoff on 429/5xx.
 6. **User-Agent:** identifies the tool and provides a contact, e.g. `jobhunt/0.1 (+personal-use; your-email@example.com)`. Set via `config.toml` under `[ingest] user_agent`.
 7. **Cache** raw responses to `data/cache/` with a TTL; don't re-hit APIs needlessly during dev.

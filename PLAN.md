@@ -5,7 +5,7 @@ against Casey's parsed baseline resume using local Ollama models, tailors
 resumes and cover letters per role, and assists with form autofill in a
 headed browser. Casey clicks Submit.
 
-This document explains the *why*. `CLAUDE.md` is the *how* (conventions,
+This document explains the *why*. `AGENTS.md` is the *how* (conventions,
 guardrails, project structure). `README.md` is for end-users.
 
 ---
@@ -98,7 +98,7 @@ Remote-Ontario / Remote-EST. Bare "Remote" is rejected as ambiguous. The
 (`Remote, ON`) — never as the English word in `Remote (on-call) — US`.
 
 Explicitly excluded (won't change without removing the no-scraping guardrail
-in `CLAUDE.md`):
+in `AGENTS.md`):
 
 - LinkedIn, Indeed, Glassdoor, ZipRecruiter — ToS, brittle, litigated.
 - USAJobs and worldwide job APIs — out of GTA scope.
@@ -160,3 +160,20 @@ than producing a misleading resume. (4) and (5) downgrade rather than block.
 - Autofills standard fields on Greenhouse forms; falls back to a generic
   selector-based handler elsewhere.
 - Zero cloud API spend at runtime.
+
+
+## Aggregate analysis (`analyze` command group)
+
+`jobhunt analyze` is a deterministic, LLM-free aggregation surface over the
+existing `jobs` table. It mirrors the audit philosophy — regex + counters, no
+Ollama calls. Adding an LLM call to any `analyze` subcommand requires explicit
+discussion.
+
+### `analyze certs`
+
+Implemented in `src/jobhunt/analyze/certs.py`. The matcher runs a curated
+`KNOWN_CERTS` list (Cloud, Security, PM/Agile, Data/ML, Networking, Finance)
+first, masking consumed character spans, then two generic patterns
+(`Certified <Noun>` / `<Noun> certification`) for the long tail. `tally(rows)`
+counts each cert once per job regardless of how many times it appears in a JD.
+Output: frequency table sorted desc, capped by `--top N` (default 25).
