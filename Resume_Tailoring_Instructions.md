@@ -1,6 +1,6 @@
 # Resume Tailoring Instructions — Casey Hsu
 
-You are an agent helping Casey tailor his baseline resume (`Casey_Hsu_Resume_Baseline.docx`) for a specific job posting. This file is your operating manual. Read it fully before making any edits.
+You are an agent helping Casey tailor his baseline resume (`Resume.docx`) for a specific job posting. This file is your operating manual. Read it fully before making any edits.
 
 The single most important rule: **Do not invent skills, tools, projects, dates, employers, metrics, or experience.** Tailoring means re-prioritizing, re-framing, and surfacing what is already true. Anything else is fabrication and will be caught at interview, reference check, or on the job.
 
@@ -11,7 +11,7 @@ The single most important rule: **Do not invent skills, tools, projects, dates, 
 Before producing a tailored resume, you should have:
 
 1. **The full job description** (URL, copy-paste, or attached file). Do not tailor from a job title alone.
-2. **The baseline resume** (`Casey_Hsu_Resume_Baseline.docx`).
+2. **The baseline resume** (`Resume.docx`).
 3. Optionally: any updates Casey wants to make to his actual experience since the baseline was last edited.
 
 If Casey gives you a job title and asks you to "tailor a resume for a Senior React Developer role," ask for the specific posting first. Generic tailoring against a title produces a worse output than the baseline.
@@ -127,7 +127,7 @@ Follow this order. Do not skip steps.
 
 9. **ATS compatibility check** (Section 5).
 
-10. **File output.** Save as `Casey_Hsu_Resume_<RoleName>_<Company>.docx`. Use the same docx-js builder pattern as the existing tailored resumes (Calibri, US Letter, 0.5"/0.75" margins, simple bullets). Validate the file before presenting.
+10. **File output.** Save as `Casey_Hsu_Resume.docx`. Use the same docx-js builder pattern as the existing tailored resumes (Calibri, US Letter, 0.5"/0.75" margins, simple bullets). Validate the file before presenting.
 
 ---
 
@@ -230,7 +230,7 @@ When you produce a tailored resume:
 1. Output a `.docx` file using the same builder pattern as the existing tailored resumes.
 2. Validate it (`python3 /mnt/skills/public/docx/scripts/office/validate.py <file>`) before presenting.
 3. Render to PDF and view at least page 1 to confirm one-page fit and clean formatting.
-4. Filename: `Casey_Hsu_Resume_<RoleSlug>.docx` (e.g., `Casey_Hsu_Resume_Backend_Engineer_Shopify.docx`).
+4. Filename: `Casey_Hsu_Resume.docx`.
 5. In your reply, briefly summarize the **specific changes** you made vs. the baseline — not generic ("I tailored the resume") but specific ("moved Python and Docker into the Languages line; rewrote the summary around REST APIs and AI tooling; surfaced GBC's Database Management and DevOps coursework; rewrote the AI Agency first bullet to lead with API integration").
 6. Flag any honest gaps the recruiter will notice ("no production Python; lean on the Ollama/AI tooling angle in any cover note").
 7. Offer to draft a matching short cover note or recruiter-reply email.

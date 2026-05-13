@@ -2,7 +2,7 @@
 
 Three selection modes (mutually exclusive):
 - `apply <job-id>`              — single job by id.
-- `apply --top N` (1..10)       — N highest-scoring unapplied jobs.
+- `apply --top N` (1..20)       — N highest-scoring unapplied jobs.
 - `apply --best`                — interactive picker over the top 10.
 
 Per selected job:
@@ -48,7 +48,7 @@ app = typer.Typer(
 def run(
     job_id: str | None = typer.Argument(None, help="Specific job id from `jobhunt list`."),
     top: int | None = typer.Option(
-        None, "--top", min=1, max=10, help="Auto-pick the N best-fit unapplied jobs (1..10)."
+        None, "--top", min=1, max=20, help="Auto-pick the N best-fit unapplied jobs (1..20)."
     ),
     best: bool = typer.Option(
         False, "--best", help="Interactively pick from the top 10 unapplied jobs."
@@ -390,7 +390,7 @@ async def _apply_one(
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    typer.echo(f"\n=== {job.title} @ {job.company} ===")
+    typer.echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
 
     typer.echo("    … tailoring resume (LLM, ~30–60s)")
     try:

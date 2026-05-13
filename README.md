@@ -83,10 +83,11 @@ Four user-facing commands.
 jobhunt convert-resume       # parse Resume.docx → kb/profile/
 jobhunt scan                 # ingest GTA jobs + score against profile
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
-jobhunt apply --top N        # auto-pick N best-fit unapplied jobs (1..10)
+jobhunt apply --top N        # auto-pick N best-fit unapplied jobs (1..20)
 jobhunt apply --best         # interactive pick from top 10
-jobhunt apply --url <URL>    # ad-hoc: fetch JD from URL, score, tailor (you submit)
-jobhunt list [--week N]      # pipeline view + weekly tracking
+jobhunt apply --url <URL>    # manual application: fetch JD from URL, score, tailor + cover + autofill (you submit)
+jobhunt list                 # pipeline view + weekly tracking displaying 20 by default
+jobhunt list [--week N]      # pipeline view + weekly tracking display specific amount
 ```
 
 `db` and `config` exist as hidden internal commands for setup; they don't
