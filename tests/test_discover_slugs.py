@@ -8,13 +8,11 @@ from typing import Any
 
 import httpx
 import pytest
-from typer.testing import CliRunner
 
-from jobhunt.commands import discover_cmd
 from jobhunt.config import Config
 from jobhunt.db import connect, migrate, upsert_job
 from jobhunt.discover import probe as probe_mod
-from jobhunt.discover.probe import DiscoverReport, ProbeOutcome, discover
+from jobhunt.discover.probe import ProbeOutcome, discover
 from jobhunt.errors import IngestError
 from jobhunt.models import Job
 
@@ -54,24 +52,6 @@ def _seed(conn: sqlite3.Connection, companies: list[tuple[str, int]]) -> None:
 
 def _run(coro: Any) -> Any:
     return asyncio.run(coro)
-
-
-def _report(**overrides: Any) -> DiscoverReport:
-    base: dict[str, Any] = {
-        "companies_seen": 0,
-        "companies_skipped_no_candidates": 0,
-        "companies_skipped_configured": 0,
-        "companies_skipped_cached": 0,
-        "companies_probed": 0,
-        "probes_attempted": 0,
-        "probe_hits": 0,
-        "probe_misses": 0,
-        "probe_errors": 0,
-        "cached_hits_reused": 0,
-        "hits": [],
-    }
-    base.update(overrides)
-    return DiscoverReport(**base)
 
 
 def _make_fake_get_json(
@@ -322,81 +302,3 @@ def test_discover_skips_staffing_agencies(
     # Staffing names never made any HTTP calls
     assert not any("astra" in u.lower() or "infoteck" in u.lower() for u in call_log)
     assert not any("targeted" in u.lower() or "talent" in u.lower() for u in call_log)
-
-
-def test_discover_cli_reports_empty_run_with_cached_hint(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = CliRunner()
-    cfg = Config(paths={"db_path": tmp_path / "jobhunt.db", "kb_dir": tmp_path / "kb"})
-    profile_dir = cfg.paths.kb_dir / "profile"
-    profile_dir.mkdir(parents=True)
-    (profile_dir / "verified.json").write_text("{}", encoding="utf-8")
-
-    class DummyConn:
-        def close(self) -> None:
-            return None
-
-    async def fake_run(*args: Any, **kwargs: Any) -> DiscoverReport:
-        return _report(
-            companies_seen=5,
-            companies_skipped_no_candidates=1,
-            companies_skipped_configured=2,
-            companies_skipped_cached=2,
-        )
-
-    monkeypatch.setattr(discover_cmd, "load_config", lambda: cfg)
-    monkeypatch.setattr(discover_cmd, "connect", lambda path: DummyConn())
-    monkeypatch.setattr(discover_cmd, "_run", fake_run)
-
-    result = runner.invoke(discover_cmd.app, [])
-
-    assert result.exit_code == 0
-    assert "discover: checked 5 companies (limit 100; ats=greenhouse,ashby)" in result.stdout
-    assert (
-        "discover: probed 0, skipped 2 configured, 1 staffing/unparseable, 2 cached misses"
-        in result.stdout
-    )
-    assert "discover: requests 0 (0 hit, 0 miss, 0 error)" in result.stdout
-    assert "discover: no unapplied slugs found." in result.stdout
-    assert "discover: re-run with --include-cached to retry 2 cached misses." in result.stdout
-
-
-def test_discover_cli_reports_hits_and_apply_message(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = CliRunner()
-    cfg = Config(paths={"db_path": tmp_path / "jobhunt.db", "kb_dir": tmp_path / "kb"})
-    profile_dir = cfg.paths.kb_dir / "profile"
-    profile_dir.mkdir(parents=True)
-    (profile_dir / "verified.json").write_text("{}", encoding="utf-8")
-
-    class DummyConn:
-        def close(self) -> None:
-            return None
-
-    async def fake_run(*args: Any, **kwargs: Any) -> DiscoverReport:
-        return _report(
-            companies_seen=3,
-            companies_probed=1,
-            probes_attempted=2,
-            probe_hits=1,
-            probe_misses=1,
-            cached_hits_reused=1,
-            hits=[ProbeOutcome("Okta", "greenhouse", "okta", 200, 42)],
-        )
-
-    monkeypatch.setattr(discover_cmd, "load_config", lambda: cfg)
-    monkeypatch.setattr(discover_cmd, "connect", lambda path: DummyConn())
-    monkeypatch.setattr(discover_cmd, "_run", fake_run)
-
-    result = runner.invoke(discover_cmd.app, [])
-
-    assert result.exit_code == 0
-    assert "discover: checked 3 companies (limit 100; ats=greenhouse,ashby)" in result.stdout
-    assert "discover: requests 2 (1 hit, 1 miss, 0 error)" in result.stdout
-    assert "1 slug(s) ready to apply (1 cached from earlier runs):" in result.stdout
-    assert "Okta     greenhouse  okta     42" in result.stdout
-    assert "--apply to write these to config.toml" in result.stdout

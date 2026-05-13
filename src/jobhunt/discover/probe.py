@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import NamedTuple
 
 import httpx
@@ -36,21 +35,6 @@ class ProbeOutcome(NamedTuple):
     slug: str
     status: int  # 200 hit, 404 miss, 0 network/other error
     job_count: int | None
-
-
-@dataclass(frozen=True)
-class DiscoverReport:
-    companies_seen: int
-    companies_skipped_no_candidates: int
-    companies_skipped_configured: int
-    companies_skipped_cached: int
-    companies_probed: int
-    probes_attempted: int
-    probe_hits: int
-    probe_misses: int
-    probe_errors: int
-    cached_hits_reused: int
-    hits: list[ProbeOutcome]
 
 
 async def _probe_one(
@@ -162,28 +146,7 @@ async def discover(
     limit: int,
     include_cached: bool,
 ) -> list[ProbeOutcome]:
-    return (
-        await discover_with_report(
-            client,
-            cfg,
-            conn,
-            atses=atses,
-            limit=limit,
-            include_cached=include_cached,
-        )
-    ).hits
-
-
-async def discover_with_report(
-    client: httpx.AsyncClient,
-    cfg: Config,
-    conn: sqlite3.Connection,
-    *,
-    atses: list[str],
-    limit: int,
-    include_cached: bool,
-) -> DiscoverReport:
-    """Run slug discovery against the jobs DB and return hits plus run metadata."""
+    """Run slug discovery against the jobs DB. Returns 200-status outcomes only."""
     limiter = RateLimiter(rate_per_sec=cfg.ingest.rate_limit_per_sec)
     sem = asyncio.Semaphore(_COMPANY_CONCURRENCY)
 
@@ -191,10 +154,6 @@ async def discover_with_report(
         "greenhouse": set(cfg.ingest.greenhouse),
         "ashby": set(cfg.ingest.ashby),
     }
-    companies_seen = 0
-    companies_skipped_no_candidates = 0
-    companies_skipped_configured = 0
-    companies_skipped_cached = 0
 
     async def _bounded(company: str, slugs: list[str]) -> list[ProbeOutcome]:
         async with sem:
@@ -212,23 +171,19 @@ async def discover_with_report(
 
     tasks: list[asyncio.Task[list[ProbeOutcome]]] = []
     for company, _count in _company_rows(conn, limit):
-        companies_seen += 1
         slugs = candidates(company)
         if not slugs:
-            companies_skipped_no_candidates += 1
             continue
 
         # Drop slugs already configured for ANY target ATS — saves probes when the
         # user has already wired up a company manually.
         if any(s in known["greenhouse"] or s in known["ashby"] for s in slugs):
-            companies_skipped_configured += 1
             continue
 
         if not include_cached:
             misses = _cached_misses(conn, company)
             slugs = [s for s in slugs if not any((ats, s) in misses for ats in atses)]
             if not slugs:
-                companies_skipped_cached += 1
                 continue
 
         tasks.append(asyncio.create_task(_bounded(company, slugs)))
@@ -248,27 +203,13 @@ async def discover_with_report(
     for h in fresh_hits:
         by_key[(h.ats, h.slug)] = h  # fresh wins on tie
 
-    fresh_keys = {(h.ats, h.slug) for h in fresh_hits}
     unapplied = [
         h
         for h in by_key.values()
         if h.slug not in known.get(h.ats, set())
     ]
-    cached_hits_reused = sum(1 for h in unapplied if (h.ats, h.slug) not in fresh_keys)
     unapplied.sort(key=lambda o: (-(o.job_count or 0), o.ats, o.slug))
-    return DiscoverReport(
-        companies_seen=companies_seen,
-        companies_skipped_no_candidates=companies_skipped_no_candidates,
-        companies_skipped_configured=companies_skipped_configured,
-        companies_skipped_cached=companies_skipped_cached,
-        companies_probed=len(tasks),
-        probes_attempted=len(all_outcomes),
-        probe_hits=sum(1 for o in all_outcomes if o.status == 200),
-        probe_misses=sum(1 for o in all_outcomes if o.status == 404),
-        probe_errors=sum(1 for o in all_outcomes if o.status == 0),
-        cached_hits_reused=cached_hits_reused,
-        hits=unapplied,
-    )
+    return unapplied
 
 
-__all__ = ["DiscoverReport", "ProbeOutcome", "discover", "discover_with_report", "probe_company"]
+__all__ = ["ProbeOutcome", "discover", "probe_company"]
