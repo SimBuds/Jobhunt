@@ -17,7 +17,6 @@ async def greenhouse_fill(page: Any, field_map: dict[str, str]) -> list[FieldFil
     """
     actions: list[FieldFill] = []
 
-    # Direct selectors for known quirks.
     direct_targets = [
         ("input#first_name", "first_name"),
         ("input#last_name", "last_name"),

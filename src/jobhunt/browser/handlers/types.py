@@ -18,5 +18,4 @@ class FieldFill:
     note: str = ""
 
 
-# A handler accepts (page, field_map) and returns the FieldFills it performed.
 Handler = Callable[[Any, dict[str, str]], Awaitable[list[FieldFill]]]

@@ -131,15 +131,9 @@ def _word_count(text: str) -> int:
     return len(_WORD_RE.findall(text))
 
 
-# Tech names that frequently get fabricated in cover letters when the JD
-# mentions them but verified.json does not. If one appears in the body and
-# isn't in the verified blob, that's a fabrication.
-#
-# Curated against the current baseline: Casey's verified stack covers
-# Java/Spring Boot, JS/TS + React/Next, Node/Express, Shopify/HubSpot/
-# Contentful/WordPress, MongoDB/MySQL/Postgres, Docker, AWS, Azure, Jest,
-# Playwright, Ollama, Python (familiar). Anything else common in JDs gets
-# listed here so qwen overclaims become hard violations.
+# Tech names frequently fabricated by qwen when mentioned in the JD but
+# absent from verified.json — any match in the cover body that isn't in
+# the verified skill blob is a hard violation.
 _FABRICATION_WATCHLIST: tuple[str, ...] = (
     # Data / infra
     "elasticsearch",
@@ -352,7 +346,6 @@ def validate_cover(
         token = tech.strip(", ")
         if not token:
             continue
-        # Word-boundary search.
         pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
         if not pattern.search(body):
             continue

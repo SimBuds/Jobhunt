@@ -52,9 +52,7 @@ def certs(
         raise typer.Exit(code=0)
 
     top_items = counts.most_common(top)
-    # Column widths.
-    name_w = max(len(name) for name, _ in top_items)
-    name_w = max(name_w, 12)  # min header width
+    name_w = max(max(len(name) for name, _ in top_items), 12)
 
     header = f"{'Certification':<{name_w}}  {'Jobs':>5}  {'%':>5}"
     typer.echo(header)

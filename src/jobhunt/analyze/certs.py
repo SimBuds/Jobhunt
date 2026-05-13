@@ -6,18 +6,13 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
-# ---------------------------------------------------------------------------
-# Known-cert registry
-# Each entry: (canonical display name, compiled case-insensitive pattern).
-# Patterns use \b word-boundaries. Specific variants (e.g. "– Associate")
-# must appear BEFORE their base pattern (e.g. bare "Solutions Architect") so
-# the overlap-filter below keeps the longer match.
-# ---------------------------------------------------------------------------
+# Specific variants (e.g. "– Associate") must appear BEFORE their base
+# pattern (e.g. bare "Solutions Architect") so the overlap-filter in
+# extract_certs keeps the longer match.
 
 _I = re.IGNORECASE
 
-# Helper to build a pattern that ends at a word or non-word boundary
-# (useful for certs ending in non-word chars like +).
+
 def _pat(r: str, flags: int = _I) -> re.Pattern[str]:
     return re.compile(r, flags)
 
@@ -125,7 +120,6 @@ def extract_certs(text: str) -> list[str]:
     Solutions Architect – Associate"), only the longest (outermost) match is
     kept. Generic patterns only run on text not consumed by known-cert matches.
     """
-    # Collect all known-cert matches as (start, end, name).
     raw_matches: list[tuple[int, int, str]] = []
     for name, pat in _KNOWN:
         for m in pat.finditer(text):
@@ -146,7 +140,6 @@ def extract_certs(text: str) -> list[str]:
     known_names = [name for _, _, name in accepted]
     known_spans = [(s, e) for s, e, _ in accepted]
 
-    # Build masked text for generic pattern pass.
     masked = list(text)
     for s, e in known_spans:
         for i in range(s, e):
@@ -160,7 +153,6 @@ def extract_certs(text: str) -> list[str]:
             if phrase not in _GENERIC_STOPWORDS:
                 generic_matches.append((m.start(), phrase))
 
-    # De-duplicate generics (same phrase can appear multiple times).
     seen_generic: set[str] = set()
     generic_names: list[str] = []
     for _, phrase in sorted(generic_matches):
