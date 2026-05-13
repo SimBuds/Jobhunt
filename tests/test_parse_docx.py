@@ -15,7 +15,7 @@ from jobhunt.resume.parse_docx import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE = REPO_ROOT / "Resume.docx"
-LEGACY_BASELINE = REPO_ROOT / "Casey_Hsu_Resume_Baseline.docx"
+LEGACY_BASELINE = REPO_ROOT / "Resume.docx"
 if not BASELINE.is_file() and LEGACY_BASELINE.is_file():
     BASELINE = LEGACY_BASELINE
 

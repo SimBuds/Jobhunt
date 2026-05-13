@@ -30,7 +30,7 @@ def run(
     source: str | None = typer.Option(
         None, "--source", help="Filter by source (greenhouse/lever/ashby/adzuna_ca)."
     ),
-    limit: int = typer.Option(40, "--limit", help="Max rows to display."),
+    limit: int = typer.Option(20, "--limit", help="Max rows to display."),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
