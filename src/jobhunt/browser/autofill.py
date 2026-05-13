@@ -1,6 +1,6 @@
 """Open the application URL in a headed browser and run the matching handler.
 
-Hard rules (from CLAUDE.md):
+Hard rules (from AGENTS.md):
 - Never click Submit. Hand the browser to the human.
 - Never auto-create accounts. If signup is required, exit with a notice.
 - Log every planned fill to fill-plan.json for auditability.
