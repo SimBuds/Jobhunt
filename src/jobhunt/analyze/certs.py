@@ -50,7 +50,30 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     ("Azure AZ-204", _pat(r"\bAZ-?204\b")),
     ("Azure AZ-305", _pat(r"\bAZ-?305\b")),
     ("Azure AZ-400", _pat(r"\bAZ-?400\b")),
+    ("Azure AZ-500", _pat(r"\bAZ-?500\b")),
+    ("Azure AZ-700", _pat(r"\bAZ-?700\b")),
+    ("Azure AZ-800", _pat(r"\bAZ-?800\b")),
+    ("Azure AZ-801", _pat(r"\bAZ-?801\b")),
+    ("Azure DP-900", _pat(r"\bDP-?900\b")),
+    ("Azure DP-100", _pat(r"\bDP-?100\b")),
+    ("Azure AI-900", _pat(r"\bAI-?900\b")),
     ("Azure Fundamentals", _pat(r"\bAzure\s+Fundamentals\b")),
+    # --- Cloud: Microsoft legacy ---
+    ("MCSE", _pat(r"\bMCSE\b")),
+    ("MCSA", _pat(r"\bMCSA\b")),
+    # --- Kubernetes / Cloud-native ---
+    ("CKS", _pat(r"\bCKS\b")),           # specific before CKA/CKAD
+    ("CKAD", _pat(r"\bCKAD\b")),
+    ("CKA", _pat(r"\bCKA\b")),
+    # --- HashiCorp / Infrastructure ---
+    ("Terraform Associate", _pat(
+        r"\bHashiCorp\s+Certified\s*:\s*Terraform\s+Associate\b"
+        r"|\bTerraform\s+Associate\b"
+    )),
+    ("Vault Associate", _pat(
+        r"\bHashiCorp\s+Certified\s*:\s*Vault\s+Associate\b"
+        r"|\bVault\s+Associate\b"
+    )),
     # --- Security ---
     ("CISSP", _pat(r"\bCISSP\b")),
     ("CISM", _pat(r"\bCISM\b")),
@@ -67,11 +90,43 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     # --- PM / Agile ---
     ("PMP", _pat(r"\bPMP\b")),
     ("CAPM", _pat(r"\bCAPM\b")),
+    ("PMI-ACP", _pat(r"\bPMI-ACP\b")),
+    ("PMI-RMP", _pat(r"\bPMI-RMP\b")),
+    ("PMI-PBA", _pat(r"\bPMI-PBA\b")),
     ("PRINCE2", _pat(r"\bPRINCE\s*2\b")),
+    ("CSPO", _pat(r"\bCSPO\b")),
     ("CSM", _pat(r"\bCSM\b")),
     ("PSM", _pat(r"\bPSM\b")),
-    ("SAFe", _pat(r"\bSAFe\b|\bScaled\s+Agile\b")),
+    # `SAFe` is mixed-case by design; case-insensitive matching would collide with the
+    # English word "safe" (job descriptions are full of "safe place", "safe transport").
+    # Inline (?-i:...) keeps the bare-acronym alternative case-sensitive while letting
+    # the spelled-out "Scaled Agile" stay case-insensitive.
+    ("SAFe", _pat(r"(?-i:\bSAFe\b)|\bScaled\s+Agile\b")),
     ("ITIL", _pat(r"\bITIL\b")),
+    # --- Architecture ---
+    ("TOGAF", _pat(r"\bTOGAF\b")),
+    # --- Oracle ---
+    ("OCP", _pat(r"\bOCP\b")),
+    ("OCA", _pat(r"\bOCA\b")),
+    # --- Salesforce (specific before generic anchor) ---
+    ("Salesforce Certified Administrator", _pat(
+        r"\bSalesforce\s+Certified\s+Administrator\b"
+    )),
+    ("Salesforce Certified Developer", _pat(
+        r"\bSalesforce\s+Certified\s+(?:Platform\s+)?Developer\b"
+    )),
+    ("Salesforce Certified", _pat(r"\bSalesforce\s+Certified\b")),
+    # --- Six Sigma ---
+    ("Six Sigma Black Belt", _pat(
+        r"\bSix\s+Sigma\s+Black\s+Belt\b|\bCSSBB\b"
+    )),
+    ("Six Sigma Green Belt", _pat(
+        r"\bSix\s+Sigma\s+Green\s+Belt\b|\bCSSGB\b"
+    )),
+    ("Six Sigma Yellow Belt", _pat(r"\bSix\s+Sigma\s+Yellow\s+Belt\b")),
+    # --- Google Marketing ---
+    ("Google Analytics Certification", _pat(r"\bGoogle\s+Analytics\s+Cert(?:ification)?\b")),
+    ("Google Ads Certification", _pat(r"\bGoogle\s+Ads\s+Cert(?:ification)?\b")),
     # --- Data / ML ---
     ("Databricks Certified", _pat(r"\bDatabricks\s+Certified\b")),
     ("Snowflake SnowPro", _pat(r"\bSnowPro\b|\bSnowflake\s+SnowPro\b")),
@@ -102,14 +157,26 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 # Generic patterns: capture what follows "Certified" or precedes "certification".
+# Slashes are excluded from the char class so "Java/Spring/..." can't become a single
+# token and produce false positives. Require at least 2 words ({1,2} extra) to avoid
+# single-word matches from slash-delimited skill lists landing on the last capitalized
+# token before "certification". Multi-word unknown certs (e.g. "Azure Security Engineer
+# Certification") are the real target here.
 _GENERIC_CERTIFIED = re.compile(
-    r"\bCertified\s+([A-Z][A-Za-z+./-]*(?:\s+[A-Z][A-Za-z+./-]*){0,4})\b"
+    r"\bCertified\s+([A-Z][A-Za-z+.]*(?:\s+[A-Z][A-Za-z+.]*){1,2})\b"
 )
 _GENERIC_CERTIFICATION = re.compile(
-    r"\b([A-Z][A-Za-z+./-]*(?:\s+[A-Z][A-Za-z+./-]*){0,4})\s+[Cc]ertification\b"
+    r"\b([A-Z][A-Za-z+.]*(?:\s+[A-Z][A-Za-z+.]*){1,2})\s+[Cc]ertification\b"
 )
 
-_GENERIC_STOPWORDS = frozenset({"The", "A", "An", "Our", "Your", "This", "We", "You"})
+# Reject any generic match whose phrase contains one of these words (word-level check,
+# not phrase-level) — they indicate job-requirement boilerplate, not cert names.
+_GENERIC_STOPWORDS = frozenset({
+    "The", "A", "An", "Our", "Your", "This", "We", "You",
+    "Developer", "Engineer", "Job", "Description", "Required", "Preferred",
+    "Desired", "Requirement", "Experience", "Skills", "Knowledge", "Role",
+    "Position", "Management", "Development", "Engineering",
+})
 
 
 def extract_certs(text: str) -> list[str]:
@@ -150,7 +217,7 @@ def extract_certs(text: str) -> list[str]:
     for pat in (_GENERIC_CERTIFIED, _GENERIC_CERTIFICATION):
         for m in pat.finditer(scrubbed):
             phrase = " ".join(m.group(1).strip().split())
-            if phrase not in _GENERIC_STOPWORDS:
+            if not any(w in _GENERIC_STOPWORDS for w in phrase.split()):
                 generic_matches.append((m.start(), phrase))
 
     seen_generic: set[str] = set()
