@@ -237,6 +237,60 @@ def extract_certs(text: str) -> list[str]:
     return result
 
 
+def extract_certs_split(text: str) -> tuple[list[str], list[str]]:
+    """Like `extract_certs` but returns (known, generic) separately so callers
+    can surface generic-regex hits as a review list for promotion to `_KNOWN`.
+
+    Order within each list matches text-occurrence order. Generic phrases that
+    happen to share a name with a known cert are dropped from the generic list
+    (the known curation wins on collision)."""
+    raw_matches: list[tuple[int, int, str]] = []
+    for name, pat in _KNOWN:
+        for m in pat.finditer(text):
+            raw_matches.append((m.start(), m.end(), name))
+    raw_matches.sort(key=lambda t: (t[0], -(t[1] - t[0])))
+
+    accepted: list[tuple[int, int, str]] = []
+    covered: list[tuple[int, int]] = []
+    for start, end, name in raw_matches:
+        if any(cs <= start and end <= ce for cs, ce in covered):
+            continue
+        accepted.append((start, end, name))
+        covered.append((start, end))
+
+    known_seen: set[str] = set()
+    known_names: list[str] = []
+    for _, _, name in accepted:
+        if name not in known_seen:
+            known_seen.add(name)
+            known_names.append(name)
+    known_spans = [(s, e) for s, e, _ in accepted]
+
+    masked = list(text)
+    for s, e in known_spans:
+        for i in range(s, e):
+            masked[i] = " "
+    scrubbed = "".join(masked)
+
+    generic_matches: list[tuple[int, str]] = []
+    for pat in (_GENERIC_CERTIFIED, _GENERIC_CERTIFICATION):
+        for m in pat.finditer(scrubbed):
+            phrase = " ".join(m.group(1).strip().split())
+            if not any(w in _GENERIC_STOPWORDS for w in phrase.split()):
+                generic_matches.append((m.start(), phrase))
+
+    seen_generic: set[str] = set()
+    generic_names: list[str] = []
+    for _, phrase in sorted(generic_matches):
+        if phrase in known_seen:
+            continue
+        if phrase in seen_generic:
+            continue
+        seen_generic.add(phrase)
+        generic_names.append(phrase)
+    return known_names, generic_names
+
+
 def tally(rows: Iterable[Mapping[str, object]]) -> Counter[str]:
     """Count how many *distinct* jobs mention each cert.
 
@@ -251,3 +305,19 @@ def tally(rows: Iterable[Mapping[str, object]]) -> Counter[str]:
         for cert in extract_certs(combined):
             counts[cert] += 1
     return counts
+
+
+def tally_split(rows: Iterable[Mapping[str, object]]) -> tuple[Counter[str], Counter[str]]:
+    """Like `tally` but returns (known, generic) counters separately."""
+    known: Counter[str] = Counter()
+    generic: Counter[str] = Counter()
+    for row in rows:
+        title = row["title"] or ""
+        desc = row["description"] or ""
+        combined = f"{title}\n{desc}"
+        k_names, g_names = extract_certs_split(combined)
+        for name in k_names:
+            known[name] += 1
+        for name in g_names:
+            generic[name] += 1
+    return known, generic

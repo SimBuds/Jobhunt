@@ -82,9 +82,11 @@ def _clean_payload() -> dict[str, Any]:
 
 
 def _dirty_payload() -> dict[str, Any]:
-    """Same body but with a banned phrase ('aligns with') in paragraph 2."""
+    """Same body but with a banned phrase the phrase-patcher does NOT handle,
+    so the retry-loop fall-back path is what's under test. 'I'd welcome the
+    chance' is on BANNED_PHRASES but not in _PHRASE_SUBSTITUTIONS."""
     p = _clean_payload()
-    p["body"][1] = p["body"][1] + " This aligns with Acme's mission."
+    p["body"][1] = p["body"][1] + " I'd welcome the chance to compare notes."
     return p
 
 
@@ -130,10 +132,10 @@ async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch
     assert attempts == 2
     assert violations == []
     # Second prompt should include the revision hint naming the banned phrase.
-    assert "aligns with" in seen_users[1]
+    assert "welcome the chance" in seen_users[1].lower()
     assert "rejected by the validator" in seen_users[1].lower()
-    # Returned cover is the clean one (no 'aligns with').
-    assert "aligns with" not in " ".join(cover.body).lower()
+    # Returned cover is the clean one.
+    assert "welcome the chance" not in " ".join(cover.body).lower()
 
 
 @pytest.mark.asyncio
@@ -153,7 +155,9 @@ async def test_falls_back_after_max_attempts(
     )
     assert calls["n"] == 3
     assert attempts == 3
-    assert any("aligns with" in v for v in violations)
+    # The patcher doesn't know how to fix "I'd welcome the chance", so the
+    # violation surfaces after all retries.
+    assert any("welcome the chance" in v.lower() for v in violations)
     # The last attempt is still returned so apply has something to render.
     assert cover.body  # not raised, not empty
 
@@ -195,21 +199,22 @@ async def test_company_name_deterministic_patch(
 
 
 @pytest.mark.asyncio
-async def test_company_name_patch_skipped_when_other_violations_remain(
+async def test_company_name_patch_chained_with_unhandled_violation(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """If the LLM produced both a company-missing AND a banned-phrase
-    violation, the patch only resolves company-missing — banned phrases
-    still surface so audit verdict stays `revise`."""
+    """When the LLM produces a company-missing AND a banned-phrase violation
+    the phrase patcher doesn't know how to fix, the company patch still fires
+    (lead now begins with 'At Acme, ') and the unfixed phrase still surfaces
+    so audit verdict stays `revise`."""
 
     def payload_two_violations() -> dict[str, Any]:
         return {
             "salutation": "Dear Hiring Team,",
             "body": [
-                "Your team builds solid systems and I'd bring two years of Shopify "
-                "experience.",
-                "The migration aligns with the modern stack — owned scoping through "
-                "deployment as the sole developer over three phases.",
+                "Your team builds solid systems; I'd bring two years of Shopify "
+                "experience to the role.",
+                "The migration has a direct match with the modern stack — owned "
+                "scoping through deployment as the sole developer over three phases.",
                 "Happy to walk through what I shipped if useful.",
             ],
             "sign_off": "Best,\nCasey Hsu",
@@ -223,10 +228,61 @@ async def test_company_name_patch_skipped_when_other_violations_remain(
         _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
         max_words=280, max_attempts=3,
     )
-    # Company-missing got patched; banned-phrase 'aligns with' still flagged.
+    # Company-missing got patched; 'direct match' is on BANNED_PHRASES but
+    # not in _PHRASE_SUBSTITUTIONS, so it still surfaces.
     assert cover.body[0].startswith("At Acme, ")
-    assert any("aligns with" in v for v in violations)
+    assert any("direct match" in v for v in violations)
     assert not any("does not name company" in v for v in violations)
+
+
+@pytest.mark.asyncio
+async def test_phrase_patcher_strips_aligns_with(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When retries exhaust on a phrase in `_PHRASE_SUBSTITUTIONS`, the
+    deterministic patcher substitutes it and returns a clean cover."""
+
+    async def fake(**_: Any) -> dict[str, Any]:
+        return _dirty_payload_with_aligns()
+
+    monkeypatch.setattr(cover_mod, "complete_json", fake)
+    cover, violations, attempts = await write_cover_with_retry(
+        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
+        max_words=280, max_attempts=2,
+    )
+    assert attempts == 2
+    # Phrase-patcher dropped the 'aligns with' violation entirely.
+    assert not any("aligns with" in v for v in violations)
+    assert "aligns with" not in " ".join(cover.body).lower()
+    # Substituted text is now in place.
+    assert "matches" in " ".join(cover.body).lower()
+
+
+def _dirty_payload_with_aligns() -> dict[str, Any]:
+    p = _clean_payload()
+    p["body"][1] = p["body"][1] + " The work Aligns with Acme's mission."
+    return p
+
+
+@pytest.mark.asyncio
+async def test_phrase_patcher_preserves_case(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sentence-initial 'Aligns with' becomes 'Matches' (capitalized), not
+    'matches' lowercased."""
+    payload = _clean_payload()
+    payload["body"][1] = "Aligns with the role's needs across the stack."
+
+    async def fake(**_: Any) -> dict[str, Any]:
+        return payload
+
+    monkeypatch.setattr(cover_mod, "complete_json", fake)
+    cover, violations, _ = await write_cover_with_retry(
+        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
+        max_words=280, max_attempts=1,
+    )
+    assert cover.body[1].startswith("Matches")
+    assert not violations
 
 
 def test_format_revision_hint_lists_each_violation() -> None:

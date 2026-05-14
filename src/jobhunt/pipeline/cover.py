@@ -142,8 +142,77 @@ async def write_cover_with_retry(
                 patched, verified=verified, company=company, max_words=max_words
             )
             if len(new_violations) < len(last_violations):
-                return patched, new_violations, attempts
+                last_cover = patched
+                last_violations = new_violations
+
+    # Second last-resort patch: deterministic substitution for a small set of
+    # banned phrases that survive every retry across runs (qwen3.5:9b habit).
+    # Blunt but targeted; only ships when it strictly lowers the violation
+    # count vs the un-patched version.
+    if last_violations and last_cover.body:
+        phrase_patched = _patch_banned_phrases(last_cover)
+        if phrase_patched is not None:
+            new_violations = validate_cover(
+                phrase_patched, verified=verified, company=company, max_words=max_words
+            )
+            if len(new_violations) < len(last_violations):
+                return phrase_patched, new_violations, attempts
+
     return last_cover, last_violations, attempts
+
+
+# Substitutions applied as a last-resort patch when retries fail. The LHS is
+# matched case-insensitively; the RHS preserves the leading capitalization of
+# whatever was matched. Keep this list short and conservative — every entry
+# is bluntly substring-substituting, so a poorly-chosen replacement can read
+# awkwardly. Only add phrases that are (a) on BANNED_PHRASES or
+# _DEFENSIVE_PATTERNS, and (b) have survived retries in observed runs.
+_PHRASE_SUBSTITUTIONS: tuple[tuple[str, str], ...] = (
+    ("aligns with", "matches"),
+    ("aligns to", "matches"),
+    ("hit the ground running", "start contributing quickly"),
+    ("i am ready to", "i would like to"),
+    ("i'm ready to", "i'd like to"),
+    ("support your team's goals", "support your team"),
+)
+
+
+def _apply_substitution(paragraph: str, needle: str, replacement: str) -> str:
+    """Case-insensitive substring replace that preserves the case of the
+    matched span's first letter when the replacement is single-cased. So
+    'Aligns with' becomes 'Matches', not 'matches'."""
+    pattern = re.compile(re.escape(needle), re.IGNORECASE)
+
+    def _sub(match: re.Match[str]) -> str:
+        matched = match.group(0)
+        if matched and matched[0].isupper():
+            return replacement[:1].upper() + replacement[1:]
+        return replacement
+
+    return pattern.sub(_sub, paragraph)
+
+
+def _patch_banned_phrases(cover: CoverLetter) -> CoverLetter | None:
+    """Apply `_PHRASE_SUBSTITUTIONS` to each body paragraph. Returns a new
+    CoverLetter when at least one substitution fired, else None."""
+    new_body: list[str] = []
+    changed = False
+    for para in cover.body:
+        patched = para
+        for needle, replacement in _PHRASE_SUBSTITUTIONS:
+            if needle in patched.lower():
+                patched = _apply_substitution(patched, needle, replacement)
+        if patched != para:
+            changed = True
+        new_body.append(patched)
+    if not changed:
+        return None
+    return CoverLetter(
+        salutation=cover.salutation,
+        body=new_body,
+        sign_off=cover.sign_off,
+        model=cover.model,
+    )
 
 
 def _patch_company_in_lead(cover: CoverLetter, company: str) -> CoverLetter | None:

@@ -29,7 +29,7 @@ from jobhunt.browser import autofill
 from jobhunt.config import Config, load_config
 from jobhunt.db import connect, set_decline_reason, upsert_application, upsert_job, write_score
 from jobhunt.errors import BrowserError, IngestError, JobHuntError, PipelineError
-from jobhunt.ingest.manual import fetch_url_as_job, robots_allowed
+from jobhunt.ingest.manual import build_job_from_text, fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
@@ -87,6 +87,14 @@ def run(
         False, "--force-robots",
         help="Fetch a URL even if robots.txt disallows. Personal-use override only.",
     ),
+    description_from_stdin: bool = typer.Option(
+        False, "--description-from-stdin",
+        help=(
+            "Skip URL fetch; read the JD body from stdin instead. "
+            "Requires --url (for ID + bookkeeping), --title, --company. "
+            "Use when a page won't render or sits behind a login wall."
+        ),
+    ),
 ) -> None:
     if set_status is not None:
         if job_id is None:
@@ -120,6 +128,12 @@ def run(
     effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
 
     if manual_mode:
+        if description_from_stdin and (not title or not company):
+            typer.echo(
+                "error: --description-from-stdin requires --title and --company.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
         jobs = asyncio.run(
             _resolve_manual(
                 cfg,
@@ -128,6 +142,7 @@ def run(
                 company=company,
                 no_score=no_score,
                 force_robots=force_robots,
+                description_from_stdin=description_from_stdin,
             )
         )
     else:
@@ -211,26 +226,43 @@ async def _resolve_manual(
     company: str | None,
     no_score: bool,
     force_robots: bool,
+    description_from_stdin: bool = False,
 ) -> list[sqlite3.Row]:
     """Build a Job from --url, upsert it, optionally score it, and return a
     row-list matching the shape `_apply_each` expects."""
-    if not force_robots and not robots_allowed(url, cfg.ingest.user_agent):
-        typer.echo(
-            f"error: robots.txt disallows {url}; re-run with --force-robots to override.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
-    typer.echo("  fetching job page...")
-    try:
-        job = await fetch_url_as_job(
-            url,
-            user_agent=cfg.ingest.user_agent,
-            title_override=title,
-            company_override=company,
-        )
-    except IngestError as e:
-        typer.echo(f"error: {e}", err=True)
-        raise typer.Exit(code=1) from e
+    if description_from_stdin:
+        assert title and company  # caller validated
+        import sys
+        typer.echo("  reading JD body from stdin (Ctrl-D to finish)...")
+        description = sys.stdin.read()
+        try:
+            job = build_job_from_text(
+                description=description,
+                title=title,
+                company=company,
+                url=url,
+            )
+        except IngestError as e:
+            typer.echo(f"error: {e}", err=True)
+            raise typer.Exit(code=1) from e
+    else:
+        if not force_robots and not robots_allowed(url, cfg.ingest.user_agent):
+            typer.echo(
+                f"error: robots.txt disallows {url}; re-run with --force-robots to override.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        typer.echo("  fetching job page...")
+        try:
+            job = await fetch_url_as_job(
+                url,
+                user_agent=cfg.ingest.user_agent,
+                title_override=title,
+                company_override=company,
+            )
+        except IngestError as e:
+            typer.echo(f"error: {e}", err=True)
+            raise typer.Exit(code=1) from e
     if not job.title or not job.company:
         typer.echo(
             "error: could not auto-detect title/company from the page. "
