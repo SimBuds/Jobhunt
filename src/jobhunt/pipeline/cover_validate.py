@@ -44,6 +44,8 @@ BANNED_PHRASES: tuple[str, ...] = (
     "the model transfers",
     "model transfers well",
     "rather than directly",
+    "ready to support",
+    "deliver immediately",
 )
 
 
@@ -58,6 +60,10 @@ _DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bthe model transfers\b", "defensive 'the model transfers' phrasing"),
     # Standalone "rather than <Tech>" claims about Casey's stack
     (r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b", "defensive familiarity disclaimer"),
+    # Formulaic gap-volunteering closer. "I am available to discuss …" is
+    # legitimate and not matched; only the "ready to" variant trips, since it
+    # signals the model is filling space rather than naming a next step.
+    (r"\bi am ready to\b", "formulaic 'I am ready to' closer"),
 )
 
 # Form-letter openers banned by §2. Matched after stripping a leading
@@ -86,13 +92,20 @@ _NEGATION_PRECEDES_RE = re.compile(
     re.IGNORECASE,
 )
 
-_DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z])\d[\d,.]*(?![A-Za-z])")
+_DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z\d])\d[\d,.]*(?![A-Za-z\d])")
 _WORD_RE = re.compile(r"\b\w+\b")
 # Clock-style time references: "11:00 AM", "9 a.m.", "5pm", "12:30". Stripped
 # before the digit-cluster pass so the colon-split doesn't fabricate "11"/"00"
 # violations from "11:00 AM".
 _TIME_OF_DAY_RE = re.compile(
     r"\b\d{1,2}(?::\d{2})?\s*(?:[ap]\.?\s*m\.?|am|pm)\b|\b\d{1,2}:\d{2}\b",
+    re.IGNORECASE,
+)
+# Year tokens (and year ranges). Stripped before the digit-cluster pass so
+# "2025 to 2026" / "in 2026" don't surface as fabricated numbers — years are
+# verifiable from work-history dates in verified.json and the rendered resume.
+_YEAR_RANGE_RE = re.compile(
+    r"\b20\d{2}(?:\s*(?:to|–|—|-)\s*(?:20\d{2}|present))?\b",
     re.IGNORECASE,
 )
 
@@ -300,6 +313,7 @@ def validate_cover(
     # are reading-back-the-JD, not fabricated metrics. Without this, the digit
     # cluster regex splits "11:00" into "11" and "00" and flags both.
     body_after_lead = _TIME_OF_DAY_RE.sub(" ", body_after_lead)
+    body_after_lead = _YEAR_RANGE_RE.sub(" ", body_after_lead)
     for cluster in _DIGIT_CLUSTER_RE.findall(body_after_lead):
         normalized = cluster.rstrip(".,")
         if not normalized:
