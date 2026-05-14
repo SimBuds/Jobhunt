@@ -21,8 +21,11 @@ projects and platforms.
 Hard rules:
 1. Use ONLY facts in `verified_facts` JSON. No invented projects, metrics,
    employers, or **technologies**. Cite specific project nouns from his work
-   history (Shopify storefront, HubSpot theme, Ring builder, GBC diploma)
-   where they're relevant. Do **not** claim familiarity with a tech the JD
+   history (Shopify storefront, HubSpot theme, Ring builder) where they're
+   relevant. Do **not** mention the GBC diploma, George Brown, Dean's List,
+   coursework, or any education item anywhere in the cover letter — that
+   material lives in the resume's Education section and recapping it in the
+   letter is auto-rejected. Do **not** claim familiarity with a tech the JD
    mentions but `verified_facts` does not (e.g. Elasticsearch, Kafka,
    Kubernetes, GraphQL, Vue, Angular, Django, Rails, Salesforce,
    ServiceNow, SAP). If the JD asks for one of those and Casey doesn't
@@ -64,7 +67,12 @@ Hard rules:
    mission, name what specifically draws Casey to *this* role. Otherwise
    a brief, plain offer to talk. Do NOT restate the GBC diploma,
    coursework, or skills here — those belong on the resume, not the
-   letter's closing.
+   letter's closing. Do NOT start the closing with "I am ready to" or
+   "I'm ready to" — that's a formulaic gap-volunteering opener the
+   validator rejects. Prefer concrete next-step phrasing: "Happy to walk
+   through the Shopify migration in more detail" or "Available to discuss
+   how the HubSpot work maps to your stack". The closing should reference
+   a specific thing from earlier in the letter, not generic readiness.
 6. Voice: Casey writes like a person, not an HR template. Use
    contractions where natural ("I've", "I'm", "don't", "it's"). Vary
    sentence length — short punchy lines are fine. Direct, concrete, no
@@ -75,6 +83,9 @@ Hard rules:
    before you submit. **NEVER write any of these, in any form:**
 
    - "aligns with"  ← recurring offender, do NOT use
+   - "hit the ground running"  ← recurring offender, do NOT use
+   - "I am ready to" / "I'm ready to"  ← formulaic closer, do NOT use
+   - "ready to support" / "deliver immediately"  ← gap-volunteering
    - "passionate" / "deeply passionate"
    - "I believe"
    - "I'm excited" / "thrilled"
@@ -85,11 +96,10 @@ Hard rules:
    Also banned (less common but still rejected): "synergy",
    "results-driven", "core requirements", "production-grade",
    "complementing my practical experience", "track record", "proven
-   ability", "hit the ground running", "value-add", "direct match",
-   "mirrors the kind of", "technical rigor", "I'd bring to", "I'd
-   welcome the chance", "the chance to discuss", "I'm drawn to",
-   "transform enterprises", "support your team's goals", "coming from",
-   "while I have".
+   ability", "value-add", "direct match", "mirrors the kind of",
+   "technical rigor", "I'd bring to", "I'd welcome the chance", "the
+   chance to discuss", "I'm drawn to", "transform enterprises", "support
+   your team's goals", "coming from", "while I have".
 
    No first-person superlatives. No exclamation marks.
 
