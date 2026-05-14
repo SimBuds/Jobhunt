@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import NamedTuple
 
 import httpx
@@ -137,6 +137,13 @@ def _persist_outcomes(
         )
 
 
+class ProgressEvent(NamedTuple):
+    company: str
+    outcomes: list[ProbeOutcome]
+    probed: int   # companies finished so far
+    total: int    # total companies queued
+
+
 async def discover(
     client: httpx.AsyncClient,
     cfg: Config,
@@ -145,6 +152,7 @@ async def discover(
     atses: list[str],
     limit: int,
     include_cached: bool,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> list[ProbeOutcome]:
     """Run slug discovery against the jobs DB. Returns 200-status outcomes only."""
     limiter = RateLimiter(rate_per_sec=cfg.ingest.rate_limit_per_sec)
@@ -189,10 +197,13 @@ async def discover(
         tasks.append(asyncio.create_task(_bounded(company, slugs)))
 
     all_outcomes: list[ProbeOutcome] = []
-    for fut in asyncio.as_completed(tasks):
+    total = len(tasks)
+    for i, fut in enumerate(asyncio.as_completed(tasks), start=1):
         outcomes = await fut
         _persist_outcomes(conn, outcomes)
         all_outcomes.extend(outcomes)
+        if on_progress and outcomes:
+            on_progress(ProgressEvent(outcomes[0].company, outcomes, i, total))
 
     # Combine this run's hits with previously-cached hits that the user hasn't
     # applied yet. Otherwise running discover twice without --apply hides the
@@ -212,4 +223,4 @@ async def discover(
     return unapplied
 
 
-__all__ = ["ProbeOutcome", "discover", "probe_company"]
+__all__ = ["ProbeOutcome", "ProgressEvent", "discover", "probe_company"]

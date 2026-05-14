@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+from collections.abc import Callable
 
 import httpx
 import tomli_w
 import typer
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from jobhunt.config import Config, _to_toml_dict, config_path, load_config
 from jobhunt.db import connect
-from jobhunt.discover.probe import ProbeOutcome, discover
+from jobhunt.discover.probe import ProbeOutcome, ProgressEvent, discover
 from jobhunt.errors import JobHuntError
 from jobhunt.http import DEFAULT_UA
 
@@ -67,8 +69,48 @@ def slugs(
     ensure_profile(cfg)
 
     conn = connect(cfg.paths.db_path)
+    hits: list[ProbeOutcome] = []
     try:
-        hits = asyncio.run(_run(cfg, conn, atses=atses, limit=limit, include_cached=include_cached))
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TextColumn("[green]{task.fields[hits]}h [red]{task.fields[misses]}m [yellow]{task.fields[errors]}e"),
+            transient=False,
+        ) as progress:
+            task_id = progress.add_task(
+                "probing …", total=None, hits=0, misses=0, errors=0
+            )
+            hit_count = 0
+            miss_count = 0
+            err_count = 0
+
+            def _on_progress(event: ProgressEvent) -> None:
+                nonlocal hit_count, miss_count, err_count
+                for o in event.outcomes:
+                    if o.status == 200:
+                        hit_count += 1
+                    elif o.status == 404:
+                        miss_count += 1
+                    else:
+                        err_count += 1
+                label = f"[bold]{event.company}[/bold]" if len(event.company) <= 30 else event.company[:28] + "…"
+                progress.update(
+                    task_id,
+                    description=f"probing {label}",
+                    completed=event.probed,
+                    total=event.total,
+                    hits=hit_count,
+                    misses=miss_count,
+                    errors=err_count,
+                )
+
+            hits = asyncio.run(
+                _run(cfg, conn, atses=atses, limit=limit, include_cached=include_cached, on_progress=_on_progress)
+            )
+            progress.update(task_id, description="done")
     finally:
         conn.close()
 
@@ -98,6 +140,7 @@ async def _run(
     atses: list[str],
     limit: int,
     include_cached: bool,
+    on_progress: "Callable[[ProgressEvent], None] | None" = None,
 ) -> list[ProbeOutcome]:
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0),
@@ -111,6 +154,7 @@ async def _run(
             atses=atses,
             limit=limit,
             include_cached=include_cached,
+            on_progress=on_progress,
         )
 
 
