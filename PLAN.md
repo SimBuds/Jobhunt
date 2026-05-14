@@ -172,8 +172,31 @@ discussion.
 ### `analyze certs`
 
 Implemented in `src/jobhunt/analyze/certs.py`. The matcher runs a curated
-`KNOWN_CERTS` list (Cloud, Security, PM/Agile, Data/ML, Networking, Finance)
+`_KNOWN` list (Cloud, Security, PM/Agile, Data/ML, Networking, Finance)
 first, masking consumed character spans, then two generic patterns
 (`Certified <Noun>` / `<Noun> certification`) for the long tail. `tally(rows)`
 counts each cert once per job regardless of how many times it appears in a JD.
 Output: frequency table sorted desc, capped by `--top N` (default 25).
+
+Three modes, all deterministic — no LLM call at any step:
+
+- **Snapshot** (default): cumulative frequency across all scanned jobs.
+- **`--trend`**: bucket by `COALESCE(posted_at, ingested_at)` into two adjacent
+  `--window-days` windows (default 30). Render `Prev / Cur / Δ% / Trend` with
+  rising / falling / emerging / dropped / stable classification in
+  `analyze_cmd._classify`. The current window also feeds a *"Potential new
+  certs"* review list pulled from `extract_certs_split`'s generic-regex tier,
+  giving the same outcome Gemini-style LLM-discovery would — without an
+  Ollama call.
+- **`--min-score N`**: joins `scores`, adds a `Fit` column (count restricted
+  to jobs you scored ≥ N) and a `Verdict` column derived from
+  `analyze_cmd._classify_verdict`. The rubric weighs fit-demand against market
+  demand and trend direction so the rightmost column is a one-word decision:
+  *Worth pursuing*, *Strong emerging signal*, *Stable staple*, *Skip*,
+  *Wrong direction*, *Late — diminishing*, or *Marginal*. Sort priority
+  surfaces the actionable rows first.
+
+The decision rubric (`_classify_verdict`) is a small frozen-in-code table —
+no config. Tuning it is a code change, not a runtime knob. Verdict tiers
+deliberately favor false negatives (mark "Skip" when in doubt) so the user
+isn't pushed to chase certs the data doesn't actually support.

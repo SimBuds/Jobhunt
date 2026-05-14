@@ -97,7 +97,8 @@ jobhunt apply --top N                      # auto-pick N best-fit unapplied jobs
 jobhunt apply --best                       # interactive pick from top 10
 jobhunt apply --url <URL>                  # manual application from a URL
 jobhunt list [--week N] [--status ...]     # pipeline view + weekly tracking
-jobhunt analyze certs [--top N]            # frequency of certifications in scanned jobs
+jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
+                                           # certification frequency, trends, and fit verdicts
 jobhunt discover slugs [--apply]           # probe Greenhouse/Ashby for ATS slugs
 ```
 
@@ -116,6 +117,40 @@ jobhunt discover slugs [--apply]           # probe Greenhouse/Ashby for ATS slug
 
 Add `--no-browser` to any `apply` invocation to generate tailored docs without
 launching Playwright.
+
+### `analyze certs` — cert decision tool
+
+Three modes, all deterministic and LLM-free:
+
+```bash
+jobhunt analyze certs                          # snapshot frequency (default 25 rows)
+jobhunt analyze certs --trend                  # prev vs current 30d windows + Δ% + trend label
+jobhunt analyze certs --trend --min-score 65   # fit-filtered: adds Fit column + Verdict
+```
+
+Windows bucket by `COALESCE(posted_at, ingested_at)`. Use `--window-days N`
+to widen or narrow (default 30).
+
+The Verdict column (only with `--min-score`) classifies each cert against a
+small rubric so the decision is one column wide:
+
+| Verdict | Means |
+|---|---|
+| Strong emerging signal | New in current window, fit_cur ≥ 3 |
+| Worth pursuing | Rising 50 %+, fit_cur ≥ 3 |
+| Stable staple | Steady demand, fit_cur ≥ 3, top-10 by market presence |
+| Marginal | Stable but not top of market |
+| Late — diminishing | Falling 50 %+, even if fit_cur ≥ 3 |
+| Skip | Fewer than 3 jobs you'd qualify for mention it |
+| Wrong direction | Common in the market (cur ≥ 5) but zero fit-eligible jobs |
+
+`--min-score N` joins the `scores` table. `N` should be your apply threshold
+(default 65 — match `[pipeline] min_score` in `config.toml`).
+
+The `Potential new certs` section at the bottom surfaces generic-regex hits
+(`Certified <Noun>` / `<Noun> Certification`) that aren't in the curated
+`_KNOWN` list in `src/jobhunt/analyze/certs.py`. Review and promote real
+catches by hand.
 
 Bump status after submitting:
 

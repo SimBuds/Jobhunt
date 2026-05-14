@@ -139,13 +139,27 @@ jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt list [--week N]      # pipeline view + weekly rollup
-jobhunt analyze certs [--top N]  # frequency of certifications across scanned jobs
+jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
+                             # cert frequency, trends, and fit verdicts
 jobhunt discover slugs       # probe Greenhouse/Ashby for ATS slugs of past companies
 ```
 
 `analyze` is a deterministic, LLM-free aggregation surface — do not add an
 Ollama call to any `analyze` subcommand without explicit discussion. It mirrors
 the audit philosophy: regex + counters over existing DB rows, no network I/O.
+
+`analyze certs` has three modes, all deterministic:
+- Snapshot (default): cumulative cert frequency across `jobs`.
+- `--trend`: two-window delta keyed on `COALESCE(posted_at, ingested_at)`. The
+  current window also produces a "Potential new certs" review list from the
+  generic-regex tier in `extract_certs_split` — manual-promotion feedback loop
+  for `_KNOWN`, no LLM. Trend label rubric lives in `analyze_cmd._classify`.
+- `--min-score N`: joins `scores`, adds a `Fit` column + per-cert `Verdict`
+  (`Worth pursuing` / `Skip` / `Wrong direction` / etc.) from
+  `analyze_cmd._classify_verdict`. The verdict rubric is frozen in code —
+  tuning it is a code change, not a runtime knob. Adding any LLM call here
+  needs explicit sign-off; the verdict is the *whole point* of the command
+  staying deterministic and audit-traceable.
 
 `discover slugs` reads distinct companies from the jobs DB (sorted by post
 count), normalizes each name via `discover.slug_candidates.candidates()` to up
