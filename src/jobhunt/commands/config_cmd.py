@@ -3,12 +3,94 @@
 from __future__ import annotations
 
 import json
+import tomllib
+from pathlib import Path
 
 import typer
 
+from jobhunt.commands._config_write import write_config_atomically
 from jobhunt.config import config_path, load_config
+from jobhunt.errors import JobHuntError
 
 app = typer.Typer(help="Inspect and manage configuration.", no_args_is_help=True)
+
+# ATSes that have an ingest adapter; mirrored from add_cmd. Kept here to
+# avoid an import cycle.
+_SEEDABLE_ATSES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+
+
+def _seed_path() -> Path:
+    """The repo-shipped curated seed list. Resolved relative to the package
+    so it works from a `uv run` install as well as a source checkout."""
+    cfg = load_config()
+    return cfg.paths.kb_dir / "seeds" / "gta-employers.toml"
+
+
+def _load_seeds() -> dict[str, list[str]]:
+    path = _seed_path()
+    if not path.is_file():
+        raise JobHuntError(
+            f"seed file not found at {path}.\n"
+            "the curated seed list ships with the repo; ensure kb/seeds/ exists."
+        )
+    with path.open("rb") as f:
+        data = tomllib.load(f)
+    seeds: dict[str, list[str]] = {}
+    for ats in _SEEDABLE_ATSES:
+        entries = data.get(ats, [])
+        if not isinstance(entries, list):
+            raise JobHuntError(f"seed file: [{ats}] must be a list")
+        seeds[ats] = [str(e) for e in entries]
+    return seeds
+
+
+@app.command("seed")
+def seed(
+    preview: bool = typer.Option(
+        False, "--preview", help="Print seeds without writing to config."
+    ),
+    apply: bool = typer.Option(
+        False, "--apply", help="Append seeds not already in config.toml."
+    ),
+) -> None:
+    """Import the repo-curated GTA employer seed list into config.toml.
+
+    Run `--preview` first to see what would be added. Run `--apply` to
+    write — creates a config.toml.bak snapshot first. Idempotent: re-running
+    `--apply` is a no-op if the config already contains every seed."""
+    if not preview and not apply:
+        raise typer.BadParameter("specify --preview or --apply")
+    if preview and apply:
+        raise typer.BadParameter("--preview and --apply are mutually exclusive")
+
+    seeds = _load_seeds()
+    cfg = load_config()
+
+    additions: dict[str, list[str]] = {}
+    for ats in _SEEDABLE_ATSES:
+        existing = set(getattr(cfg.ingest, ats))
+        new = [s for s in seeds[ats] if s not in existing]
+        if new:
+            additions[ats] = new
+
+    if not additions:
+        typer.echo("nothing to add — config already contains every seed.")
+        return
+
+    typer.echo("seeds that would be added:" if preview else "adding seeds:")
+    for ats, new in additions.items():
+        typer.echo(f"  [ingest.{ats}] +{len(new)}: {', '.join(new)}")
+
+    if preview:
+        typer.echo("\n--apply to write these to config.toml")
+        return
+
+    for ats, new in additions.items():
+        setattr(cfg.ingest, ats, [*getattr(cfg.ingest, ats), *new])
+
+    write_config_atomically(cfg)
+    typer.echo(f"\nupdated {config_path()}. backup: {config_path()}.bak")
+    typer.echo("note: any inline comments in config.toml were not preserved on write.")
 
 
 @app.command("show")

@@ -20,6 +20,7 @@ from jobhunt.pipeline import score as score_mod
 from jobhunt.pipeline.score import (
     _clamp_by_coverage,
     _coverage_pct,
+    _is_bogus_senior_decline,
     _verify_against_profile,
     score_job,
 )
@@ -169,6 +170,105 @@ async def test_score_job_clamps_when_llm_inflates(
     assert "Front-end frameworks" in result.gaps
     assert "AI/LLM tools" in result.gaps
     assert "TypeScript" in result.matched_must_haves
+
+
+# --- bogus-decline guard (May 2026) ---
+
+
+def test_bogus_decline_nullifies_lead_seniority_on_plain_lead_title() -> None:
+    """qwen3.5:9b manufactures 'Title implies Lead seniority' on IC Lead titles.
+    The May 2026 prompt allows IC Lead/Staff/Principal titles — auto-decline
+    only fires when JD names management responsibilities. The guard catches
+    this when the reason has only seniority tokens and the title doesn't
+    carry a hard people-management word."""
+    assert _is_bogus_senior_decline(
+        "Title implies Lead seniority mismatch", "Lead Software Engineer"
+    )
+
+
+def test_bogus_decline_nullifies_staff_principal_architect_too() -> None:
+    """Extends the original Senior-only guard to Staff/Principal/Architect."""
+    for reason in (
+        "Staff seniority mismatch",
+        "Principal-level seniority required",
+        "Architect title indicates seniority gap",
+    ):
+        assert _is_bogus_senior_decline(reason, "Staff Engineer"), reason
+
+
+def test_bogus_decline_keeps_decline_when_reason_cites_management() -> None:
+    """If the reason explicitly mentions management/mentoring/direct reports,
+    the decline is real and must be kept — Casey is not a people leader."""
+    assert not _is_bogus_senior_decline(
+        "Lead role requires managing 4+ direct reports", "Lead Software Engineer"
+    )
+    assert not _is_bogus_senior_decline(
+        "Senior role with mentoring responsibilities", "Senior Software Engineer"
+    )
+
+
+def test_bogus_decline_keeps_decline_when_title_is_manager_director() -> None:
+    """Plain Senior/Lead/Staff in the title is no longer a hard trigger, but
+    Manager/Director/Head of/VP titles must still decline."""
+    assert not _is_bogus_senior_decline("Senior seniority mismatch", "Engineering Manager")
+    assert not _is_bogus_senior_decline("Lead seniority mismatch", "Director of Engineering")
+    assert not _is_bogus_senior_decline("Staff seniority mismatch", "Head of Platform")
+
+
+def test_bogus_decline_returns_false_when_no_seniority_tokens() -> None:
+    """Guard is scoped to seniority-related declines only — other declines pass through."""
+    assert not _is_bogus_senior_decline("Not in Toronto/GTA", "Software Engineer")
+    assert not _is_bogus_senior_decline("Required Kubernetes (4+ years)", "DevOps Engineer")
+
+
+# --- tiny-denominator clamp carve-out (May 2026) ---
+
+
+@pytest.mark.asyncio
+async def test_score_job_skips_clamp_on_tiny_denominator(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Adzuna's ~500-char snippets often yield only 1-2 phrases. Clamping a
+    1/1 or 0/1 coverage to cap-at-64 over-penalizes signal-poor postings —
+    skip the clamp when matched + gaps < 3."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 78,
+            "matched_must_haves": ["React"],
+            "gaps": ["GraphQL"],  # 1 matched, 1 gap = 2 total < 3 threshold
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    # Without the carve-out this would clamp 78 → 64 (50% coverage).
+    # With the carve-out, raw 78 stands.
+    assert result.score == 78
+
+
+@pytest.mark.asyncio
+async def test_score_job_still_clamps_when_denominator_sufficient(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tiny-denominator carve-out only applies under 3 must-haves total.
+    Three or more must-haves still get clamped — protects against the Pigment
+    regression that originally motivated the clamp."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 95,
+            "matched_must_haves": ["React"],
+            "gaps": ["Vue.js", "Angular", "Svelte"],  # 1/4 = 25% coverage
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    # 1/4 = 25% < 60% → cap at 64.
+    assert result.score == 64
 
 
 @pytest.mark.asyncio

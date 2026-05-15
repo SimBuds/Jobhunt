@@ -86,7 +86,11 @@ class PipelineConfig(BaseModel):
     tailor_max_words: int = 700
     cover_max_words: int = 280
     cover_retry_attempts: int = 3
-    min_score: int = 65
+    # Default lowered from 65 to 55 in May 2026. Casey's interview-rate problem
+    # is volume-of-good-applications, not noise-in-the-list — the 55-65 band is
+    # the "stretch, tailor required" zone where a strong AI/LLM cover hook can
+    # break through. Raise back to 65 via config.toml if the list gets noisy.
+    min_score: int = 55
 
 
 class BrowserConfig(BaseModel):

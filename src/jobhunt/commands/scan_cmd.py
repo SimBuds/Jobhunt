@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import sqlite3
 import sys
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import typer
@@ -54,18 +56,32 @@ def run(
     skip_score: bool = typer.Option(False, "--skip-score", help="Ingest only; don't score."),
     skip_ingest: bool = typer.Option(False, "--skip-ingest", help="Score backlog only."),
     limit: int | None = typer.Option(None, "--limit", help="Cap how many jobs to score."),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help=(
+            "Wipe HTTP cache and drop ingested jobs + scores before scanning. "
+            "Preserves applications history, kb/profile, and the browser profile. "
+            "Jobs with an existing application row are kept so history stays intact."
+        ),
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
     ensure_profile(cfg)
-    asyncio.run(_run(cfg, skip_score=skip_score, skip_ingest=skip_ingest, limit=limit))
+    asyncio.run(_run(cfg, skip_score=skip_score, skip_ingest=skip_ingest, limit=limit, refresh=refresh))
 
 
-async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int | None) -> None:
+async def _run(
+    cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int | None, refresh: bool = False
+) -> None:
     conn = connect(cfg.paths.db_path)
     try:
         migrate(conn, cfg.paths.migrations_dir)
+
+        if refresh:
+            _refresh_scan_state(cfg, conn)
 
         if not skip_ingest:
             inserted, per_source = await _ingest_all(cfg, conn)
@@ -129,6 +145,58 @@ async def _run(cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int |
         typer.echo(f"score: {ok}/{len(rows)} scored")
     finally:
         conn.close()
+
+
+def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
+    """Wipe HTTP cache and drop scored/ingested jobs; preserve real apply history.
+
+    Drafted applications are treated as ephemeral — their DB rows and on-disk
+    artifact dirs (`data/applications/<safe_id>/`) are removed so the underlying
+    jobs can be dropped and re-evaluated on the next scan. Submitted statuses
+    (applied/interviewing/offer/rejected/withdrawn) are preserved along with
+    their jobs. Scores cascade-delete from jobs via their own FK.
+    """
+    from jobhunt.commands.apply_cmd import _safe_id
+
+    cache_dir = Path(cfg.paths.data_dir) / "cache"
+    cache_removed = False
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        cache_removed = True
+
+    apps_dir = Path(cfg.paths.data_dir) / "applications"
+    with conn:
+        drafted_job_ids = [
+            r[0] for r in conn.execute(
+                "SELECT job_id FROM applications WHERE status = 'drafted'"
+            )
+        ]
+        conn.execute("DELETE FROM applications WHERE status = 'drafted'")
+        cur = conn.execute(
+            "DELETE FROM jobs WHERE id NOT IN (SELECT job_id FROM applications)"
+        )
+        dropped_jobs = cur.rowcount
+        kept = conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
+
+    dropped_dirs = 0
+    for jid in drafted_job_ids:
+        d = apps_dir / _safe_id(jid)
+        if d.exists():
+            shutil.rmtree(d)
+            dropped_dirs += 1
+
+    bits = []
+    if cache_removed:
+        bits.append("HTTP cache wiped")
+    bits.append(f"{dropped_jobs} job(s) + scores dropped")
+    if drafted_job_ids:
+        bits.append(
+            f"{len(drafted_job_ids)} drafted application(s) discarded "
+            f"({dropped_dirs} dir(s) removed)"
+        )
+    if kept:
+        bits.append(f"{kept} submitted application(s) kept")
+    typer.echo("refresh: " + "; ".join(bits))
 
 
 async def _warm_model(cfg: Config) -> None:

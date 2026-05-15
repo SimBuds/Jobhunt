@@ -1,25 +1,57 @@
-"""Probe Greenhouse and Ashby public APIs to discover slugs for known companies."""
+"""Probe public ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters) to
+discover slugs for known companies."""
 
 from __future__ import annotations
 
 import asyncio
 import sqlite3
 from collections.abc import Callable, Mapping
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import httpx
 
 from jobhunt.config import Config
 from jobhunt.discover.slug_candidates import candidates
+from jobhunt.discover.url_extract import extract as extract_url
 from jobhunt.errors import IngestError
 from jobhunt.http import RateLimiter, get_json
 
+
+def _count_greenhouse_ashby(data: Any) -> int | None:
+    """Both Greenhouse and Ashby return {"jobs": [...]}."""
+    if not isinstance(data, dict):
+        return None
+    jobs = data.get("jobs")
+    return len(jobs) if isinstance(jobs, list) else None
+
+
+def _count_lever(data: Any) -> int | None:
+    """Lever returns a top-level JSON array of postings."""
+    return len(data) if isinstance(data, list) else None
+
+
+def _count_smartrecruiters(data: Any) -> int | None:
+    """SmartRecruiters returns {"content": [...], "totalFound": N}."""
+    if not isinstance(data, dict):
+        return None
+    total = data.get("totalFound")
+    if isinstance(total, int):
+        return total
+    content = data.get("content")
+    return len(content) if isinstance(content, list) else None
+
+
 _GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
 _ASHBY_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
+_LEVER_URL = "https://api.lever.co/v0/postings/{slug}"
+_SMARTRECRUITERS_URL = "https://api.smartrecruiters.com/v1/companies/{slug}/postings"
 
-_ENDPOINTS: Mapping[str, tuple[str, Mapping[str, str]]] = {
-    "greenhouse": (_GREENHOUSE_URL, {"content": "false"}),
-    "ashby": (_ASHBY_URL, {"includeCompensation": "false"}),
+# Each entry: (url_template, query_params, response_counter).
+_ENDPOINTS: Mapping[str, tuple[str, Mapping[str, str], Callable[[Any], int | None]]] = {
+    "greenhouse": (_GREENHOUSE_URL, {"content": "false"}, _count_greenhouse_ashby),
+    "ashby": (_ASHBY_URL, {"includeCompensation": "false"}, _count_greenhouse_ashby),
+    "lever": (_LEVER_URL, {"mode": "json", "limit": "1"}, _count_lever),
+    "smartrecruiters": (_SMARTRECRUITERS_URL, {"limit": "1"}, _count_smartrecruiters),
 }
 
 # Per-company budget. asyncio.wait_for cap protects the run from a hung host.
@@ -44,7 +76,7 @@ async def _probe_one(
     ats: str,
     slug: str,
 ) -> ProbeOutcome:
-    url_tpl, params = _ENDPOINTS[ats]
+    url_tpl, params, counter = _ENDPOINTS[ats]
     url = url_tpl.format(slug=slug)
     try:
         data = await get_json(client, url, limiter, params=params, max_retries=1)
@@ -54,12 +86,15 @@ async def _probe_one(
     except (httpx.HTTPError, TimeoutError):
         return ProbeOutcome(company, ats, slug, 0, None)
 
-    if not isinstance(data, dict):
+    count = counter(data)
+    if count is None:
         return ProbeOutcome(company, ats, slug, 0, None)
-    jobs = data.get("jobs")
-    if not isinstance(jobs, list):
-        return ProbeOutcome(company, ats, slug, 0, None)
-    return ProbeOutcome(company, ats, slug, 200, len(jobs))
+    if count == 0:
+        # Board responds but has zero postings — functionally useless. Cache
+        # as a miss so we don't keep re-surfacing it. (SmartRecruiters in
+        # particular 200s with totalFound=0 for both empty and stale boards.)
+        return ProbeOutcome(company, ats, slug, 404, 0)
+    return ProbeOutcome(company, ats, slug, 200, count)
 
 
 async def probe_company(
@@ -137,6 +172,40 @@ def _persist_outcomes(
         )
 
 
+def harvest_urls(
+    conn: sqlite3.Connection, atses: list[str]
+) -> list[ProbeOutcome]:
+    """Scan jobs.url for confirmed ATS slugs. Offline, deterministic — no HTTP.
+
+    Returns one ProbeOutcome(status=200, job_count=N) per (ats, slug) pair
+    seen in the URLs, where N is the number of jobs whose URL produced it.
+    The "company" is the most frequent jobs.company associated with that URL.
+    iCIMS is recognized by the extractor but never returned here unless caller
+    includes "icims" in `atses` — only probe-supported ATSes are surfaced.
+    """
+    rows = conn.execute(
+        "SELECT url, company FROM jobs WHERE url IS NOT NULL AND url != ''"
+    ).fetchall()
+
+    targets = set(atses)
+    # (ats, slug) -> {company -> count}
+    tallies: dict[tuple[str, str], dict[str, int]] = {}
+    for r in rows:
+        ext = extract_url(r[0])
+        if ext is None or ext.ats not in targets:
+            continue
+        key = (ext.ats, ext.slug)
+        co = (r[1] or "").strip() or ext.slug
+        tallies.setdefault(key, {})[co] = tallies.setdefault(key, {}).get(co, 0) + 1
+
+    out: list[ProbeOutcome] = []
+    for (ats, slug), companies in tallies.items():
+        top_company = max(companies.items(), key=lambda kv: kv[1])[0]
+        total = sum(companies.values())
+        out.append(ProbeOutcome(top_company, ats, slug, 200, total))
+    return out
+
+
 class ProgressEvent(NamedTuple):
     company: str
     outcomes: list[ProbeOutcome]
@@ -158,10 +227,25 @@ async def discover(
     limiter = RateLimiter(rate_per_sec=cfg.ingest.rate_limit_per_sec)
     sem = asyncio.Semaphore(_COMPANY_CONCURRENCY)
 
+    # Offline pass: pull slugs out of existing jobs.url values. Persist so
+    # subsequent runs treat them as cached hits and skip re-deriving. Tracked
+    # separately from `known` (config) so harvested slugs still surface as
+    # "unapplied" suggestions; tracked here only to short-circuit the live
+    # probe loop, which would otherwise overwrite these 200s with 404s under
+    # the slug_probes (company, ats, slug) primary key.
+    url_hits = harvest_urls(conn, atses)
+    harvested_slugs: set[str] = set()
+    if url_hits:
+        _persist_outcomes(conn, url_hits)
+        harvested_slugs = {h.slug for h in url_hits}
+
     known: dict[str, set[str]] = {
         "greenhouse": set(cfg.ingest.greenhouse),
         "ashby": set(cfg.ingest.ashby),
+        "lever": set(cfg.ingest.lever),
+        "smartrecruiters": set(cfg.ingest.smartrecruiters),
     }
+    all_known: set[str] = set().union(*known.values())
 
     async def _bounded(company: str, slugs: list[str]) -> list[ProbeOutcome]:
         async with sem:
@@ -183,9 +267,9 @@ async def discover(
         if not slugs:
             continue
 
-        # Drop slugs already configured for ANY target ATS — saves probes when the
-        # user has already wired up a company manually.
-        if any(s in known["greenhouse"] or s in known["ashby"] for s in slugs):
+        # Drop the company if any candidate slug is already wired up for any
+        # supported ATS, OR already confirmed by URL harvest this run.
+        if any(s in all_known or s in harvested_slugs for s in slugs):
             continue
 
         if not include_cached:
@@ -223,4 +307,4 @@ async def discover(
     return unapplied
 
 
-__all__ = ["ProbeOutcome", "ProgressEvent", "discover", "probe_company"]
+__all__ = ["ProbeOutcome", "ProgressEvent", "discover", "harvest_urls", "probe_company"]

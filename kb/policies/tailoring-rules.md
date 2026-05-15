@@ -8,7 +8,12 @@ a trimmed, prompt-injectable mirror — keep it short. Update both when rules ch
 - Use **only** facts present in `kb/profile/verified.json`. If a JD asks for something
   not there, name it as a gap — never invent.
 - Do not invent metrics, employers, dates, projects, or skills.
-- Do not promote a "Familiar" skill into a Core/primary category.
+- Do not promote a "Familiar" skill into a Core/primary category. Casey's Familiar
+  bucket is: Java, Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma.
+- Python is **Core (data/devops)**, not Familiar — Casey writes and operates this CLI
+  daily. Do not list Python under Familiar.
+- Java and Spring Boot are **Familiar** (GBC coursework only); do not promote to Core
+  even if the JD asks. Name as gap if must-have.
 - Do not fabricate a job title Casey has not held (no Senior/Staff/Lead/Principal/Architect).
 
 ## Reframe-only adjustments (allowed)

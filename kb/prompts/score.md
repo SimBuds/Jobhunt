@@ -33,14 +33,29 @@ projects and contract/freelance work in `verified_facts.projects`.
 A JD must-have counts as **matched** when verified_facts shows any of:
 1. The exact tech / phrase.
 2. A peer technology in the same family. Treat these as equivalent for
-   matching purposes:
-   - Frontend frameworks: React ↔ Vue ↔ Svelte ↔ Angular
-   - Node back-ends: Express ↔ Fastify ↔ Koa ↔ NestJS
-   - Relational DBs: Postgres ↔ MySQL ↔ SQLite ↔ MariaDB
-   - JS test runners: Jest ↔ Vitest ↔ Mocha
+   matching purposes (May 2026 stack):
+   - Frontend frameworks: React ↔ Vue ↔ Svelte ↔ Angular ↔ SolidJS ↔ Preact
+   - Meta-frameworks: Next.js ↔ Remix ↔ Astro ↔ SvelteKit ↔ Nuxt ↔ Qwik
+   - JS/TS runtimes: Node.js ↔ Bun ↔ Deno
+   - Edge runtimes: Cloudflare Workers ↔ Vercel Edge ↔ Lambda@Edge ↔ Deno Deploy
+   - Node servers: Express ↔ Fastify ↔ Koa ↔ NestJS ↔ Hono
+   - ORMs / query builders: Prisma ↔ Drizzle ↔ Knex ↔ TypeORM ↔ Sequelize ↔ Kysely
+   - API patterns: REST ↔ tRPC (transferable for Casey). GraphQL is a related
+     skill but counts as a **gap** when not in verified — do not auto-decline on it.
+   - Relational DBs: Postgres ↔ MySQL ↔ SQLite ↔ MariaDB ↔ CockroachDB
+   - Document / KV: MongoDB ↔ DynamoDB ↔ Firestore ↔ Redis (for caching)
+   - Vector DBs: Pinecone ↔ Weaviate ↔ pgvector ↔ Qdrant ↔ Chroma ↔ Milvus
+   - JS test runners: Jest ↔ Vitest ↔ Mocha ↔ Bun test
+   - E2E test runners: Playwright ↔ Cypress ↔ Puppeteer ↔ WebdriverIO
    - Cloud providers: AWS ↔ GCP ↔ Azure (general cloud literacy)
+   - Containers: Docker ↔ Podman
    - Languages: TypeScript ↔ JavaScript (type-system fundamentals)
-   - CI: GitHub Actions ↔ GitLab CI ↔ CircleCI
+   - CI: GitHub Actions ↔ GitLab CI ↔ CircleCI ↔ Buildkite ↔ Jenkins
+   - CMS / e-commerce: Shopify ↔ BigCommerce ↔ WooCommerce ↔ Medusa;
+     Contentful ↔ Strapi ↔ Sanity ↔ Ghost ↔ Payload ↔ Storyblok;
+     HubSpot ↔ Marketo (templating side only — not marketing automation strategy).
+   - AI SDKs / hosts: OpenAI SDK ↔ Anthropic SDK ↔ Bedrock ↔ Vertex AI ↔ Ollama
+   - LLM orchestration: LangChain ↔ LlamaIndex ↔ Haystack ↔ DSPy
 3. School coursework or contract/freelance projects covering fundamentals:
    data structures, algorithms, REST, SQL, version control, CI/CD concepts,
    testing, debugging. These count even without a paid role tag.
@@ -66,12 +81,19 @@ the 60–85 band based on coverage. Do **not** emit a `decline_reason` like
 "Title implies Senior seniority" or "Title seniority mismatch" — those are
 invalid and will be rejected by the deterministic post-filter.
 
-- **4+ hard gaps** (after applying transferable matching above).
-- **Years explicitly required > 5** AND no transferable project bridges
-  the delta. "5+ years" alone is borderline — score it 60–75, don't decline.
-- Title is **Lead / Principal / Architect / Staff** AND the JD describes
-  team-leadership responsibilities (mentoring, owning roadmap, managing ICs).
-  A "Staff Engineer" posting that is purely IC-coding work does NOT decline.
+- **4+ hard gaps** — but ONLY when at least one gap is a **Tier-1 ask**.
+  A Tier-1 ask is phrased like "required", "5+ years of", "strong production
+  experience with", "must have", "deep expertise in". Four vague "nice-to-have"
+  bullets do not auto-decline; score that 50–65 instead.
+- **Years explicitly required ≥ 7** AND no transferable project bridges
+  the delta. "5+ years" / "5–6+ years" is borderline — score it 55–70, don't
+  decline. Only 7+-year hard floors auto-decline.
+- Title is **Lead / Principal / Architect / Staff** is **NOT** an auto-decline
+  on its own (treat the same as "Senior" — score 55–75 based on coverage).
+  Auto-decline only when the JD body explicitly names people-management
+  responsibilities (mentoring 4+ direct reports, owning headcount, managing ICs,
+  performance reviews). A "Staff Engineer" posting that is purely IC-coding
+  work is borderline — score in the 60–75 band, do NOT decline.
 - Title is people-management: Manager, Senior Manager, Director, Head of,
   VP, Engineering Manager. (Pure IC titles never trigger this.)
 - Title is a non-engineering function: Sales, Partnerships, Account
@@ -105,9 +127,13 @@ scores across dissimilar postings are an error. Most strong fits land
   mismatch that's still a strong fit. **Default band for solid fits.**
 - **70–77**: 1–2 hard gaps but transferable bridges exist; worth tailoring.
 - **60–69**: 2–3 hard gaps or stretch on years; tailoring required.
-- **50–59**: 3 hard gaps and weak overlap; below this is rarely worth
-  applying.
-- **under 50**: weak fit.
+- **55–59**: stretch role — 3 hard gaps, partial overlap, OR a senior/staff/lead
+  title where the JD reads IC-coding-heavy. Apply with a strong AI/LLM cover
+  hook and explicit framing around adjacent matches. **This is Casey's
+  highest-leverage band given his interview-rate situation — don't skip it.**
+- **50–54**: weak fit; only apply if the JD is unusually open about coachability
+  or names AI/LLM tooling as a primary differentiator.
+- **under 50**: very weak fit; rarely worth applying.
 
 Within each band, vary by (matched count, hard-gap count, transferable count,
 ai_bonus_present). If two jobs in the same batch would land on the same
