@@ -82,9 +82,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
       Architect) that is not literally present in `verified_facts.summary`.
    b. Years of experience must come verbatim from `verified_facts.summary`
       (e.g. "2+ years"). Do not round, restate, or invent.
-   c. The culinary / leadership-of-kitchen-teams clause is OPTIONAL. If
-      included, it must come last and be ≤1 short clause. It must NOT be the
-      first sentence or the lead frame.
+   c. The culinary / leadership-of-kitchen-teams clause is **OMITTED** unless
+      the JD names team-management, mentorship, cross-functional coordination,
+      stakeholder communication, or operational ownership as a stated must-have.
+      For pure IC engineering roles, do NOT mention it — the Sous Chef role
+      line in Professional Experience already conveys that signal. When the JD
+      does call for those signals, the clause comes last and is ≤1 short
+      clause; never the first sentence or lead frame.
    d. Tech-stack name-drops in the summary must come from
       `verified_facts.skills_core` ∪ `verified_facts.skills_cms` only — never
       from `skills_familiar`.
@@ -99,6 +103,38 @@ Hard rules (from kb/policies/tailoring-rules.md):
    integrated, migrated, optimized, deployed, configured, automated). No "I",
    no "responsible for", no "helped with".
 8. Keep total content tight enough for one US Letter page at 10pt Calibri.
+9. **JD surface-form discipline.** AI-screeners and ATS keyword matchers in
+   May 2026 score on exact substring presence, not synonym understanding.
+   When the JD uses a specific surface form for a tech Casey verifiably has,
+   the tailored bullets and skills MUST use the JD's exact surface form. The
+   verified.json form is the *fact*; the JD's form is the *rendering*. Common
+   normalizations:
+
+   | JD writes... | Verified has... | Use in tailored output |
+   |---|---|---|
+   | JS | JavaScript (ES6+) | "JS" |
+   | TS | TypeScript | "TS" |
+   | Postgres | PostgreSQL | "Postgres" |
+   | GH Actions | GitHub Actions CI/CD | "GH Actions" |
+   | CI/CD | GitHub Actions CI/CD | "CI/CD (GitHub Actions)" |
+   | headless CMS | Contentful (Certified Professional) | "headless CMS (Contentful)" |
+   | REST APIs | RESTful APIs | "REST APIs" |
+   | Node | Node.js | "Node" |
+
+   Same fact; the JD's wording. This rule applies inside `bullets`, `summary`,
+   and `skills_categories.items`. Do NOT invert it — do not use the JD form
+   if `verified.json` has no underlying fact.
+10. **Skills-category priority.** The first category in `skills_categories`
+    MUST be the one most relevant to the JD's primary stack. Examples:
+    - Frontend role → first category named e.g. `Frontend Engineering`,
+      `Frontend & UI`, or `JavaScript & React`.
+    - Backend role → first category named e.g. `Backend & APIs` or
+      `Node & Data`.
+    - CMS role → first category named e.g. `CMS & E-commerce`.
+    - AI/LLM role → first category named e.g. `AI & LLM Tooling`.
+    The `Familiar` bucket is ALWAYS last. Item order *within* the first
+    category surfaces the JD's specific keywords first. This is what
+    survives the AI-screener's first-200-token budget.
 
 ## USER
 # Verified facts (source of truth — do not deviate)

@@ -120,13 +120,29 @@ def _dedupe_education(tailored: TailoredResume) -> None:
 def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
     """Drop the last bullet of the role with the highest current line-cost.
     Preserves each role's lead bullet (which the tailor places JD-first).
-    Returns True if a bullet was dropped, False if no role has spare bullets."""
+    Returns True if a bullet was dropped, False if no role has spare bullets.
+
+    May 2026 guard: never trim a role whose `dates` contains "Present" while
+    any older role still has > 1 bullet to give. Casey's current contract is
+    the most recent, JD-relevant signal — its trailing bullets are the last
+    things that should shrink.
+    """
     from jobhunt.resume.render_docx import BULLET_CHARS_PER_LINE, _wrapped_lines
+
+    def _is_current(role: TailoredRole) -> bool:
+        return "present" in role.dates.lower()
+
+    other_has_spare = any(
+        len(r.bullets) > 1 and not _is_current(r) for r in tailored.roles
+    )
 
     worst_role = None
     worst_cost = 0
     for r in tailored.roles:
         if len(r.bullets) <= 1:
+            continue
+        # Defer current-role trimming while any older role still has slack.
+        if _is_current(r) and other_has_spare:
             continue
         cost = sum(_wrapped_lines(b, BULLET_CHARS_PER_LINE) for b in r.bullets)
         if cost > worst_cost:
@@ -230,6 +246,25 @@ def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
+# Tokens that are pure annotation in a skill string — they describe the form
+# or surface variation of a verified skill rather than expanding it into a new
+# claim. The fabrication check allows a tailored skill to add ONLY these tokens
+# on top of a verified skill's token set. Example:
+#   verified "Shopify (Liquid)" → tokens {shopify, liquid}
+#   tailored "Shopify (Liquid, Custom Themes)" → tokens {shopify, liquid, custom, themes}
+#   difference {custom, themes} ⊆ _ANNOTATION_TOKENS → allowed.
+# But "React Native" → tokens {react, native}; difference {native} is NOT
+# annotation-grade → blocked.
+_ANNOTATION_TOKENS: frozenset[str] = frozenset({
+    # parenthetical detail words
+    "custom", "themes", "certified", "professional", "personalization",
+    "skill", "badge", "integration", "integrations", "fundamentals", "advanced",
+    # surface-form indicators
+    "ci", "cd", "es6", "es2015", "es2020",
+    # generic articles / particles that survive tokenisation
+    "and", "or", "with", "of", "the",
+})
+
 
 def _tokens(s: str) -> frozenset[str]:
     return frozenset(_TOKEN_RE.findall(s.lower()))
@@ -289,7 +324,33 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
         is_familiar_bucket = cat.name.strip().lower() == "familiar"
         for item in cat.items:
             tokens = _tokens(item)
-            if not any(tokens.issubset(v) or v.issubset(tokens) for v in verified_token_sets):
+            # The tailored skill's tokens MUST be a subset of (or equal to) at
+            # least one verified skill's token set. One-way containment only —
+            # the previous `or v.issubset(tokens)` branch let "React Native"
+            # pass against verified "React" because verified-tokens is a subset
+            # of the broader claim. That direction implied Casey owned strict
+            # supersets (Native, GraphQL, etc.) of skills he doesn't have.
+            #
+            # Parenthetical surface-form variation is preserved by `_tokens`
+            # (it normalises to alphanumeric tokens), so
+            #   "Shopify (Liquid)" verified ⊇ "Shopify (Liquid, Custom Themes)" tailored
+            # still passes because the tailored set strictly contains the
+            # verified set's distinctive token "liquid" + "shopify" + extras
+            # that are mere annotation. To allow that legitimate case while
+            # blocking "React Native" against verified "React", require the
+            # token-set DIFFERENCE on the tailored side to consist only of
+            # annotation-grade tokens (case, custom, themes, certified,
+            # professional, integration, etc.).
+            if any(tokens == v for v in verified_token_sets):
+                pass  # exact match
+            elif any(tokens.issubset(v) for v in verified_token_sets):
+                pass  # tailored is narrower (e.g. "Postgres" against "PostgreSQL (Postgres)")
+            elif any(
+                v.issubset(tokens) and (tokens - v).issubset(_ANNOTATION_TOKENS)
+                for v in verified_token_sets
+            ):
+                pass  # tailored adds only annotation (parenthetical detail)
+            else:
                 raise PipelineError(f"skill not in verified facts: {item!r}")
             if not is_familiar_bucket and any(
                 tokens == f or tokens.issubset(f) for f in familiar_token_sets
