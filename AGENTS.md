@@ -229,7 +229,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 ## Ingestion rules — non-negotiable
 
 1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
-2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else.
+2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton, North York, Scarborough, Etobicoke, plus the KW corridor — Waterloo / Kitchener / Cambridge / Guelph — and Barrie) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else. **May 2026:** weak Canada hints (`EST`, `Eastern Time`, comma-delimited `ON`) only accept when the same string has no non-Canada anchor (`US`, `EMEA`, etc.) — US-Eastern remote roles were sneaking through before the tightening.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
 4. **Respect `robots.txt`** for any non-API HTTP fetch. The `--url` ad-hoc path checks via stdlib `urllib.robotparser` and accepts `--force-robots` for personal-use override only; this carve-out does **not** apply to `scan` ingest adapters. (this file historically called for `protego`; the project hasn't taken that dep yet — stdlib is the current implementation.)
 5. **Rate limits:** 1 req/sec/host default. Exponential backoff on 429/5xx.
@@ -322,6 +322,33 @@ to it without explicit discussion.
    description snippets where canonical tech names ("Java", "React") often
    only survive in the title. Adding new tailoring capabilities must not
    break this fallback path.
+
+   **Peer-family broadening (May 2026)** — when the JD is short (< 800 chars,
+   signaling Adzuna) AND the score's matched-must-haves is empty, the
+   fallback also counts a verified skill as a must-have when the JD names
+   one of its peers per `pipeline._keywords.PEER_FAMILIES`. Example: JD
+   names "Vue", verified has "React" → React surfaces as an inferred
+   must-have; the tailor's JD-surface-form rule renders the JD's exact
+   token ("Vue") in the output where appropriate. Long JDs skip this
+   broadening to avoid false positives. `PEER_FAMILIES` is shared between
+   `kb/prompts/score.md` (transferable matching) and audit fallback
+   (must-have extraction) — single source of truth in `pipeline._keywords`.
+
+   **Resume↔cover alignment check (May 2026)** — `audit._alignment_flags`
+   scans both artifacts for project anchors mined from `verified.json`
+   work history (Atelier Dacko / vintage gaming / HubSpot / Ollama). When
+   the cover's middle paragraph anchors on a different verified project
+   than the resume's first role's first bullet, an `alignment_flags`
+   entry fires and the verdict is `revise` (not block). The bare term
+   "Shopify" is intentionally NOT an anchor because both Atelier Dacko
+   and Vintage Gaming are Shopify projects — distinct anchors must
+   identify exactly one verified project.
+
+   **End-of-loop summary (May 2026)** — `apply --top N` and `apply --best`
+   loops emit a one-line summary after the last job: `N drafted, M with
+   revise warnings, K blocked` plus a histogram of top warning topics
+   (fabrication / cover-violation / coverage / alignment) so the user
+   sees the aggregate pattern across the batch.
 2. **Cover-letter validator** (`pipeline.cover_validate`) — enforces banned
    phrases (substring tier + structural `_DEFENSIVE_PATTERNS` regex tier for
    defensive gap-volunteering like "rather than X", "the model transfers"),

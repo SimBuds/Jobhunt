@@ -160,9 +160,17 @@ in five places, not just the prompt:
    `pipeline.cover.write_cover_with_retry` re-prompts up to 3 times with the
    violations as a "fix these" hint before falling back to the last attempt
    (which then ships with audit verdict `revise` so the warnings surface).
+6. **Resume↔cover alignment check** (May 2026). `pipeline.audit._alignment_flags`
+   scans both artifacts for project anchors mined from `verified.json`
+   work history (Atelier Dacko, vintage gaming, HubSpot, Ollama tooling).
+   When the cover's middle paragraph anchors on a different verified
+   project than the resume's first role's first bullet, the verdict
+   downgrades to `revise` (not block). Catches subtle drift the keyword
+   coverage check misses — both can technically pass while the artifacts
+   still read inconsistent to an AI-screener reading both.
 
 If any check (1)–(3) fails, the apply pipeline aborts for that job rather
-than producing a misleading resume. (4) and (5) downgrade rather than block.
+than producing a misleading resume. (4), (5), and (6) downgrade rather than block.
 
 ## Success criteria
 

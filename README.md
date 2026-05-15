@@ -119,7 +119,9 @@ jobhunt discover slugs [--apply]           # maintenance: harvest URLs in jobs D
 - `apply --top N` — N highest-scoring unapplied jobs above `--min-score`
   (default 55, set in `[pipeline] min_score`). Capped at 10.
 - `apply --best` — lists the top 10 candidates and prompts for picks like
-  `1,3,7` or `2-5`.
+  `1,3,7` or `2-5`. Pair with `--include-borderline` to also surface up to
+  10 stretch jobs in the `[min_score-10, min_score)` band, labelled `stretch`,
+  for days when the high-fit list is dry.
 - `apply --url <URL>` — bypass `scan` for a one-off posting. Fetches the page
   in headless Chromium so JS-heavy portals (Workday, Phenom, iCIMS) load
   their JD content. Use `--title` / `--company` if auto-detection misses.
@@ -234,6 +236,10 @@ is created next to the file.
 `--min-score N`, `--source greenhouse|lever|ashby|smartrecruiters|workday|job_bank_ca|rss|adzuna_ca`.
 Always renders a weekly rollup footer (scanned / declined / per-status counts).
 
+Rows for jobs you've already run `apply` on show a `cov=NN%` tag — the
+keyword-coverage % from the most recent `audit.json`. Drafted applications
+with `cov<70%` are good candidates for a re-tailor.
+
 ## Daily flow
 
 ```bash
@@ -243,6 +249,11 @@ jobhunt apply --best              # pick which to apply to
 # Browser opens. You review, click Submit yourself.
 jobhunt list --week 0             # weekly pipeline view
 ```
+
+After a batch `apply --top N` or `apply --best` run, jobhunt prints a one-line
+summary: how many drafted / revised / blocked, plus the top warning categories
+(fabrication, cover-violation, coverage, alignment) seen across the batch.
+Use it to spot recurring failure patterns without scanning each `audit.json`.
 
 ## Configuration
 

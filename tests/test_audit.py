@@ -201,6 +201,150 @@ def test_audit_falls_back_to_jd_when_score_must_haves_empty(verified: dict) -> N
     assert "React" in result.matched_keywords
 
 
+def test_audit_short_jd_uses_peer_families(verified: dict) -> None:
+    """May 2026 audit fallback: when the score's matched_must_haves is empty
+    AND the JD is short (< 800 chars), the audit broadens its must-have
+    extraction through PEER_FAMILIES. A JD that names 'Vue' should surface
+    'React' as an inferred must-have for Casey (React is verified)."""
+    empty_score = ScoreResult(
+        score=72, matched_must_haves=[], gaps=[],
+        decline_reason=None, ai_bonus_present=False, model="test",
+    )
+    short_jd = "Frontend role: Vue, TypeScript, REST APIs."  # < 800 chars
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=empty_score,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+        job_description=short_jd,
+    )
+    # React is a peer of Vue → should surface as matched even though "React"
+    # is not literally in the JD.
+    assert "React" in result.matched_keywords or any(
+        "react" in m.lower() for m in result.matched_keywords
+    )
+
+
+def test_audit_long_jd_does_not_use_peer_broadening(verified: dict) -> None:
+    """Long JDs (>= 800 chars) skip the peer-family broadening — they have
+    enough surface text to name canonical tech directly, and broadening would
+    create false positives on roles that intentionally call out non-peers."""
+    empty_score = ScoreResult(
+        score=72, matched_must_haves=[], gaps=[],
+        decline_reason=None, ai_bonus_present=False, model="test",
+    )
+    long_jd = "Senior frontend engineer needed. " + ("We use Vue 3 in production. " * 40)
+    assert len(long_jd) >= 800
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=empty_score,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+        job_description=long_jd,
+    )
+    # Without broadening, React should NOT surface as matched.
+    assert not any(
+        m.lower().strip() == "react" for m in result.matched_keywords
+    )
+
+
+def test_audit_alignment_flags_drift_between_resume_and_cover(verified: dict) -> None:
+    """Cover middle paragraph anchors on Atelier Dacko (custom jewellery),
+    but tailored resume's first role's first bullet anchors on HubSpot.
+    The alignment check should flag a `revise` (not block)."""
+    tailored = _minimal_tailored(verified)
+    # Re-anchor lead bullet to HubSpot instead of Shopify.
+    tailored.roles[0] = TailoredRole(
+        title=tailored.roles[0].title,
+        employer=tailored.roles[0].employer,
+        dates=tailored.roles[0].dates,
+        bullets=["Built a custom 8-page HubSpot theme with HubL modules."],
+    )
+    cover = _good_cover()
+    # Cover middle paragraph names the jewellery client (Atelier Dacko anchor).
+    cover.body[1] = (
+        "The centrepiece project is the 14+ page Shopify storefront I built "
+        "for a custom jewellery client over 2+ years."
+    )
+    cover.body[2] = "A second project: bulk JSON data migrations."  # no hubspot
+    result = audit(
+        tailored=tailored,
+        cover=cover,
+        score=_score(),
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+    )
+    assert result.alignment_flags, result.alignment_flags
+    assert result.verdict == "revise"
+
+
+def test_audit_alignment_passes_when_both_anchor_on_same_project(
+    verified: dict,
+) -> None:
+    """When the cover's middle paragraphs and resume lead bullet anchor on the
+    same project (Atelier Dacko), no alignment flag fires."""
+    tailored = _minimal_tailored(verified)
+    tailored.roles[0] = TailoredRole(
+        title=tailored.roles[0].title,
+        employer=tailored.roles[0].employer,
+        dates=tailored.roles[0].dates,
+        bullets=[
+            "Built the Atelier Dacko ring builder on Shopify with Stripe payments."
+        ],
+    )
+    cover = _good_cover()
+    cover.body[1] = (
+        "Atelier Dacko's ring builder is the centerpiece — I designed the "
+        "stone-band-size flow end to end."
+    )
+    result = audit(
+        tailored=tailored,
+        cover=cover,
+        score=_score(),
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+    )
+    assert result.alignment_flags == []
+
+
+def test_audit_topics_categorisation(verified: dict) -> None:
+    """The _audit_topics helper in apply_cmd produces coarse-grained labels
+    for end-of-loop summarisation. Confirm each category lights up correctly
+    so the summary histogram aggregates as expected.
+    """
+    from jobhunt.commands.apply_cmd import _audit_topics
+    from jobhunt.pipeline.audit import AuditResult
+
+    clean = AuditResult(
+        keyword_coverage_pct=90, matched_keywords=["TypeScript"],
+        missing_must_haves=[], fabrication_flags=[],
+        cover_letter_violations=[], alignment_flags=[], verdict="ship",
+    )
+    assert _audit_topics(clean) == []
+
+    low_coverage = AuditResult(
+        keyword_coverage_pct=40, matched_keywords=["TypeScript"],
+        missing_must_haves=["React", "GraphQL", "Vue"], fabrication_flags=[],
+        cover_letter_violations=[], alignment_flags=[], verdict="revise",
+    )
+    assert _audit_topics(low_coverage) == ["coverage"]
+
+    everything = AuditResult(
+        keyword_coverage_pct=40, matched_keywords=[], missing_must_haves=["X"],
+        fabrication_flags=["fake employer"],
+        cover_letter_violations=["banned phrase"],
+        alignment_flags=["drift"], verdict="block",
+    )
+    topics = _audit_topics(everything)
+    assert set(topics) == {"fabrication", "cover-violation", "coverage", "alignment"}
+
+
 def test_audit_block_on_fabrication(verified: dict) -> None:
     tailored = _minimal_tailored(verified)
     tailored.roles.append(

@@ -29,6 +29,15 @@ from jobhunt.ingest._filter import is_gta_eligible
         ("Kitchener, Ontario", True),
         ("Cambridge, ON, Canada", True),
         ("Guelph, ON", True),
+        # May 2026: Barrie added (~90 km, in scope).
+        ("Barrie, ON", True),
+        ("Barrie, Ontario", True),
+        # May 2026: weak Canada hint (EST / Eastern Time) loses to a non-Canada
+        # anchor in the same string. US Eastern Time is also EST.
+        ("Remote (Eastern Time, US-only)", False),
+        ("Remote, Eastern Time, United States", False),
+        # But a weak hint alone (no non-Canada anchor) still accepts.
+        ("Remote, Eastern Time", True),
         ("San Francisco, CA", False),
         ("New York, NY", False),
         ("", False),

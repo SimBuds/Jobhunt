@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, timedelta
+from pathlib import Path
 
 import typer
 
-from jobhunt.config import load_config
+from jobhunt.commands.apply_cmd import _safe_id
+from jobhunt.config import Config, load_config
 from jobhunt.db import connect
 
 app = typer.Typer(
@@ -47,11 +50,30 @@ def run(
             source=source,
             limit=limit,
         )
-        _render_rows(rows, target_week)
+        _render_rows(rows, target_week, cfg=cfg)
         typer.echo("")
         _render_weekly_footer(conn, target_week or _iso_week_label(0))
     finally:
         conn.close()
+
+
+def _load_coverage(cfg: Config, job_id: str) -> int | None:
+    """Read `data/applications/<safe_id>/audit.json` if present, return
+    `keyword_coverage_pct` or None. Used as an optional column in `list`.
+    Failures (missing file, malformed JSON, missing key) silently return None
+    — the audit file is a side effect of `apply`, not load-bearing for `list`.
+    """
+    audit_path = (
+        cfg.paths.data_dir / "applications" / _safe_id(job_id) / "audit.json"
+    )
+    if not audit_path.is_file():
+        return None
+    try:
+        payload = json.loads(audit_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    pct = payload.get("keyword_coverage_pct")
+    return int(pct) if isinstance(pct, int) else None
 
 
 def _iso_week_label(weeks_ago: int) -> str:
@@ -97,7 +119,9 @@ def _query(
     return list(conn.execute(sql, params))
 
 
-def _render_rows(rows: list[sqlite3.Row], target_week: str | None) -> None:
+def _render_rows(
+    rows: list[sqlite3.Row], target_week: str | None, *, cfg: Config | None = None
+) -> None:
     header = f"showing {len(rows)} job(s)"
     if target_week:
         header += f" for {target_week}"
@@ -107,7 +131,11 @@ def _render_rows(rows: list[sqlite3.Row], target_week: str | None) -> None:
     for r in rows:
         score = r["score"] if r["score"] is not None else "—"
         status = r["status"] or ("DECLINE" if r["decline_reason"] else "—")
-        typer.echo(f"  [{score!s:>3}] [{status:<13}] {r['title']} @ {r['company']}")
+        coverage = _load_coverage(cfg, r["id"]) if cfg is not None else None
+        cov_tag = f"  cov={coverage}%" if coverage is not None else ""
+        typer.echo(
+            f"  [{score!s:>3}] [{status:<13}] {r['title']} @ {r['company']}{cov_tag}"
+        )
         typer.echo(f"           {r['source']} | {r['location']} | {r['id']}")
         if r["url"]:
             typer.echo(f"           {r['url']}")
