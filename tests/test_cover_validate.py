@@ -229,3 +229,81 @@ def test_unfilled_placeholder_flagged(verified: dict) -> None:
     cover.body[0] = "I am applying to {company} for the {role} position."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("placeholder" in v for v in violations)
+
+
+# --- May 2026 changes ---
+
+
+def test_track_record_no_longer_flagged(verified: dict) -> None:
+    """'track record' was too generic — dropped from BANNED_PHRASES in May 2026.
+    A legitimate sentence using it should pass."""
+    cover = _good_cover()
+    cover.body[1] = (
+        "I've built a track record of shipping Shopify migrations on tight timelines."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("track record" in v.lower() for v in violations)
+
+
+def test_production_grade_no_longer_flagged(verified: dict) -> None:
+    """'production-grade' is used legitimately in real deployments — dropped."""
+    cover = _good_cover()
+    cover.body[1] = (
+        cover.body[1] + " I shipped that storefront as production-grade work, end to end."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("production-grade" in v.lower() for v in violations)
+
+
+def test_fabrication_watchlist_2026_unverified_langchain(verified: dict) -> None:
+    """May 2026 watchlist addition: LangChain claims must trace to verified."""
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2] + " I built a RAG pipeline using LangChain for an internal tool."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("langchain" in v.lower() for v in violations)
+
+
+def test_fabrication_watchlist_2026_unverified_prisma(verified: dict) -> None:
+    """May 2026 watchlist: Prisma — Casey has not used it in production."""
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2] + " I modeled the schema in Prisma and ran the migrations."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("prisma" in v.lower() for v in violations)
+
+
+def test_fabrication_watchlist_2026_unverified_bun(verified: dict) -> None:
+    """May 2026 watchlist: Bun runtime — Casey has Node, not Bun."""
+    cover = _good_cover()
+    cover.body[2] = cover.body[2] + " I ran the API on Bun in production."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("bun" in v.lower() for v in violations)
+
+
+def test_fabrication_watchlist_with_however_negation_suppressed(verified: dict) -> None:
+    """The May 2026 _NEGATION_PRECEDES_RE adds 'however' / 'but i don't' /
+    'though i haven't' so legitimate disclaiming context doesn't fire the
+    watchlist."""
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2]
+        + " However, I haven't worked with Kubernetes in production yet."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any(
+        "kubernetes" in v.lower() and "unverified" in v.lower() for v in violations
+    )
+
+
+def test_fabrication_watchlist_but_i_dont_negation_suppressed(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2] + " But I don't have hands-on Pinecone experience yet."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any(
+        "pinecone" in v.lower() and "unverified" in v.lower() for v in violations
+    )

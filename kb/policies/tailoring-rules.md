@@ -58,8 +58,17 @@ If any of the following hold, mark the job `decline_reason` and skip:
   medical devices).
 - Not in Toronto/GTA + 100km and not Remote-Canada eligible.
 
-## AI/LLM differentiator (§6)
+## AI/LLM differentiator (§6, May 2026)
 
-When the JD mentions AI, LLM, RAG, prompt engineering, ML, or "modern tooling" as a
-must-have or bonus, surface Casey's Ollama/local LLM/prompt engineering line in the
-Summary and ensure at least one bullet references it.
+When the JD mentions AI, LLM, RAG, generative AI, prompt engineering, ML, or
+"modern tooling" anywhere — even as a "nice to have":
+
+- The **resume summary**'s first or second sentence MUST surface Casey's
+  Ollama / local LLM / prompt-engineering work using the literal tokens
+  "AI" and "LLM" so ATS keyword matchers latch on.
+- At least one bullet in the most recent role MUST reference the AI/LLM
+  tooling work concretely.
+- The **cover-letter lead paragraph** MUST surface Ollama / local LLM /
+  GPU-tuning in the hook sentence — not paragraph 3. AI-screener
+  summarizers in 2026 pull the lead first; this is Casey's strongest
+  differentiator and burying it costs the application.
