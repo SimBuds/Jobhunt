@@ -20,8 +20,16 @@ a trimmed, prompt-injectable mirror — keep it short. Update both when rules ch
 
 - Reorder skills inside categories so JD keywords appear first.
 - Reword bullets to surface relevant verbs/nouns; same fact, different surface.
+- **Use the JD's surface form** for known tech keywords. JD writes "Postgres" /
+  "JS" / "GH Actions" / "Node" → the tailored bullet uses that exact form, not
+  the verified.json long form. AI-screeners score on substring presence.
+- **First skills-category matches the JD's primary stack.** Frontend role →
+  lead with a category named for frontend; backend role → lead with backend;
+  CMS → CMS; AI/LLM → AI tooling. `Familiar` bucket is always last.
 - Split one dense bullet into two if both halves are relevant.
 - Reorder bullets within a job. Never move bullets between jobs.
+- The **Present** role (current contract) keeps ≥2 bullets — older roles
+  shrink first when overflowing one page.
 - Surface specific GBC courses (from `verified.json` coursework_baseline + the broader
   coursework list in §2) only when they map to JD requirements.
 

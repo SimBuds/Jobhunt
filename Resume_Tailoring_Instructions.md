@@ -112,16 +112,19 @@ Follow this order. Do not skip steps.
    - Never claim years of experience Casey doesn't have.
 
 5. **Re-order and re-categorize the Skills section.**
-   - Lead with the category most relevant to the job (e.g., "Email & Web Markup" for an email role; "Languages" for a polyglot role).
+   - **The first category MUST be the one most relevant to the JD's primary stack** — this is what survives the AI-screener's first-200-token budget. Frontend role → first category named e.g. "Frontend Engineering" / "JavaScript & React"; backend role → "Backend & APIs"; CMS role → "CMS & E-commerce"; AI/LLM role → "AI & LLM Tooling".
    - Move skills inside the categories so the JD's keywords appear first.
+   - The **`Familiar` bucket is always last.**
    - Drop categories that are irrelevant clutter for the target role (e.g., for a backend role, "CMS & E-Commerce" can be demoted to a single line at the bottom).
-   - Keep the "Familiar" honesty signal — promoting a "Familiar" skill to a primary category should only happen if Casey has used it in coursework + at least one tooling/personal context, and even then frame it carefully.
+   - Never promote a "Familiar" skill (Java, Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma) into a primary category. Honesty signal stays.
 
 6. **Re-emphasize bullet points, do not invent.**
    - You may reorder bullets within a job to put the most relevant first.
    - You may rewrite a bullet's wording to surface a relevant verb or noun (e.g., "Integrated Stripe payments" → "Built and integrated REST API payment flow with Stripe" — same fact, surfaced differently).
+   - **Use the JD's surface form for tech keywords.** AI-screeners in May 2026 score on exact-substring presence, not synonym understanding. When the JD writes "Postgres", "JS", "GH Actions", or "Node", the rewritten bullet uses that exact form even though `verified.json` has "PostgreSQL", "JavaScript (ES6+)", "GitHub Actions CI/CD", or "Node.js". Same fact, JD's wording.
    - You may split one dense bullet into two if both halves are relevant to the JD.
    - You may not add a bullet that describes work Casey didn't do.
+   - **The "Present" role (current contract) keeps its lead AND one supporting bullet at minimum.** The shrink ladder defers trimming that role's trailing bullets until every older role has been reduced to one bullet.
    - Strong verbs only: built, designed, shipped, owned, led, integrated, migrated, optimized, deployed, configured, automated. Avoid "responsible for," "helped with," "assisted in."
 
 7. **Adjust the Coursework line** to surface only courses relevant to the JD (from the list in Section 2). Leave the Dean's List bold prefix.

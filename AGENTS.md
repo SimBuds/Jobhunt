@@ -359,11 +359,24 @@ to it without explicit discussion.
    1. Trim summary down to ≥3 sentences.
    2. Trim Familiar skills down to ≥4 items.
    3. Drop the last bullet of the role with the highest current line-cost
-      (each role keeps ≥1 bullet — the JD-relevant lead).
+      (each role keeps ≥1 bullet — the JD-relevant lead). **May 2026 guard
+      in `_try_drop_weakest_bullet`:** while any older role still has spare
+      bullets (> 1), the role whose `dates` contains "Present" is skipped
+      — the current contract is the strongest JD-recent signal. Once all
+      older roles are at one bullet, the Present role becomes eligible.
    4. Drop the coursework block.
    If the resume still overflows after step 4, the tailor raises
    `PipelineError` — caller surfaces the failure and the user is expected to
    tighten verified.json bullets at the .docx source.
+
+8. **JD surface-form discipline** (`kb/prompts/tailor.md` rule 9). Tailored
+   bullets and skill items MUST use the JD's exact substring form for tech
+   keywords when that form maps to a verified fact (e.g. JD "Postgres" →
+   "Postgres", not "PostgreSQL"; JD "JS" → "JS"; JD "GH Actions" → "GH
+   Actions"). AI-screeners score on substring presence, not synonym mapping.
+   `_enforce_no_fabrication` (`pipeline/tailor.py`) accepts these surface
+   variants via the `_ANNOTATION_TOKENS` allowlist while still rejecting
+   superset claims like "React Native" against verified "React".
 
 ## Testing
 
