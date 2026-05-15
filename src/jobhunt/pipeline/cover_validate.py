@@ -15,6 +15,10 @@ from jobhunt.pipeline.cover import CoverLetter
 
 # From cover.md §7. Lowercased; matched as case-insensitive substrings on a
 # normalized body so "Passionate" and "passionate" both fire.
+# May 2026 trim: dropped "track record" (too generic — fires on legitimate
+# sentences like "I've built a track record of shipping Shopify migrations")
+# and "production-grade" (used legitimately when describing real deployments).
+# Reconsider re-adding either if observed firing on actual letter output.
 BANNED_PHRASES: tuple[str, ...] = (
     "passionate",
     "synergy",
@@ -25,9 +29,7 @@ BANNED_PHRASES: tuple[str, ...] = (
     "i believe",
     "aligns with",
     "core requirements",
-    "production-grade",
     "complementing my practical experience",
-    "track record",
     "proven ability",
     "deeply passionate",
     "hit the ground running",
@@ -84,11 +86,15 @@ _SIGNOFF_TAIL_RE = re.compile(
 )
 
 # Phrases that indicate the candidate is disclaiming a tech, not claiming it.
-# Used to suppress fabrication false-positives like "rather than Scala".
+# Used to suppress fabrication false-positives like "rather than Scala" or
+# "however, I don't have Kubernetes experience". May 2026 additions: "but i
+# don't", "though i haven't", "however" — all common disclaiming constructions
+# that wrap a tech name without claiming it.
 _NEGATION_PRECEDES_RE = re.compile(
     r"\b(?:not|no|never|without|lack(?:ing)?|rather than|instead of|"
     r"unverified|don['’]?t (?:have|use|know)|haven['’]?t (?:used|worked)|"
-    r"unfamiliar with|outside (?:my|of))\b[^.]*$",
+    r"but (?:i )?don['’]?t|though (?:i )?haven['’]?t|however"
+    r"|unfamiliar with|outside (?:my|of))\b[^.]*$",
     re.IGNORECASE,
 )
 
@@ -147,6 +153,13 @@ def _word_count(text: str) -> int:
 # Tech names frequently fabricated by qwen when mentioned in the JD but
 # absent from verified.json — any match in the cover body that isn't in
 # the verified skill blob is a hard violation.
+#
+# May 2026 refresh:
+# - Removed "python" (now Core in verified.json after Phase 1 bucket reshape).
+# - Added LLM tooling (langchain, llamaindex, pinecone, weaviate, qdrant,
+#   chroma, bedrock, vertex ai) and 2026 JS/TS stack (bun, hono, trpc, prisma,
+#   drizzle, astro, sveltekit, qwik). These show up in JDs the model is
+#   tempted to claim.
 _FABRICATION_WATCHLIST: tuple[str, ...] = (
     # Data / infra
     "elasticsearch",
@@ -178,11 +191,20 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "vue",
     "angular",
     "svelte",
+    "sveltekit",
     "nuxt",
     "gatsby",
     "remix",
+    "astro",
+    "qwik",
     "ember",
     "tailwind",
+    # 2026 Node/TS server stack — Casey has Express, not these
+    "bun",
+    "hono",
+    "trpc",
+    "prisma",
+    "drizzle",
     # Mobile — Casey has no mobile experience
     "kotlin",
     "swift",
@@ -191,6 +213,17 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     # Cloud beyond AWS + Azure
     "gcp",
     "google cloud",
+    "vertex ai",
+    "bedrock",
+    # LLM orchestration / vector DBs — Casey has Ollama + prompt eng only
+    "langchain",
+    "llamaindex",
+    "haystack",
+    "pinecone",
+    "weaviate",
+    "qdrant",
+    "chroma",
+    "milvus",
     # Enterprise platforms
     "salesforce",
     "servicenow",

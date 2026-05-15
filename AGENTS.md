@@ -330,6 +330,18 @@ to it without explicit discussion.
    and TLD fragments like `.io`/`.ai` via `_COMPANY_STOPWORDS`, accepts any
    distinctive remaining token), no unverified numbers (digits embedded in
    alphanumeric tokens like ES6 are exempt), no closing diploma re-recap.
+
+   **May 2026 refresh:**
+   - `BANNED_PHRASES` trimmed — `"track record"` and `"production-grade"`
+     dropped (too generic; fired on legitimate sentences).
+   - `_FABRICATION_WATCHLIST` refreshed for 2026 JS/TS + LLM stack: Bun, Hono,
+     tRPC, Prisma, Drizzle, Astro, SvelteKit, Qwik, LangChain, LlamaIndex,
+     Haystack, Pinecone, Weaviate, Qdrant, Chroma, Milvus, Bedrock, Vertex AI.
+     Python removed (now Core in `verified.json` after Phase 1).
+   - `_NEGATION_PRECEDES_RE` extended with `however`, `but i don't`,
+     `though i haven't` so legitimate disclaiming context suppresses the
+     watchlist (a cover saying "However, I haven't worked with Kubernetes"
+     no longer fires the Kubernetes fabrication flag).
    Two preprocess steps run before matching to defang model quirks:
    - **Apostrophe normalization** — `_normalize()` collapses curly/smart
      apostrophes (U+2019 and variants) to ASCII `'` before banned-phrase /

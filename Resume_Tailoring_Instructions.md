@@ -245,7 +245,11 @@ When you produce a tailored resume:
 
 ## 10. Cover Notes and Recruiter Replies
 
-When Casey asks for a cover note or a follow-up email to a recruiter, the same honesty rules apply: name gaps clearly when relevant, lead with the strongest match, and keep tone professional but human. A short note that names a gap honestly ("coming from HubL/Liquid rather than AmpScript directly, but the templating model transfers over") performs better in 2026 than a polished one that quietly papers over the same gap — recruiters are tired of the latter and AI-screen for it.
+When Casey asks for a cover note or a follow-up email to a recruiter, the same honesty rules apply: name gaps clearly when relevant, lead with the strongest match, and keep tone professional but human.
+
+**AI/LLM lead-paragraph rule (May 2026).** When the JD mentions AI, LLM, RAG, generative AI, prompt engineering, ML, or "modern tooling" — even as a "nice to have" — the lead paragraph MUST surface Casey's Ollama / local-LLM / GPU-tuning work, naming the literal token "Ollama" or "LLM" so an AI-screener summarizer pulls it. This is Casey's strongest 2026 differentiator and the summarizer reads the lead first. Do not bury it in paragraph 3.
+
+**Gap framing.** Naming a real gap is fine *when the JD explicitly asks for the missing tech.* For a JD that doesn't ask, silence is stronger than apology. Phrasings like "rather than X", "the model transfers", "coming from X" are forbidden — they volunteer weakness the reader didn't ask about and the deterministic validator rejects them. Lead with what Casey *does* have that maps; let the resume show the rest.
 
 ---
 

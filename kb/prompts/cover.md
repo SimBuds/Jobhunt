@@ -47,6 +47,14 @@ Hard rules:
    JD detail) rather than the act of applying. The second sentence
    should land the strongest specific match between Casey's verified
    experience and the JD's must-haves.
+
+   **AI/LLM lead-paragraph rule (May 2026).** If the JD mentions AI,
+   LLM, RAG, generative AI, prompt engineering, ML, or "modern tooling"
+   anywhere in the body — even as a "nice to have" — the lead's hook
+   MUST surface Casey's Ollama / local LLM / GPU-tuning work, naming
+   the literal token "Ollama" or "LLM" so an AI-screener summarizer
+   pulls it. This is Casey's strongest 2026 differentiator and the
+   summarizer reads the lead first. Do NOT bury this in paragraph 3.
 3. Middle paragraph (3–4 sentences): pick ONE project from verified_facts
    as the centerpiece and go deep — what the problem was, what shipped,
    what changed. A second project may get one supporting sentence. Do
@@ -69,10 +77,19 @@ Hard rules:
    coursework, or skills here — those belong on the resume, not the
    letter's closing. Do NOT start the closing with "I am ready to" or
    "I'm ready to" — that's a formulaic gap-volunteering opener the
-   validator rejects. Prefer concrete next-step phrasing: "Happy to walk
-   through the Shopify migration in more detail" or "Available to discuss
-   how the HubSpot work maps to your stack". The closing should reference
-   a specific thing from earlier in the letter, not generic readiness.
+   validator rejects. Prefer concrete next-step phrasing that references
+   a specific thing from earlier in the letter. Approved patterns:
+
+   - "Happy to walk through the Atelier Dacko ring builder build."
+   - "Happy to step through the Shopify→HubSpot migration in more detail."
+   - "Available to walk through the HubSpot migration design."
+   - "Glad to step through how the Ollama tooling work would apply here."
+   - "Available to discuss how the local-LLM stack maps to your roadmap."
+   - "Happy to dig into the Contentful side over a call."
+
+   Each of these names a concrete artifact from earlier in the letter.
+   Generic abstractions ("I'd welcome the chance to discuss how my
+   experience aligns…") are rejected by the validator.
 6. Voice: Casey writes like a person, not an HR template. Use
    contractions where natural ("I've", "I'm", "don't", "it's"). Vary
    sentence length — short punchy lines are fine. Direct, concrete, no
