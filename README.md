@@ -57,7 +57,7 @@ Environment="OLLAMA_KV_CACHE_TYPE=q5_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_CONTEXT_LENGTH=16384"
-Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_KEEP_ALIVE=10m"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ```
 
@@ -78,6 +78,15 @@ jobhunt convert-resume    # generates kb/profile/* from Resume.docx
 `convert-resume` has been executed — they need `kb/profile/verified.json` as
 the source of truth.
 
+For first-time slug coverage, prime the ATS lists with the curated seed:
+
+```bash
+jobhunt config seed --apply       # adds verified GTA employer slugs to config
+```
+
+Then expand as you find more employers via `jobhunt add <url>` (see
+[Slug acquisition](#slug-acquisition-add-config-seed-discover-slugs)).
+
 To start over (drops DB, tailored documents, HTTP cache, browser profile, parsed resume):
 
 ```bash
@@ -87,26 +96,28 @@ jobhunt convert-resume
 
 ## Commands
 
-Six user-facing commands. Run `<command> --help` for full flags.
+Seven user-facing commands. Run `<command> --help` for full flags.
 
 ```bash
 jobhunt convert-resume                     # parse Resume.docx → kb/profile/
 jobhunt scan                               # ingest GTA jobs + score against profile
 jobhunt apply <job-id>                     # tailor + cover + autofill (you submit)
-jobhunt apply --top N                      # auto-pick N best-fit unapplied jobs (1..20)
+jobhunt apply --top N                      # auto-pick N best-fit unapplied jobs (1..10)
 jobhunt apply --best                       # interactive pick from top 10
 jobhunt apply --url <URL>                  # manual application from a URL
+jobhunt add <URL>                          # parse URL → write ATS slug to config.toml
 jobhunt list [--week N] [--status ...]     # pipeline view + weekly tracking
 jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
                                            # certification frequency, trends, and fit verdicts
-jobhunt discover slugs [--apply]           # probe Greenhouse/Ashby for ATS slugs
+jobhunt config seed --apply                # import the curated GTA-employer seed list
+jobhunt discover slugs [--apply]           # maintenance: harvest URLs in jobs DB + probe public ATS APIs
 ```
 
 ### `apply` selection modes
 
 - `apply <job-id>` — single job by id.
 - `apply --top N` — N highest-scoring unapplied jobs above `--min-score`
-  (default 65). Capped at 10.
+  (default 55, set in `[pipeline] min_score`). Capped at 10.
 - `apply --best` — lists the top 10 candidates and prompts for picks like
   `1,3,7` or `2-5`.
 - `apply --url <URL>` — bypass `scan` for a one-off posting. Fetches the page
@@ -145,7 +156,7 @@ small rubric so the decision is one column wide:
 | Wrong direction | Common in the market (cur ≥ 5) but zero fit-eligible jobs |
 
 `--min-score N` joins the `scores` table. `N` should be your apply threshold
-(default 65 — match `[pipeline] min_score` in `config.toml`).
+(default 55 — match `[pipeline] min_score` in `config.toml`).
 
 The `Potential new certs` section at the bottom surfaces generic-regex hits
 (`Certified <Noun>` / `<Noun> Certification`) that aren't in the curated
@@ -162,24 +173,60 @@ jobhunt apply --set-status rejected     <job-id>
 
 The flag must come **before** the job id.
 
-### `discover slugs`
+### Slug acquisition (`add`, `config seed`, `discover slugs`)
 
-Adzuna ships short JD snippets (~500 chars). Greenhouse and Ashby return full
-descriptions, but each employer needs a slug in `config.toml`. `discover slugs`
-automates the slug-hunting: it reads distinct company names from your jobs DB,
-normalizes each (e.g. `"Konrad Group"` → `konradgroup`, `konrad`), and probes
-the public Greenhouse and Ashby APIs.
+Adzuna ships short JD snippets (~500 chars). Greenhouse, Lever, Ashby,
+SmartRecruiters, and Workday return full descriptions, but each employer
+needs a slug in `config.toml`. Three workflows fill that list:
 
-```bash
-jobhunt discover slugs                     # print suggestions (default --limit 100)
-jobhunt discover slugs --apply             # also append to config.toml (.bak written)
-jobhunt discover slugs --ats greenhouse    # restrict probe targets
-jobhunt discover slugs --include-cached    # re-probe past misses
-```
+1. **`jobhunt add <URL>` — the daily driver.** Paste any recognized career-page
+   or job-posting URL; the tool parses the ATS, probes once to confirm, and
+   appends to config.
 
-Misses are cached in the `slug_probes` table so repeat runs only probe new
-companies. Staffing-agency names (Astra North, Targeted Talent, etc.) are
-filtered at the candidate stage and never hit the network.
+   ```bash
+   jobhunt add https://boards.greenhouse.io/faire
+   jobhunt add https://jobs.ashbyhq.com/cohere
+   jobhunt add https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers
+   ```
+
+   Recognized hosts: `boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`,
+   `jobs.smartrecruiters.com`, `*.wd*.myworkdayjobs.com`. iCIMS URLs are
+   recognized but exit with "coming soon" — no adapter yet.
+
+2. **`jobhunt config seed` — cold start.** Imports the live-verified seed list
+   from `kb/seeds/gta-employers.toml`. Every entry is probe-checked via
+   `scripts/verify_seeds.py` before being committed, so dead slugs don't ship.
+
+   ```bash
+   jobhunt config seed --preview   # see what would be added
+   jobhunt config seed --apply     # additively merge into config.toml
+   ```
+
+3. **`jobhunt discover slugs` — maintenance.** Harvests confirmed slugs from
+   URLs already in your jobs DB (offline, no HTTP), then probes the public
+   Greenhouse / Lever / Ashby / SmartRecruiters APIs for company names not yet
+   covered. Useful after a few `scan` runs to surface any employers reachable
+   via ATS that you haven't added yet.
+
+   ```bash
+   jobhunt discover slugs                     # print suggestions (default --limit 100)
+   jobhunt discover slugs --apply             # append confirmed slugs to config.toml
+   jobhunt discover slugs --ats greenhouse    # restrict probe targets
+   jobhunt discover slugs --include-cached    # re-probe past misses
+   ```
+
+   Misses are cached in the `slug_probes` table so repeat runs only probe new
+   companies. Zero-job 200 responses are treated as misses. Staffing-agency
+   names (Astra North, Targeted Talent, etc.) are filtered at the candidate
+   stage and never hit the network.
+
+After `apply --url <some-careers-page>`, the tool prints a `jobhunt add`
+suggestion if the URL belongs to an ATS you haven't configured yet — slug
+acquisition as a byproduct of normal use.
+
+**Note:** all three commands write `config.toml` programmatically — **any
+inline comments you've added will be stripped on write**. A `.bak` snapshot
+is created next to the file.
 
 ### `list` filters
 
@@ -203,10 +250,10 @@ jobhunt list --week 0             # weekly pipeline view
 
 ```toml
 [ingest]
-greenhouse      = ["shopify", "1password", "wealthsimple", "faire"]
-lever           = ["benchsci", "ada"]
-ashby           = ["cohere"]
-smartrecruiters = []   # company slugs, e.g. "Bosch", "Visa"
+greenhouse      = []   # board slugs, e.g. "faire"
+lever           = []   # board slugs, e.g. "benchsci"
+ashby           = []   # board slugs, e.g. "cohere"
+smartrecruiters = []   # company slugs, case-sensitive (e.g. "Bosch", "Visa")
 workday         = []   # "tenant:host:site" triples (see ingest/workday.py)
 job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
 rss             = []   # generic employer career-page RSS/Atom URLs
@@ -221,11 +268,9 @@ phone = "(416) 555-0123"
 salary_expectation_cad = "50k–90k"
 ```
 
-**Finding ATS slugs:** visit `<company>.com/careers` and look for the
-redirect/embed: `boards.greenhouse.io/<slug>`, `jobs.lever.co/<slug>`,
-`jobs.ashbyhq.com/<slug>`, `careers.smartrecruiters.com/<Company>`. Workday
-is harder — copy the `tenant:host:site` triple from the careers URL (see
-`src/jobhunt/ingest/workday.py`).
+See [Slug acquisition](#slug-acquisition-add-config-seed-discover-slugs)
+above for filling in the `greenhouse` / `lever` / `ashby` / `smartrecruiters` /
+`workday` lists.
 
 API keys live in `~/.config/jobhunt/secrets.toml` (chmod 0600) or env vars:
 

@@ -24,7 +24,14 @@ def test_normalize_skill_strips_parens_and_trailing_slash() -> None:
 
 
 def test_derive_from_current_baseline() -> None:
-    """The live verified.json must produce all user-named umbrella queries."""
+    """The live verified.json must produce all user-named umbrella queries.
+
+    Java/Spring Boot moved to skills_familiar in May 2026 (coursework-only, per
+    Resume_Tailoring_Instructions §2), so 'java developer' is intentionally NOT
+    a required query — searching Java roles would surface jobs Casey would
+    mostly decline. The cap-10 truncation correctly drops Familiar-tech queries
+    in favor of Casey's actual production umbrellas (CMS, AI, JS/React).
+    """
     verified = json.loads(VERIFIED_PATH.read_text(encoding="utf-8"))
     qs = derive_adzuna_queries(verified)
     assert len(qs) <= 10
@@ -34,8 +41,9 @@ def test_derive_from_current_baseline() -> None:
         "ai engineer",
         "technical seo developer",
         "javascript developer",
-        "java developer",
         "react developer",
+        "node.js developer",
+        "shopify developer",
         "full stack developer",
     ):
         assert required in qs, f"missing required query: {required!r} in {qs}"

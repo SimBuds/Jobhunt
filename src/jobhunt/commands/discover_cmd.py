@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sqlite3
 from collections.abc import Callable
 
 import httpx
-import tomli_w
 import typer
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from jobhunt.config import Config, _to_toml_dict, config_path, load_config
+from jobhunt.commands._config_write import write_config_atomically
+from jobhunt.config import Config, config_path, load_config
 from jobhunt.db import connect
 from jobhunt.discover.probe import ProbeOutcome, ProgressEvent, discover
-from jobhunt.errors import JobHuntError
 from jobhunt.http import DEFAULT_UA
 
 app = typer.Typer(
@@ -23,7 +21,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_SUPPORTED_ATSES = ("greenhouse", "ashby")
+_SUPPORTED_ATSES = ("greenhouse", "ashby", "lever", "smartrecruiters")
 
 
 def _parse_atses(raw: str) -> list[str]:
@@ -40,13 +38,16 @@ def _parse_atses(raw: str) -> list[str]:
 
 @app.command(
     "slugs",
-    help="Probe Greenhouse/Ashby for companies seen in past scans, suggest slugs to add.",
+    help=(
+        "Find ATS slugs for past-scan companies via URL parsing + public-API "
+        "probes (Greenhouse/Ashby/Lever/SmartRecruiters)."
+    ),
 )
 def slugs(
     ats: str = typer.Option(
-        "greenhouse,ashby",
+        "greenhouse,ashby,lever,smartrecruiters",
         "--ats",
-        help="Comma-separated ATSes to probe (greenhouse, ashby).",
+        help="Comma-separated ATSes to probe (greenhouse, ashby, lever, smartrecruiters).",
     ),
     limit: int = typer.Option(
         100, "--limit", "-n", min=1, max=2000, help="Cap on companies probed per run."
@@ -123,9 +124,9 @@ def slugs(
     if apply:
         added = _apply_to_config(cfg, hits)
         if added:
+            parts = ", ".join(f"+{n} {ats}" for ats, n in added.items() if n)
             typer.echo(
-                f"\nupdated {config_path()} (+{added['greenhouse']} greenhouse, "
-                f"+{added['ashby']} ashby). backup: {config_path()}.bak"
+                f"\nupdated {config_path()} ({parts}). backup: {config_path()}.bak"
             )
         else:
             typer.echo("\nno new slugs to add — config already contains all hits.")
@@ -173,37 +174,32 @@ def _print_table(hits: list[ProbeOutcome]) -> None:
 
 
 def _apply_to_config(cfg: Config, hits: list[ProbeOutcome]) -> dict[str, int] | None:
-    path = config_path()
-    if not path.exists():
-        raise JobHuntError(f"config.toml not found at {path}")
+    # Per-ATS: existing slugs + new slugs to append. Pulled by attribute so
+    # adding a new probe-supported ATS only requires touching _SUPPORTED_ATSES
+    # (and the IngestConfig field, which already exists).
+    additions: dict[str, list[str]] = {ats: [] for ats in _SUPPORTED_ATSES}
+    existing: dict[str, set[str]] = {
+        ats: set(getattr(cfg.ingest, ats)) for ats in _SUPPORTED_ATSES
+    }
 
-    new_greenhouse: list[str] = []
-    new_ashby: list[str] = []
-    existing_g = set(cfg.ingest.greenhouse)
-    existing_a = set(cfg.ingest.ashby)
     for h in hits:
-        if h.ats == "greenhouse" and h.slug not in existing_g:
-            new_greenhouse.append(h.slug)
-            existing_g.add(h.slug)
-        elif h.ats == "ashby" and h.slug not in existing_a:
-            new_ashby.append(h.slug)
-            existing_a.add(h.slug)
+        if h.ats not in additions:
+            continue
+        if h.slug in existing[h.ats]:
+            continue
+        additions[h.ats].append(h.slug)
+        existing[h.ats].add(h.slug)
 
-    if not new_greenhouse and not new_ashby:
+    if not any(additions.values()):
         return None
 
-    cfg.ingest.greenhouse = [*cfg.ingest.greenhouse, *new_greenhouse]
-    cfg.ingest.ashby = [*cfg.ingest.ashby, *new_ashby]
+    for ats, new in additions.items():
+        if new:
+            setattr(cfg.ingest, ats, [*getattr(cfg.ingest, ats), *new])
 
-    bak = path.with_suffix(path.suffix + ".bak")
-    bak.write_bytes(path.read_bytes())
+    write_config_atomically(cfg)
 
-    serialized = tomli_w.dumps(_to_toml_dict(cfg.model_dump(mode="json")))
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(serialized)
-    os.replace(tmp, path)
-
-    return {"greenhouse": len(new_greenhouse), "ashby": len(new_ashby)}
+    return {ats: len(new) for ats, new in additions.items()}
 
 
 __all__ = ["app"]

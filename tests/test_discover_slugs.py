@@ -70,9 +70,20 @@ def _make_fake_get_json(
         if "greenhouse.io" in url:
             ats = "greenhouse"
             slug = url.split("/boards/")[1].split("/")[0]
+            shape: str = "jobs"
         elif "ashbyhq.com" in url:
             ats = "ashby"
             slug = url.rstrip("/").split("/")[-1]
+            shape = "jobs"
+        elif "lever.co" in url:
+            ats = "lever"
+            slug = url.rstrip("/").split("/")[-1]
+            shape = "list"
+        elif "smartrecruiters.com" in url:
+            ats = "smartrecruiters"
+            # .../v1/companies/{slug}/postings
+            slug = url.split("/companies/")[1].split("/")[0]
+            shape = "content"
         else:
             raise AssertionError(f"unexpected url: {url}")
 
@@ -80,7 +91,12 @@ def _make_fake_get_json(
         if key in errors:
             raise errors[key]
         if key in hits:
-            return {"jobs": [{"id": i} for i in range(hits[key])]}
+            n = hits[key]
+            if shape == "jobs":
+                return {"jobs": [{"id": i} for i in range(n)]}
+            if shape == "list":
+                return [{"id": str(i)} for i in range(n)]
+            return {"content": [{"id": str(i)} for i in range(n)], "totalFound": n}
         raise IngestError(f"404 {url}")
 
     return fake_get_json
@@ -267,6 +283,122 @@ def test_discover_records_network_error_as_status_zero(
         "WHERE company = 'Okta' AND ats = 'greenhouse' AND slug = 'okta'"
     ).fetchone()
     assert row["status"] == 0
+
+
+def test_discover_harvests_urls_from_jobs_table(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Seed jobs with real ATS URLs but companies we wouldn't probe by name.
+    # The URL extractor should surface these without any HTTP call.
+    upsert_job(
+        conn,
+        Job(
+            id="seed:1", source="adzuna_ca", external_id="1",
+            company="Braze", title="Engineer", location="Toronto, ON",
+            description="…", url="https://boards.greenhouse.io/braze/jobs/123",
+        ),
+    )
+    upsert_job(
+        conn,
+        Job(
+            id="seed:2", source="adzuna_ca", external_id="2",
+            company="Figma", title="Engineer", location="Toronto, ON",
+            description="…", url="https://jobs.lever.co/figma/abc/apply",
+        ),
+    )
+
+    call_log: list[str] = []
+
+    fake = _make_fake_get_json(hits={})
+
+    async def logging_fake(*args: Any, **kwargs: Any) -> Any:
+        call_log.append(args[1])
+        return await fake(*args, **kwargs)
+
+    monkeypatch.setattr(probe_mod, "get_json", logging_fake)
+
+    async def go() -> list[ProbeOutcome]:
+        async with httpx.AsyncClient() as client:
+            return await discover(
+                client, cfg, conn,
+                atses=["greenhouse", "ashby", "lever", "smartrecruiters"],
+                limit=50, include_cached=False,
+            )
+
+    hits = _run(go())
+    by_slug = {(h.ats, h.slug): h for h in hits}
+    assert ("greenhouse", "braze") in by_slug
+    assert ("lever", "figma") in by_slug
+
+    # URL harvest persisted both as cached 200 hits
+    rows = conn.execute(
+        "SELECT ats, slug, status FROM slug_probes WHERE status = 200"
+    ).fetchall()
+    seen = {(r["ats"], r["slug"]) for r in rows}
+    assert ("greenhouse", "braze") in seen
+    assert ("lever", "figma") in seen
+
+
+def test_discover_treats_zero_job_board_as_miss(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 200 response with 0 postings is functionally a miss — board is empty
+    or stale. SmartRecruiters in particular returns 200/totalFound=0 in this
+    case. Should be persisted as status=404 so we don't keep re-surfacing it."""
+    _seed(conn, [("Okta", 5)])
+
+    fake = _make_fake_get_json(hits={("smartrecruiters", "okta"): 0})
+    monkeypatch.setattr(probe_mod, "get_json", fake)
+
+    async def go() -> list[ProbeOutcome]:
+        async with httpx.AsyncClient() as client:
+            return await discover(
+                client, cfg, conn,
+                atses=["smartrecruiters"], limit=10, include_cached=False,
+            )
+
+    hits = _run(go())
+    assert hits == []
+
+    row = conn.execute(
+        "SELECT status, job_count FROM slug_probes "
+        "WHERE company='Okta' AND ats='smartrecruiters' AND slug='okta'"
+    ).fetchone()
+    assert row["status"] == 404
+    assert row["job_count"] == 0
+
+
+def test_discover_probes_lever_and_smartrecruiters(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed(conn, [("Figma", 5), ("Bosch", 3)])
+
+    fake = _make_fake_get_json(
+        hits={
+            ("lever", "figma"): 12,
+            ("smartrecruiters", "bosch"): 7,
+        },
+    )
+    monkeypatch.setattr(probe_mod, "get_json", fake)
+
+    async def go() -> list[ProbeOutcome]:
+        async with httpx.AsyncClient() as client:
+            return await discover(
+                client, cfg, conn,
+                atses=["greenhouse", "ashby", "lever", "smartrecruiters"],
+                limit=50, include_cached=False,
+            )
+
+    hits = _run(go())
+    by_slug = {(h.ats, h.slug): h for h in hits}
+    assert by_slug[("lever", "figma")].job_count == 12
+    assert by_slug[("smartrecruiters", "bosch")].job_count == 7
 
 
 def test_discover_skips_staffing_agencies(

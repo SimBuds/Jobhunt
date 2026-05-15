@@ -1,0 +1,18 @@
+# Curated GTA-employer seed list, grouped by ATS.
+#
+# Every entry below was verified live via `scripts/verify_seeds.py` before
+# being committed — do not add unverified slugs. Re-run the verifier when
+# bumping the file, and drop any slug that 404s.
+#
+# Loaded by `jobhunt config seed --preview` / `--apply`. The --apply path
+# is additive (no dedupe risk) and writes via the shared atomic helper, so
+# any inline comments a user has in their own config.toml will be stripped.
+#
+# Workday is intentionally absent: tenant:host:site triples are easier to
+# acquire by pasting the URL into `jobhunt add` than by curating here.
+
+greenhouse = ["konradgroup", "faire", "hootsuite", "ritual", "shakepay", "thinkific"]
+lever = ["benchsci"]
+ashby = ["harvey", "cohere", "mercor", "sentry", "klue"]
+smartrecruiters = []
+workday = []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typer
 
 from jobhunt.commands import (
+    add_cmd,
     analyze_cmd,
     apply_cmd,
     config_cmd,
@@ -33,6 +34,7 @@ def ensure_profile(cfg: Config) -> None:
 
 
 __all__ = [
+    "add_cmd",
     "analyze_cmd",
     "apply_cmd",
     "config_cmd",

@@ -15,6 +15,12 @@ humans edit `policies/`.
 - `policies/` — hand-edited rules.
   - `tailoring-rules.md` — prompt-injectable mirror of
     `Resume_Tailoring_Instructions.md` (root-level source of truth).
+- `prompts/` — task prompts loaded by the gateway. Frontmatter declares model,
+  temperature, and JSON schema.
+- `seeds/` — curated cold-start data.
+  - `gta-employers.toml` — verified ATS slugs imported by
+    `jobhunt config seed --apply`. Every entry is probe-checked via
+    `scripts/verify_seeds.py` before commit; do not add unverified slugs.
 
 ## Editing workflow
 
@@ -23,3 +29,7 @@ humans edit `policies/`.
   get overwritten.
 - **To update tailoring rules:** edit `Resume_Tailoring_Instructions.md` (the
   source of truth), then sync the trimmed mirror in `policies/tailoring-rules.md`.
+- **To update the employer seed list:** edit the `CANDIDATES` dict in
+  `scripts/verify_seeds.py`, run the script, paste the verified TOML block
+  into `seeds/gta-employers.toml`. Never hand-edit the seed file with
+  unverified entries.

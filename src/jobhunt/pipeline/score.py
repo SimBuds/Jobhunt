@@ -71,7 +71,14 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # to inflate the score band — this clamp closes that loophole.
     matched, gaps = _verify_against_profile(llm_matched, llm_gaps, verified)
     coverage_pct = _coverage_pct(matched, gaps)
-    score = _clamp_by_coverage(raw_score, coverage_pct)
+    # Adzuna ships ~500-char snippets; the LLM commonly extracts only 1-2 phrases
+    # from those, and clamping against a 1/2 denominator over-penalizes signal-poor
+    # postings. Skip the clamp when the must-have set is too small to be reliable.
+    must_have_count = len(matched) + len(gaps)
+    if must_have_count < 3:
+        score = raw_score
+    else:
+        score = _clamp_by_coverage(raw_score, coverage_pct)
 
     decline_reason = result.get("decline_reason")
     if _is_bogus_senior_decline(decline_reason, job.title or ""):
@@ -119,26 +126,38 @@ def _coerce_phrase_list(raw: object) -> list[str]:
 
 
 def _is_bogus_senior_decline(decline_reason: str | None, title: str) -> bool:
-    """True when the LLM declined solely on 'Senior' wording without a real trigger.
+    """True when the LLM declined solely on seniority wording without a real trigger.
 
-    The score prompt is explicit that 'Senior' alone is not a decline trigger,
-    but qwen3.5:9b often ignores that rule. This guard nullifies a decline
-    when the only signal is the word 'Senior'/'Sr.'/'seniority' and neither
-    the reason nor the title cites a genuine trigger (Lead/Principal/etc.).
+    The score prompt (May 2026) is explicit that Senior/Lead/Staff/Principal/Architect
+    titles alone are NOT decline triggers — only people-management responsibilities
+    in the JD body, or year-thresholds, justify a decline. qwen3.5:9b routinely
+    manufactures "Title implies Lead seniority" or "Staff seniority mismatch"
+    declines. This guard nullifies a decline when the *only* signal is a
+    seniority keyword and the title doesn't actually carry that word AND the
+    reason doesn't cite a real trigger (manage / mentor / head of / direct reports).
     """
     if not decline_reason:
         return False
     r = decline_reason.lower()
-    if not any(k in r for k in ("senior", "sr.", "seniority")):
+    seniority_tokens = (
+        "senior", "sr.", "seniority", "lead", "staff", "principal", "architect"
+    )
+    if not any(k in r for k in seniority_tokens):
         return False
-    # The model often pads its reason with a generic laundry list
-    # ("Senior/Staff/Lead seniority"), so we don't trust the reason text to
-    # tell us whether a real trigger applies. Use the title instead: if the
-    # title has no Lead/Principal/Architect/Staff/Manager/Director word,
-    # the decline is bogus.
+    # If the reason cites a real people-management trigger, trust it.
+    management_tokens = (
+        "manage", "mentor", "direct report", "headcount", "performance review",
+        "head of", "people leader"
+    )
+    if any(k in r for k in management_tokens):
+        return False
+    # Otherwise check the title. If the title genuinely contains a
+    # people-management word (Manager/Director/Head of), keep the decline.
+    # Plain Lead/Staff/Principal/Architect/Senior in the title is NOT a trigger
+    # by itself — the prompt explicitly allows IC roles with those titles.
     t = (title or "").lower()
-    title_triggers = ("lead", "principal", "architect", "staff", "manager", "director", "head of")
-    if any(k in t for k in title_triggers):
+    hard_title_triggers = ("manager", "director", "head of", "vp ", "vice president")
+    if any(k in t for k in hard_title_triggers):
         return False
     return True
 

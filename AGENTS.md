@@ -13,6 +13,8 @@ If anything in `PLAN.md` contradicts this file, **this file wins** — open a PR
 - `PLAN.md` — design rationale. The *why* decisions were made.
 - `README.md` — install + usage for developers running the app locally.
 - `Resume_Tailoring_Instructions.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
+- `kb/README.md` — what lives under `kb/` and how each subdirectory is maintained.
+- `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never hand-add unverified entries.
 - `CLAUDE.md` — tiny stub that `@`-imports this file so Claude Code's auto-load still works. Don't edit it; edit this file.
 
 ---
@@ -25,14 +27,14 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and the active model lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: `qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` that bakes in the user's personal prompt stack (persona, formatting, knowledge). The gateway always sends a system message, which overrides the Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into scoring/tailoring/cover outputs. Bare `qwen3.5:9b` is the documented fallback if the custom variant isn't built — same base weights, same VRAM footprint, same quirks. All three task slots (score, tailor, cover) run the same hot model at `num_ctx=16384` (matching `OLLAMA_CONTEXT_LENGTH=16384`) with `keep_alive=-1` (load forever, matching `OLLAMA_KEEP_ALIVE=-1`) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: `qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` that bakes in the user's personal prompt stack (persona, formatting, knowledge). The gateway always sends a system message, which overrides the Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into scoring/tailoring/cover outputs. Bare `qwen3.5:9b` is the documented fallback if the custom variant isn't built — same base weights, same VRAM footprint, same quirks. All three task slots (score, tailor, cover) run the same hot model at `num_ctx=16384` (matching `OLLAMA_CONTEXT_LENGTH=16384`) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
   Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
   Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context; gateway sends num_ctx=16384 to match
-  Environment="OLLAMA_KEEP_ALIVE=-1"           # never unload; gateway also sends keep_alive=-1
+  Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload after 10m; per-call keep_alive=-1 from gateway pins model during active scans
   Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one model in VRAM at a time
   ```
   Changing any of these requires updating the matching gateway-level value (or vice versa) so JD truncation thresholds and the cold-start budget stay aligned.
@@ -83,10 +85,12 @@ src/jobhunt/
 │   ├── convert_resume_cmd.py  # P1
 │   ├── scan_cmd.py            # P2: ingest + score + cross-source dedupe
 │   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
+│   ├── add_cmd.py             # URL → ATS slug → config.toml (primary slug-acquisition surface)
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
-│   ├── discover_cmd.py        # `discover slugs`: auto-find ATS slugs from past results
+│   ├── discover_cmd.py        # legacy: harvest URLs + probe Greenhouse/Ashby/Lever/SmartRecruiters
+│   ├── _config_write.py       # atomic `.bak`-then-tmp-rename helper (shared by add, config seed, discover --apply)
 │   ├── db_cmd.py              # hidden internal
-│   └── config_cmd.py          # hidden internal
+│   └── config_cmd.py          # `config seed`, `config show`, `config calibrate`
 ├── resume/
 │   ├── parse_docx.py          # baseline .docx → verified.json + kb/profile/*.md
 │   └── render_docx.py         # tailored markdown → ATS-safe .docx
@@ -106,9 +110,10 @@ src/jobhunt/
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
 ├── analyze/                   # deterministic aggregations over the jobs DB (no LLM)
 │   └── certs.py               # cert keyword extractor + per-job tally
-├── discover/                  # probes external ATS APIs to auto-find slugs
+├── discover/                  # URL-extract + ATS-API probing for slug acquisition
 │   ├── slug_candidates.py     # pure name→slug normalizer (staffing-agency filter)
-│   └── probe.py               # async Greenhouse/Ashby probe + slug_probes cache
+│   ├── url_extract.py         # deterministic URL → (ats, slug, site, host) parser
+│   └── probe.py               # async Greenhouse/Ashby/Lever/SmartRecruiters probe + slug_probes cache
 ├── pipeline/                  # score, tailor, cover, audit, cover_validate
 │   ├── score.py
 │   ├── tailor.py              # enforces no-fabrication invariants
@@ -129,7 +134,8 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **six** commands. `db` and `config` are hidden internals.
+User-facing surface is **seven** commands. `db` and `config` are hidden internals
+(except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
 jobhunt convert-resume       # parse baseline .docx → kb/profile/
@@ -137,11 +143,13 @@ jobhunt scan                 # ingest GTA jobs + score
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
 jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
-jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
+jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor; prints `add` suggestion
+jobhunt add <URL>            # parse URL → write ATS slug to config.toml
 jobhunt list [--week N]      # pipeline view + weekly rollup
 jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
                              # cert frequency, trends, and fit verdicts
-jobhunt discover slugs       # probe Greenhouse/Ashby for ATS slugs of past companies
+jobhunt discover slugs       # legacy: harvest URLs in jobs DB + probe Greenhouse/Ashby
+jobhunt config seed --apply  # import kb/seeds/gta-employers.toml into config
 ```
 
 `analyze` is a deterministic, LLM-free aggregation surface — do not add an
@@ -176,7 +184,33 @@ predictable; `--limit 100` is the default run cap.
 shows up in `list` and re-applies are idempotent, then runs the normal
 tailor/cover/audit pipeline. `--no-score` skips the score pass (audit's
 coverage falls back to the title/JD intersect). `--force-robots` overrides
-the robots.txt check — personal-use single-shot only.
+the robots.txt check — personal-use single-shot only. After the pipeline
+completes, `_maybe_suggest_add` runs `url_extract` on the input URL and
+prints a `jobhunt add` nudge if the URL points at a recognized, ingestable
+ATS whose slug isn't already in config. Suppressed for iCIMS (recognized
+but not yet ingestable) and for already-configured slugs.
+
+`add` is the URL-first slug-acquisition path. Accepts any URL recognized by
+`url_extract` (Greenhouse, Lever, Ashby, SmartRecruiters, Workday), probes
+once to confirm (skipped for Workday — CXS handshake isn't worth the wiring),
+then appends to the matching `cfg.ingest.*` list via the shared
+`commands._config_write.write_config_atomically` helper. iCIMS URLs exit with
+code 2 and a "coming soon" message rather than being silently dropped.
+
+`config seed` reads `kb/seeds/gta-employers.toml` and additively merges
+verified slugs into `config.toml`. The seed list is **read-only at runtime**
+and only updated through `scripts/verify_seeds.py`, which probes every
+candidate before they're committed — this is what prevents shipping stale
+slugs (Shopify, 1Password, etc., which moved off Greenhouse and now 404).
+`--apply` requires explicit invocation; bare `jobhunt config seed` errors.
+
+All three writers (`discover slugs --apply`, `add`, `config seed --apply`)
+share `commands._config_write.write_config_atomically`. The helper produces
+a `.bak` snapshot then atomically renames a `.tmp` over the original, but
+**inline comments in `config.toml` are dropped** (tomli_w is not
+comment-preserving). Surface this in command output near any programmatic
+write so the user isn't surprised. The README repeats the warning at the
+config section.
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
@@ -221,10 +255,13 @@ top-level commands that touch scoring/listing/applying must call it too.
    post-processing layers (score clamp, cover validator + retry, audit), not
    by reasoning tokens. If a future task slot needs thinking, plumb it
    through as a per-call kwarg — don't flip the default.
-3. **Keep-alive + warm-up.** `keep_alive=-1` in the payload so the model
-   stays resident indefinitely (mirrors the server-side `OLLAMA_KEEP_ALIVE=-1`).
-   `scan_cmd._warm_model()` fires a tiny chat before the scoring loop so the
-   first real call doesn't pay cold-load on top of the 180 s gateway timeout.
+3. **Keep-alive + warm-up.** `keep_alive=-1` in the payload pins the model in
+   VRAM for the duration of an active run. The systemd-level
+   `OLLAMA_KEEP_ALIVE=10m` is the idle-unload fallback between scans, but the
+   per-call value is what Ollama uses while a request is in flight, so the
+   model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
+   before the scoring loop so the first real call doesn't pay cold-load on
+   top of the 180 s gateway timeout.
 4. **Truncate inputs** to fit `num_ctx` (default 16384 — matches
    `OLLAMA_CONTEXT_LENGTH=16384`). The score/tailor pipelines truncate
    description to `MAX_DESC_CHARS=14000` and policy to `MAX_POLICY_CHARS=6000`
@@ -237,12 +274,38 @@ top-level commands that touch scoring/listing/applying must call it too.
    and any "Familiar" skill in a non-Familiar category. Adding a new tailoring
    capability MUST keep these checks green.
 7. **Transferable-skill matching is in the score prompt.** `kb/prompts/score.md`
-   defines peer-tech families (React↔Vue↔Svelte, Express↔Fastify↔Koa,
-   Postgres↔MySQL↔SQLite, AWS↔GCP↔Azure, etc.) so closely-related experience
-   counts as matched, not as gaps. Auto-decline triggers are conservative:
-   "Senior" alone is **not** a decline; only Lead/Principal/Architect/Staff
-   *with* stated leadership responsibilities, 5+ year hard requirements, or
-   non-IC titles. The gap threshold is 4+ hard gaps.
+   defines peer-tech families refreshed for May 2026: frontend (React↔Vue↔
+   Svelte↔Angular↔SolidJS↔Preact), meta-frameworks (Next.js↔Remix↔Astro↔
+   SvelteKit↔Nuxt↔Qwik), JS/TS runtimes (Node↔Bun↔Deno), edge (Cloudflare
+   Workers↔Vercel Edge↔Lambda@Edge↔Deno Deploy), Node servers (Express↔
+   Fastify↔Koa↔NestJS↔Hono), ORMs (Prisma↔Drizzle↔Knex↔TypeORM↔Sequelize↔
+   Kysely), API patterns (REST↔tRPC; GraphQL stays a gap), relational DBs
+   (Postgres↔MySQL↔SQLite↔MariaDB↔CockroachDB), document/KV (MongoDB↔
+   DynamoDB↔Firestore↔Redis), vector DBs (Pinecone↔Weaviate↔pgvector↔
+   Qdrant↔Chroma↔Milvus), JS test runners (Jest↔Vitest↔Mocha↔Bun test), E2E
+   (Playwright↔Cypress↔Puppeteer↔WebdriverIO), cloud (AWS↔GCP↔Azure),
+   containers (Docker↔Podman), CI (GitHub Actions↔GitLab CI↔CircleCI↔
+   Buildkite↔Jenkins), CMS / e-commerce (Shopify↔BigCommerce↔WooCommerce↔
+   Medusa; Contentful↔Strapi↔Sanity↔Ghost↔Payload↔Storyblok), AI SDKs
+   (OpenAI↔Anthropic↔Bedrock↔Vertex AI↔Ollama), LLM orchestration
+   (LangChain↔LlamaIndex↔Haystack↔DSPy).
+
+   **Auto-decline triggers (May 2026, intentionally narrow):** Senior /
+   Lead / Staff / Principal / Architect titles are **not** declines on
+   their own — IC roles at those titles are valid. Auto-decline only fires
+   when the JD body explicitly names people-management responsibilities
+   (mentoring 4+ direct reports, owning headcount, performance reviews),
+   when the title is hard people-management (Manager/Director/Head of/VP),
+   or when years required ≥ 7 with no transferable bridge. The 4+ hard-gap
+   threshold requires at least one **Tier-1 ask** (phrasing like
+   "required", "5+ years of", "strong production experience with") —
+   vague "nice-to-haves" do not trigger.
+
+   **`pipeline.min_score` defaults to 55** (lowered from 65 in May 2026).
+   The 55-59 band is the "stretch, tailor required" zone where a strong
+   AI/LLM cover hook can break through — Casey's highest-leverage band
+   given his interview-rate situation. Raise back to 65 in config.toml if
+   the list gets noisy.
 
 ## Post-generation audit rules
 
@@ -287,7 +350,8 @@ to it without explicit discussion.
 5. **`config calibrate`** (hidden subcommand) prints interview-rate per score
    band from `applications`. Use after ≥20 applications to tune `pipeline.min_score`.
 6. **`pipeline.min_score`** is now set in `config.toml` under `[pipeline]`
-   (default 65). The `--min-score` CLI flag overrides it per run.
+   (default **55** as of May 2026, lowered from 65). The `--min-score` CLI
+   flag overrides it per run. See §"LLM call rules" item 7 for rationale.
 7. **One-page guarantee** — `tailor._shrink_to_one_page` enforces a hard
    single-page output via `render_docx.fits_one_page` (48-line budget,
    wrap-aware). The shrink ladder runs in this fixed order — adding new

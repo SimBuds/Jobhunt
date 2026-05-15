@@ -31,9 +31,13 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "Custom Jewelry Brand (Atelier Dacko)" in employers
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
-    # Familiar must stay separate.
-    assert "Python" in facts.skills_familiar
-    assert "Python" not in facts.skills_core
+    # Familiar must stay separate. Bucket layout per Resume_Tailoring_Instructions §2:
+    # Java/Spring Boot are Familiar (coursework-only); Python is Core (data_devops
+    # bucket) — Casey writes and operates this CLI in Python daily, not Familiar.
+    assert "Java" in facts.skills_familiar
+    assert "Spring Boot" in facts.skills_familiar
+    assert "Python" in facts.skills_data_devops
+    assert "Java" not in facts.skills_core
 
     # Round-trip via verified.json.
     out = tmp_path / "verified.json"

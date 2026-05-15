@@ -127,6 +127,12 @@ in five places, not just the prompt:
 
 1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.
    The tailoring prompt is constrained to only use facts from this file.
+   All skill buckets (`skills_core`, `skills_cms`, `skills_data_devops`, `skills_ai`,
+   `skills_familiar`) are **atomic lists** — one item per skill. `skills_ai` in
+   particular must not be a single run-on string; the ATS keyword matchers and the
+   audit's keyword-coverage check tokenize against atomic items. If `parse_docx.py`
+   produces a run-on for any bucket (it currently does for `skills_ai` when the
+   resume puts the AI skills on one line), patch by hand after `convert-resume`.
 2. **Schema-constrained output.** `kb/prompts/tailor.md` declares a JSON
    schema. Ollama's `format=<schema>` enforces shape at decode time.
 3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`:
@@ -141,6 +147,14 @@ in five places, not just the prompt:
    deterministic coverage (100 % → keep, 80–99 % → 89, 60–79 % → 79,
    < 60 % → 64). The LLM cannot inflate its own band by listing missing
    must-haves as matched.
+
+   **Tiny-denominator carve-out (May 2026):** when the LLM extracts fewer
+   than 3 must-haves total (matched + gaps < 3), the clamp is skipped and
+   the raw score stands. Adzuna's ~500-char snippets routinely yield 1-2
+   phrases; clamping a 1/2 coverage to cap-at-64 over-penalizes
+   signal-poor postings rather than reflecting real fit. Three or more
+   must-haves still get clamped — protects against the Pigment-style
+   regression where the model lists missing tech as matched.
 5. **Cover validator + retry.** `pipeline.cover_validate` catches banned
    phrases, structural violations, and unverified numeric claims;
    `pipeline.cover.write_cover_with_retry` re-prompts up to 3 times with the

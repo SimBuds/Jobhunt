@@ -169,6 +169,36 @@ def run(
 
     asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser))
 
+    if manual_mode and url is not None:
+        _maybe_suggest_add(cfg, url)
+
+
+def _maybe_suggest_add(cfg: Config, url: str) -> None:
+    """Print a one-line `jobhunt add` nudge when --url points at a recognized
+    ATS whose slug isn't already in config. Slug acquisition becomes a
+    byproduct of normal use this way. iCIMS is recognized by the URL extractor
+    but isn't ingestable, so suppress the nudge for it."""
+    from jobhunt.discover.url_extract import extract
+
+    extracted = extract(url)
+    if extracted is None:
+        return
+    if extracted.ats in ("icims",):
+        return
+    if extracted.ats == "workday":
+        if not extracted.host or not extracted.site:
+            return
+        config_value = f"{extracted.slug}:{extracted.host}:{extracted.site}"
+    else:
+        config_value = extracted.slug
+    existing = getattr(cfg.ingest, extracted.ats, None)
+    if existing is None or config_value in existing:
+        return
+    typer.echo(
+        f"\nnote: this URL is on {extracted.ats} (slug {config_value!r}) — "
+        f"run `jobhunt add {url}` to scan their full board on future runs."
+    )
+
 
 VALID_STATUSES = (
     "drafted",
@@ -621,6 +651,12 @@ def _record_application(
     conn = connect(cfg.paths.db_path)
     try:
         with conn:
+            # Re-upsert the job before writing the application so the FK target
+            # is guaranteed to exist. Defends against races with `scan --refresh`
+            # (which deletes unapplied jobs) and ad-hoc DB edits — the job is
+            # already in memory, and `applications` is the source of truth for
+            # history regardless of what `jobs` looks like.
+            upsert_job(conn, job)
             upsert_application(
                 conn,
                 application_id=str(uuid.uuid4()),

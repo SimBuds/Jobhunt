@@ -35,11 +35,13 @@ Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
 ### Skills Casey actually uses (Core / production)
 
-JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, Shopify (Liquid, custom themes), HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, local LLM hosting (Ollama, GPU optimization), prompt engineering, Stripe integration, Google Tag Manager.
+JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes), HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (q5_0 KV cache, flash attention), prompt engineering, Stripe integration, Google Tag Manager.
 
 ### Skills Casey is "Familiar" with (academic / light use)
 
-Java, Spring Boot, Python, Agile/Scrum, Headless Architecture, RESTful APIs, SEO, Figma. **Do not promote these to "Proficient" or "Strong."** They can be elevated honestly when the job requires them — see Section 4.
+Java, Spring Boot, MCP (Model Context Protocol) Servers, Agile/Scrum, Headless Architecture, Figma. **Do not promote these to "Proficient" or "Strong."** They can be elevated honestly when the job requires them — see Section 4.
+
+SEO is technical-only (audits, security hardening) and lives in work-history bullets, not as a top-line skill.
 
 ### Certifications and education
 
@@ -74,7 +76,8 @@ Do not invent new numbers. Do not change these numbers up or down to sound stron
 
 - No production Vue, Angular, FastAPI, Django, Flask, Laravel, Rails, Go, Rust, C#, .NET, PHP, Ruby experience.
 - No AmpScript, Salesforce Marketing Cloud, Apex, Lightning Web Components, or other Salesforce work.
-- No production Python (academic and tooling-side only).
+- No production Java or Spring Boot (academic coursework only). These are Familiar — do not promote to Core.
+- Python is daily tooling-side (this CLI tool is Python) but no large-team production Python app shipped. If a JD asks for "5+ years Python backend in production," be honest about the gap.
 - No Kubernetes, Terraform, AEM, Adobe Forms.
 - No mobile app shipping (academic only).
 - No team lead / staff engineer / architect title in software.
