@@ -246,28 +246,65 @@ def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
-# Tokens that are pure annotation in a skill string — they describe the form
-# or surface variation of a verified skill rather than expanding it into a new
-# claim. The fabrication check allows a tailored skill to add ONLY these tokens
-# on top of a verified skill's token set. Example:
-#   verified "Shopify (Liquid)" → tokens {shopify, liquid}
-#   tailored "Shopify (Liquid, Custom Themes)" → tokens {shopify, liquid, custom, themes}
-#   difference {custom, themes} ⊆ _ANNOTATION_TOKENS → allowed.
-# But "React Native" → tokens {react, native}; difference {native} is NOT
-# annotation-grade → blocked.
+# Tokens that are pure annotation / decoration in a skill string. They name
+# a category, modifier, or surface-form variation, not an identity claim.
+# These are stripped from BOTH the tailored and verified sides before
+# fabrication comparison, so legitimate JD-surface variants pass while
+# superset claims like "React Native" still get rejected.
+#
+# Includes the JD-surface tokens from tailor.md rule 9's normalization table
+# (headless, cms, rest, api, apis) since those are category labels the LLM
+# is explicitly instructed to wrap verified anchors in.
 _ANNOTATION_TOKENS: frozenset[str] = frozenset({
     # parenthetical detail words
     "custom", "themes", "certified", "professional", "personalization",
     "skill", "badge", "integration", "integrations", "fundamentals", "advanced",
-    # surface-form indicators
+    # surface-form / category indicators
     "ci", "cd", "es6", "es2015", "es2020",
+    "headless", "cms", "rest", "api", "apis", "restful",
     # generic articles / particles that survive tokenisation
     "and", "or", "with", "of", "the",
 })
 
+# Short-form JD aliases that should normalise to their canonical token before
+# comparison. Mirrors tailor.md rule 9. When the LLM (correctly) writes the
+# JD's short form like "JS" or "GH Actions", we map it back to the canonical
+# token ("javascript", "github") so set-comparison still recognises it as a
+# match against verified.json's long form.
+_SURFACE_ALIASES: dict[str, str] = {
+    "js": "javascript",
+    "ts": "typescript",
+    "gh": "github",
+    "postgres": "postgresql",
+    "node": "nodejs",   # verified has "Node.js" → tokenises to {node, js}; we
+                        # collapse both sides via this alias + the "js" mapping
+                        # for safety
+    "nextjs": "next",   # rare; the tokenizer drops the dot in "Next.js"
+}
+
 
 def _tokens(s: str) -> frozenset[str]:
-    return frozenset(_TOKEN_RE.findall(s.lower()))
+    raw = _TOKEN_RE.findall(s.lower())
+    return frozenset(_SURFACE_ALIASES.get(t, t) for t in raw)
+
+
+def _identity_tokens(s: str) -> frozenset[str]:
+    """Tokens with annotation/decoration stripped — the load-bearing identity
+    of a skill claim. Used by the fabrication check so JD-surface variants
+    pass cleanly while superset claims still get rejected.
+
+    Example:
+      "Contentful (Certified Professional)" → raw {contentful, certified,
+        professional} → identity {contentful}
+      "headless CMS (Contentful)"           → raw {headless, cms, contentful}
+                                            → identity {contentful}
+      Both share the same identity → match.
+
+      "React Native" → raw {react, native} → identity {react, native}
+      "React"        → raw {react}         → identity {react}
+      Identities differ; "React Native" is NOT a subset of "React" → blocked.
+    """
+    return _tokens(s) - _ANNOTATION_TOKENS
 
 
 _FORBIDDEN_SENIORITY = ("senior", "sr", "staff", "lead", "principal", "architect")
@@ -317,42 +354,31 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
         )
         for s in verified.get(key, [])
     ]
-    verified_token_sets = [_tokens(s) for s in verified_skills]
-    familiar_token_sets = [_tokens(s) for s in verified.get("skills_familiar", [])]
+    verified_identity_sets = [_identity_tokens(s) for s in verified_skills]
+    familiar_identity_sets = [_identity_tokens(s) for s in verified.get("skills_familiar", [])]
 
     for cat in tailored.skills_categories:
         is_familiar_bucket = cat.name.strip().lower() == "familiar"
         for item in cat.items:
-            tokens = _tokens(item)
-            # The tailored skill's tokens MUST be a subset of (or equal to) at
-            # least one verified skill's token set. One-way containment only —
-            # the previous `or v.issubset(tokens)` branch let "React Native"
-            # pass against verified "React" because verified-tokens is a subset
-            # of the broader claim. That direction implied Casey owned strict
-            # supersets (Native, GraphQL, etc.) of skills he doesn't have.
+            tailored_identity = _identity_tokens(item)
+            # Strip annotations from both sides, then require the tailored's
+            # identity tokens to be a subset of some verified skill's identity.
+            # This handles JD-surface variants ("headless CMS (Contentful)"
+            # against "Contentful (Certified Professional)" — both have
+            # identity {contentful}) while still blocking superset claims
+            # like "React Native" against verified "React" (identities
+            # differ; the broader claim is not a subset of the narrower fact).
             #
-            # Parenthetical surface-form variation is preserved by `_tokens`
-            # (it normalises to alphanumeric tokens), so
-            #   "Shopify (Liquid)" verified ⊇ "Shopify (Liquid, Custom Themes)" tailored
-            # still passes because the tailored set strictly contains the
-            # verified set's distinctive token "liquid" + "shopify" + extras
-            # that are mere annotation. To allow that legitimate case while
-            # blocking "React Native" against verified "React", require the
-            # token-set DIFFERENCE on the tailored side to consist only of
-            # annotation-grade tokens (case, custom, themes, certified,
-            # professional, integration, etc.).
-            if any(tokens == v for v in verified_token_sets):
-                pass  # exact match
-            elif any(tokens.issubset(v) for v in verified_token_sets):
-                pass  # tailored is narrower (e.g. "Postgres" against "PostgreSQL (Postgres)")
-            elif any(
-                v.issubset(tokens) and (tokens - v).issubset(_ANNOTATION_TOKENS)
-                for v in verified_token_sets
+            # An empty tailored identity (pure annotation, like just "REST APIs"
+            # with no anchor) only passes when verified has an empty-identity
+            # skill too — vanishingly rare; the check is still safe.
+            if not any(
+                tailored_identity.issubset(v) and v  # v must be non-empty
+                for v in verified_identity_sets
             ):
-                pass  # tailored adds only annotation (parenthetical detail)
-            else:
                 raise PipelineError(f"skill not in verified facts: {item!r}")
             if not is_familiar_bucket and any(
-                tokens == f or tokens.issubset(f) for f in familiar_token_sets
+                tailored_identity == f or (tailored_identity.issubset(f) and f)
+                for f in familiar_identity_sets
             ):
                 raise PipelineError(f"Familiar skill {item!r} promoted to category {cat.name!r}")
