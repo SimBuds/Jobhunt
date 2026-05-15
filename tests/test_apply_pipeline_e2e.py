@@ -51,6 +51,7 @@ def _make_audit(verdict: str) -> AuditResult:
         missing_must_haves=[],
         fabrication_flags=[],
         cover_letter_violations=[],
+        alignment_flags=[],
         verdict=verdict,
     )
 

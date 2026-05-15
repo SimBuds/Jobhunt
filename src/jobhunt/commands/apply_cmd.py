@@ -31,7 +31,7 @@ from jobhunt.db import connect, set_decline_reason, upsert_application, upsert_j
 from jobhunt.errors import BrowserError, IngestError, JobHuntError, PipelineError
 from jobhunt.ingest.manual import build_job_from_text, fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
-from jobhunt.pipeline.audit import audit, write_audit
+from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult, prompt_hash, score_job
 from jobhunt.pipeline.tailor import TailoredResume, tailor_resume
@@ -95,6 +95,14 @@ def run(
             "Use when a page won't render or sits behind a login wall."
         ),
     ),
+    include_borderline: bool = typer.Option(
+        False, "--include-borderline",
+        help=(
+            "With --best: also surface up to 10 stretch jobs in the "
+            "[min_score-10, min_score) band, labelled `stretch`. Lets you "
+            "pick stretch applications when the high-fit list is dry."
+        ),
+    ),
 ) -> None:
     if set_status is not None:
         if job_id is None:
@@ -153,7 +161,11 @@ def run(
             elif top is not None:
                 jobs = _resolve_top_n(conn, n=top, min_score=effective_min_score)
             else:
-                jobs = _resolve_interactive(conn, min_score=effective_min_score)
+                jobs = _resolve_interactive(
+                    conn,
+                    min_score=effective_min_score,
+                    include_borderline=include_borderline,
+                )
         finally:
             conn.close()
 
@@ -372,23 +384,57 @@ def _resolve_top_n(conn: sqlite3.Connection, *, n: int, min_score: int) -> list[
     return list(conn.execute(sql, params))
 
 
-def _resolve_interactive(conn: sqlite3.Connection, *, min_score: int) -> list[sqlite3.Row]:
+def _resolve_interactive(
+    conn: sqlite3.Connection,
+    *,
+    min_score: int,
+    include_borderline: bool = False,
+) -> list[sqlite3.Row]:
     sql, params = _unapplied_top_query(min_score, 10)
     rows = list(conn.execute(sql, params))
-    if not rows:
+
+    borderline: list[sqlite3.Row] = []
+    if include_borderline:
+        borderline_floor = max(0, min_score - 10)
+        borderline_sql = (
+            "SELECT j.*, s.score AS score FROM jobs j "
+            "JOIN scores s ON s.job_id = j.id "
+            "LEFT JOIN applications a ON a.job_id = j.id "
+            "WHERE s.score >= ? AND s.score < ? "
+            "  AND (j.decline_reason IS NULL OR j.decline_reason = '') "
+            "  AND a.id IS NULL "
+            "ORDER BY s.score DESC, j.posted_at DESC "
+            "LIMIT 10"
+        )
+        borderline = list(conn.execute(borderline_sql, (borderline_floor, min_score)))
+
+    if not rows and not borderline:
         return rows
-    typer.echo(f"top {len(rows)} unapplied job(s) with score >= {min_score}:\n")
-    for i, r in enumerate(rows, start=1):
-        typer.echo(f"  [{i:>2}] {r['score']:>3}  {r['title']} @ {r['company']}")
-        typer.echo(f"        {r['location']} — {r['id']}")
+    if rows:
+        typer.echo(f"top {len(rows)} unapplied job(s) with score >= {min_score}:\n")
+        for i, r in enumerate(rows, start=1):
+            typer.echo(f"  [{i:>2}] {r['score']:>3}  {r['title']} @ {r['company']}")
+            typer.echo(f"        {r['location']} — {r['id']}")
+    if borderline:
+        offset = len(rows)
+        typer.echo(
+            f"\nstretch ({max(0, min_score - 10)}–{min_score - 1}) — "
+            f"{len(borderline)} job(s):\n"
+        )
+        for i, r in enumerate(borderline, start=offset + 1):
+            typer.echo(
+                f"  [{i:>2}] {r['score']:>3}  {r['title']} @ {r['company']}  (stretch)"
+            )
+            typer.echo(f"        {r['location']} — {r['id']}")
     typer.echo("")
     raw = typer.prompt(
         "Pick numbers to apply to (e.g. '1,3,7' or '1-5'); blank to cancel",
         default="",
         show_default=False,
     )
-    picks = _parse_picks(raw, len(rows))
-    return [rows[i - 1] for i in picks]
+    combined = list(rows) + list(borderline)
+    picks = _parse_picks(raw, len(combined))
+    return [combined[i - 1] for i in picks]
 
 
 def _parse_picks(raw: str, max_n: int) -> list[int]:
@@ -423,15 +469,37 @@ def _parse_picks(raw: str, max_n: int) -> list[int]:
 
 async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool) -> None:
     import json as _json
+    from collections import Counter
 
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     verified: dict[str, object] = {}
     if verified_path.is_file():
         verified = _json.loads(verified_path.read_text(encoding="utf-8"))
 
+    verdicts: list[str] = []
+    violation_topics: Counter[str] = Counter()
     for row in rows:
         job = _row_to_job(row)
-        await _apply_one(cfg, job, verified=verified, no_browser=no_browser)
+        verdict, topics = await _apply_one(cfg, job, verified=verified, no_browser=no_browser)
+        if verdict is not None:
+            verdicts.append(verdict)
+            for t in topics:
+                violation_topics[t] += 1
+
+    # End-of-loop summary — only useful when more than one job ran.
+    if len(verdicts) > 1:
+        ship = sum(1 for v in verdicts if v == "ship")
+        revise = sum(1 for v in verdicts if v == "revise")
+        block = sum(1 for v in verdicts if v == "block")
+        typer.echo(
+            f"\n=== summary: {len(verdicts)} job(s) — "
+            f"{ship} ship, {revise} revise, {block} block ==="
+        )
+        if violation_topics:
+            top = ", ".join(
+                f"{topic}×{n}" for topic, n in violation_topics.most_common(5)
+            )
+            typer.echo(f"top warning categories: {top}")
 
 
 async def _apply_one(
@@ -440,7 +508,7 @@ async def _apply_one(
     *,
     verified: dict[str, object],
     no_browser: bool,
-) -> None:
+) -> tuple[str | None, list[str]]:
     """Run the tailor → cover → audit → render → autofill → DB pipeline for one job.
 
     Side effects:
@@ -448,6 +516,11 @@ async def _apply_one(
       - on `block` verdict: returns early after writing audit.json (no docs);
       - launches a headed browser unless `no_browser` is set or job has no URL;
       - upserts an `applications` row.
+
+    Returns (verdict, violation_topics) for end-of-loop summarisation. Returns
+    (None, []) when the job failed before producing an audit (tailor/cover error)
+    so the caller can skip it cleanly. Topics are short coarse-grained labels
+    like "fabrication", "cover-violation", "coverage", "alignment".
     """
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -459,7 +532,7 @@ async def _apply_one(
         tailored = await tailor_resume(cfg, job)
     except JobHuntError as e:
         typer.echo(f"    ! tailor failed: {e}", err=True)
-        return
+        return None, []
 
     typer.echo("    … writing cover letter (LLM, ~30s)")
     try:
@@ -473,7 +546,7 @@ async def _apply_one(
         )
     except JobHuntError as e:
         typer.echo(f"    ! cover letter failed: {e}", err=True)
-        return
+        return None, []
     if cover_attempts > 1:
         n = len(cover_violations)
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
@@ -494,22 +567,28 @@ async def _apply_one(
         )
     except PipelineError as e:
         typer.echo(f"    ! audit failed: {e}", err=True)
-        return
+        return None, []
 
     audit_path = write_audit(out_dir, audit_result)
     typer.echo(
         f"    audit: verdict={audit_result.verdict} "
         f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
         f"missing={len(audit_result.missing_must_haves)} "
-        f"cover_violations={len(audit_result.cover_letter_violations)}"
+        f"cover_violations={len(audit_result.cover_letter_violations)} "
+        f"alignment={len(audit_result.alignment_flags)}"
     )
+
+    topics = _audit_topics(audit_result)
+
     if audit_result.verdict == "block":
         for flag in audit_result.fabrication_flags:
             typer.echo(f"    BLOCK: {flag}", err=True)
         typer.echo(f"    + {audit_path.name} (see for details)")
-        return
+        return audit_result.verdict, topics
     if audit_result.verdict == "revise":
         for v in audit_result.cover_letter_violations:
+            typer.echo(f"    revise: {v}", err=True)
+        for v in audit_result.alignment_flags:
             typer.echo(f"    revise: {v}", err=True)
         if audit_result.missing_must_haves:
             typer.echo(
@@ -529,6 +608,27 @@ async def _apply_one(
 
     status = _confirm_submission_status(plan_path, browser_attempted=not no_browser and bool(job.url))
     _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
+    return audit_result.verdict, topics
+
+
+def _audit_topics(audit_result: AuditResult) -> list[str]:
+    """Coarse-grained categorical labels for end-of-loop summarisation.
+    One entry per category that fired on this audit — no deduping needed at
+    the call site since Counter handles aggregation.
+    """
+    topics: list[str] = []
+    if audit_result.fabrication_flags:
+        topics.append("fabrication")
+    if audit_result.cover_letter_violations:
+        topics.append("cover-violation")
+    if (
+        audit_result.keyword_coverage_pct is not None
+        and audit_result.keyword_coverage_pct < 70
+    ):
+        topics.append("coverage")
+    if audit_result.alignment_flags:
+        topics.append("alignment")
+    return topics
 
 
 def _render_artifacts(

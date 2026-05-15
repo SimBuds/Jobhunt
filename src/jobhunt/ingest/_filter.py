@@ -34,16 +34,24 @@ GTA_CITIES = (
     "kitchener",
     "cambridge",
     "guelph",
+    # Barrie (~90 km north of Toronto, well within the 100 km radius).
+    "barrie",
 )
 
 _NON_CANADA_REMOTE = re.compile(
     r"\b(us(a)?|united states|emea|europe|uk|asia|latam|anywhere)\b", re.IGNORECASE
 )
-# Canada hints. The "on" province code only counts when it appears as a
-# comma-delimited token (e.g. "Remote, ON") — never as the English word in
-# "Remote (on-call) — US", which previously slipped through as Canadian.
-_CANADA_HINT = re.compile(
-    r"(?:\b(?:canada|canadian|ontario|toronto|gta|est|eastern\s+time)\b"
+# Strong Canada hints — any one of these is sufficient.
+_CANADA_STRONG = re.compile(
+    r"\b(?:canada|canadian|ontario|toronto|gta)\b", re.IGNORECASE
+)
+# Weak Canada hints — "EST"/"Eastern Time"/the "on" province code. May 2026:
+# these are too noisy to act on alone (US Eastern Time is also EST; "Remote
+# (Eastern Time, US-only)" was being accepted as Canadian). Require BOTH a
+# weak hint AND no non-Canada anchor in the same string before treating as
+# Canada-eligible.
+_CANADA_WEAK = re.compile(
+    r"(?:\b(?:est|eastern\s+time)\b"
     r"|(?:^|,\s*|\(\s*)on(?=\s*(?:,|\)|$|\s+canada)))",
     re.IGNORECASE,
 )
@@ -58,10 +66,17 @@ def is_gta_eligible(location: str | None) -> bool:
         return True
     if "remote" not in loc:
         return False
-    if _CANADA_HINT.search(loc):
+    # Strong Canada hint — accept.
+    if _CANADA_STRONG.search(loc):
         return True
+    # Any non-Canada anchor wins over a weak hint. "Remote (Eastern Time, US)"
+    # has both "eastern time" and "US" — the latter must dominate.
     if _NON_CANADA_REMOTE.search(loc):
         return False
+    # Weak hint with no non-Canada anchor — accept. "Remote, EST" is
+    # legitimately Canadian here.
+    if _CANADA_WEAK.search(loc):
+        return True
     # Bare "Remote" with no country qualifier — too ambiguous, skip.
     return False
 
