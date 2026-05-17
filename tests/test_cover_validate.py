@@ -307,3 +307,66 @@ def test_fabrication_watchlist_but_i_dont_negation_suppressed(verified: dict) ->
     assert not any(
         "pinecone" in v.lower() and "unverified" in v.lower() for v in violations
     )
+
+
+def test_concepts_defensive_phrasing_flagged(verified: dict) -> None:
+    """Phase 8 regression: cover paragraph 3 leaked 'I have also worked with
+    GraphQL concepts in my data layer' on the Targeted Talent React Developer
+    role. The cover prompt forbids volunteering unverified tech, but the
+    'X concepts in my Y' framing slipped past the rather-than / coming-from
+    regex. New _DEFENSIVE_PATTERNS entry catches it structurally.
+    """
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2]
+        + " I have also worked with GraphQL concepts in my data layer."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("concepts" in v.lower() for v in violations)
+
+
+def test_concepts_phrasing_exposure_variant_flagged(verified: dict) -> None:
+    """Other phrasings the same pattern should catch: 'exposure to X concepts',
+    'familiarity with X concepts', 'understanding of X concepts'."""
+    cover = _good_cover()
+    cover.body[2] = cover.body[2] + " I have exposure to Kubernetes concepts."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("concepts" in v.lower() for v in violations)
+
+
+def test_underscore_joined_tech_token_not_fragmented(verified: dict) -> None:
+    """Phase 9 regression: `q5_0` is a verified KV-cache quantization name in
+    skills_ai. The digit-cluster regex used to fragment it into `q5` + `_` +
+    `0` and flag the trailing `0` as an unverified number. The boundary
+    class now includes `_` so the digit `0` inside `q5_0` is preceded by `_`
+    and not matched. Legitimate standalone `0` still flags."""
+    cover = _good_cover()
+    cover.body[2] = (
+        cover.body[2]
+        + " I host local LLMs with Ollama using q5_0 KV cache and flash attention."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    # The '0' inside 'q5_0' must NOT be flagged.
+    assert not any("unverified number: '0'" in v for v in violations)
+
+
+def test_standalone_zero_still_flagged_when_unverified(verified: dict) -> None:
+    """Sanity: the boundary fix must not silence legitimate unverified-number
+    detection. A bare '0' surrounded by whitespace/punctuation still flags."""
+    cover = _good_cover()
+    cover.body[2] = cover.body[2] + " I shipped 0 regressions in production."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("unverified number" in v.lower() and "'0'" in v for v in violations)
+
+
+def test_legitimate_concepts_usage_not_flagged(verified: dict) -> None:
+    """The pattern should fire only on 'worked with / exposure to / familiar
+    with X concepts'. Legitimate uses of 'concepts' in other framings (e.g.
+    discussing concepts a project taught) should pass."""
+    cover = _good_cover()
+    cover.body[1] = (
+        cover.body[1]
+        + " The migration taught me concepts that translate to any CMS."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("concepts" in v.lower() for v in violations)

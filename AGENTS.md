@@ -273,6 +273,28 @@ top-level commands that touch scoring/listing/applying must call it too.
    `verified.json`, any skill not in `verified.json` (paren-substring tolerated),
    and any "Familiar" skill in a non-Familiar category. Adding a new tailoring
    capability MUST keep these checks green.
+
+   **Deterministic retry on violation (May 2026).** `_enforce_no_fabrication`
+   raises `FabricationError` (a `PipelineError` subclass) carrying structured
+   `FabricationViolation(kind, detail)` records. `tailor_resume_with_retry`
+   in `pipeline/tailor.py` catches that error, builds a kind-specific
+   correction hint via `_format_tailor_revision_hint` (mirrors
+   `pipeline.cover.write_cover_with_retry`), appends it to the user prompt,
+   and re-runs the LLM up to `cfg.pipeline.tailor_retry_attempts` (default
+   3) times. After the final failed attempt, the loop re-raises so
+   `apply_cmd` surfaces the failure and skips the job — retry is recovery,
+   not relaxation, and a fabricating LLM still gets rejected. Use this
+   entry point in `apply_cmd`; tests and one-shot tooling can still call
+   the legacy `tailor_resume` for a single attempt.
+
+   **Retry temperature (Phase 9).** `_tailor_once` forces `temperature=0`
+   when a `revisions` hint is non-empty (i.e. attempts 2+). At the
+   frontmatter default (0.3) qwen kept re-sampling the same JD-mirrored
+   skill (Targeted Talent JDs that say "Redux required" had qwen producing
+   Redux on all 3 attempts despite the corrective hint). At temp=0 the
+   model deterministically obeys the "REMOVE 'Redux'" instruction. First
+   attempt still uses the frontmatter temperature so legitimate creative
+   tailoring isn't punished.
 7. **Transferable-skill matching is in the score prompt.** `kb/prompts/score.md`
    defines peer-tech families refreshed for May 2026: frontend (React↔Vue↔
    Svelte↔Angular↔SolidJS↔Preact), meta-frameworks (Next.js↔Remix↔Astro↔
@@ -369,6 +391,22 @@ to it without explicit discussion.
      `though i haven't` so legitimate disclaiming context suppresses the
      watchlist (a cover saying "However, I haven't worked with Kubernetes"
      no longer fires the Kubernetes fabrication flag).
+   - `_DEFENSIVE_PATTERNS` extended with the `'X concepts in/of/with'`
+     regex (Phase 8) — catches "I have also worked with GraphQL concepts
+     in my data layer" framing that slipped past the earlier
+     rather-than / coming-from patterns. Triggered by any of
+     `worked with`, `experience in/with`, `exposure to`, `familiarity with`,
+     `familiar with`, `knowledge of`, `understanding of` followed by a
+     tech token + `concepts`. Legitimate uses ("The migration taught me
+     concepts that…") pass because they don't open with the watch-listed
+     verb phrase.
+   - **Digit-cluster boundary fix (Phase 9).** `_DIGIT_CLUSTER_RE` now
+     excludes `_` on both sides of the cluster so underscore-joined tech
+     tokens like `q5_0` (KV-cache quantization name, verified in
+     `skills_ai`) stay atomic. Without this, `q5_0` fragments into
+     `q5` + `_` + `0`, the trailing `0` gets flagged as an unverified
+     number, and the cover ships with a spurious `revise` verdict.
+     Legitimate standalone `0` (e.g. "0 regressions") still flags.
    Two preprocess steps run before matching to defang model quirks:
    - **Apostrophe normalization** — `_normalize()` collapses curly/smart
      apostrophes (U+2019 and variants) to ASCII `'` before banned-phrase /
@@ -416,6 +454,17 @@ to it without explicit discussion.
    `_enforce_no_fabrication` (`pipeline/tailor.py`) accepts these surface
    variants via the `_ANNOTATION_TOKENS` allowlist while still rejecting
    superset claims like "React Native" against verified "React".
+
+9. **Lead-category size cap** (`pipeline/tailor._cap_lead_category_size`).
+   The tailor prompt rule 10 caps the first skills category at 6-10 items,
+   but live runs showed qwen3.5:9b obeyed that only ~38% of the time
+   (5/8 outputs had 11-12 items in the lead). Phase 9 adds deterministic
+   enforcement: after `_complete_familiar_bucket` and before
+   `_shrink_to_one_page`, any items past index 10 in the lead category
+   are prepended to the next non-Familiar category (preserving JD-priority
+   ordering) — or, if the only secondary is Familiar, moved to a new
+   "Additional" bucket inserted before Familiar. Verified skills are
+   never dropped, just demoted to non-lead position.
 
 ## Testing
 

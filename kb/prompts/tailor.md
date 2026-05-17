@@ -58,7 +58,7 @@ Hard rules (from kb/policies/tailoring-rules.md):
      Reorder clauses, swap the verb, lead with the JD-relevant outcome.
    - When the JD names a verified tech in a different surface form (e.g.
      "JS" vs "JavaScript", "GH Actions" vs "GitHub Actions CI/CD",
-     "Postgres" vs "PostgreSQL", "headless CMS" vs "Contentful"), use the
+     "Postgres" vs "PostgreSQL", "Headless CMS" vs "Contentful"), use the
      JD's exact surface form in the rewritten bullet so ATS keyword
      matchers latch on. Same fact, JD's wording.
    - Lead each role's first bullet with the verified accomplishment most
@@ -117,15 +117,16 @@ Hard rules (from kb/policies/tailoring-rules.md):
    | Postgres | PostgreSQL | "Postgres" |
    | GH Actions | GitHub Actions CI/CD | "GH Actions" |
    | CI/CD | GitHub Actions CI/CD | "CI/CD (GitHub Actions)" |
-   | headless CMS | Contentful (Certified Professional) | "headless CMS (Contentful)" |
+   | Headless CMS | Contentful (Certified Professional) | "Headless CMS (Contentful)" |
    | REST APIs | RESTful APIs | "REST APIs" |
    | Node | Node.js | "Node" |
 
    Same fact; the JD's wording. This rule applies inside `bullets`, `summary`,
    and `skills_categories.items`. Do NOT invert it — do not use the JD form
    if `verified.json` has no underlying fact.
-10. **Skills-category priority.** The first category in `skills_categories`
-    MUST be the one most relevant to the JD's primary stack. Examples:
+10. **Skills-category priority and size.** The first category in
+    `skills_categories` MUST be the one most relevant to the JD's primary
+    stack. Examples:
     - Frontend role → first category named e.g. `Frontend Engineering`,
       `Frontend & UI`, or `JavaScript & React`.
     - Backend role → first category named e.g. `Backend & APIs` or
@@ -135,6 +136,21 @@ Hard rules (from kb/policies/tailoring-rules.md):
     The `Familiar` bucket is ALWAYS last. Item order *within* the first
     category surfaces the JD's specific keywords first. This is what
     survives the AI-screener's first-200-token budget.
+
+    **Per-category size limits** (May 2026). Do NOT cram every verified
+    Core/DevOps skill into the lead category — a 16-item lead reads like a
+    keyword wall to a human reader and the ATS-screener already scores fine
+    at 8 items.
+    - First (most-JD-relevant) category: **6–10 items.**
+    - Secondary categories: **4–8 items.**
+    - `Familiar` bucket: **at least 4 items** (the shrink ladder may trim
+      below this only when the resume otherwise overflows the page).
+
+    When the JD spans multiple stacks, split skills across two or three
+    categories rather than dumping them all in the lead. Example for a
+    full-stack role: `Frontend & React` (6–8 items) + `Backend & APIs`
+    (6–8 items) + `Data & DevOps` (4–6 items) + `AI & LLM Tooling` (3
+    items) + `Familiar` (4 items).
 
 ## USER
 # Verified facts (source of truth — do not deviate)

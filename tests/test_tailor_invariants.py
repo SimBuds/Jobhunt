@@ -201,28 +201,39 @@ def test_jd_surface_form_short_aliases_accepted():
 
 
 def test_rest_apis_surface_form_accepted():
-    """'REST APIs' and 'RESTful APIs' have the same identity (both reduce to
-    {} after stripping rest/api/apis/restful annotations, and the empty-vs-
-    empty case is rare; in practice the tailor lands tokens through the
-    verified anchor). Verify 'REST APIs' against verified 'RESTful APIs'."""
+    """JD-surface 'REST APIs' must match verified 'RESTful APIs' via the
+    rest→restful alias. Both have identity {restful} after alias normalisation
+    and api/apis annotation stripping."""
     verified_rest = {
         **VERIFIED,
         "skills_core": ["JavaScript", "TypeScript", "React", "RESTful APIs"],
     }
     ok = _make(
         skills_categories=[
-            # An anchor token must accompany — here, the bullet would list
-            # "REST APIs (Stripe, HubSpot)" or similar. Pure "REST APIs" with
-            # no anchor would land as identity={} which is rejected.
-            TailoredCategory("Backend", ["REST APIs (Stripe)"]),
+            TailoredCategory("Backend", ["REST APIs"]),
             TailoredCategory("Familiar", ["Java"]),
         ]
     )
-    # "REST APIs (Stripe)" identity = {stripe} after stripping rest/apis. Need
-    # a verified skill containing "stripe" — it's not in VERIFIED. So this
-    # particular case would fail — which is correct. Test passes by raising.
-    with pytest.raises(PipelineError, match="not in verified"):
-        _enforce_no_fabrication(ok, verified_rest)
+    _enforce_no_fabrication(ok, verified_rest)
+
+
+def test_rest_apis_does_not_trigger_familiar_promotion():
+    """Regression: when the LLM writes 'REST APIs' in a non-Familiar category,
+    the empty-identity Familiar check used to falsely fire (any empty set is
+    a subset of every Familiar identity). Verify a tailored 'REST APIs' in
+    a Backend category passes when verified has 'RESTful APIs' in Core."""
+    verified_rest = {
+        **VERIFIED,
+        "skills_core": ["JavaScript", "TypeScript", "React", "RESTful APIs"],
+        "skills_familiar": ["Java", "Spring Boot"],
+    }
+    ok = _make(
+        skills_categories=[
+            TailoredCategory("Frontend & CMS", ["REST APIs", "JavaScript"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    _enforce_no_fabrication(ok, verified_rest)
 
 
 def test_rejects_typescript_react_combo_when_verified_only_has_one():
@@ -305,6 +316,81 @@ def test_try_drop_weakest_bullet_falls_through_to_present_when_no_other_spare():
     assert _try_drop_weakest_bullet(t) is True
     assert len(present_role.bullets) == 1
     assert len(older_role.bullets) == 1
+
+
+def test_cap_lead_category_at_10_overflows_to_secondary():
+    """Phase 9 deterministic enforcement: when the LLM stuffs 12 items into
+    the lead category (qwen ignored the 6-10 prompt rule), the post-process
+    must trim to 10 and push the overflow into the second non-Familiar
+    category — not drop the verified skills."""
+    from jobhunt.pipeline.tailor import _cap_lead_category_size
+
+    tailored = TailoredResume(
+        summary="x",
+        skills_categories=[
+            TailoredCategory(
+                "Frontend & CMS",
+                [
+                    "React", "Next.js", "JavaScript", "TypeScript", "HTML5",
+                    "CSS3", "Shopify", "HubSpot", "WordPress", "Contentful",
+                    "REST", "GH Actions",  # 12 items, last 2 are overflow
+                ],
+            ),
+            TailoredCategory("Backend & Data", ["Node", "Express", "Postgres"]),
+            TailoredCategory("Familiar", ["Java", "Spring Boot"]),
+        ],
+        roles=[], certifications=[], education=[], coursework=[], model="test",
+    )
+    _cap_lead_category_size(tailored)
+    assert len(tailored.skills_categories[0].items) == 10
+    # Overflow lands at the front of the second category (above its
+    # pre-existing items so JD-primary ranking is preserved).
+    secondary = tailored.skills_categories[1].items
+    assert secondary[0] == "REST"
+    assert secondary[1] == "GH Actions"
+    assert "Node" in secondary  # original items still there
+
+
+def test_cap_lead_category_creates_additional_when_no_secondary():
+    """Edge case: lead overflows but the only other category is Familiar.
+    The cap must create an 'Additional' bucket inserted before Familiar
+    rather than polluting Familiar with verified-Core items."""
+    from jobhunt.pipeline.tailor import _cap_lead_category_size
+
+    tailored = TailoredResume(
+        summary="x",
+        skills_categories=[
+            TailoredCategory(
+                "Frontend & UI",
+                ["React"] * 12,  # 12 items, no secondary non-Familiar bucket
+            ),
+            TailoredCategory("Familiar", ["Java"]),
+        ],
+        roles=[], certifications=[], education=[], coursework=[], model="test",
+    )
+    _cap_lead_category_size(tailored)
+    assert len(tailored.skills_categories[0].items) == 10
+    names = [c.name for c in tailored.skills_categories]
+    assert names == ["Frontend & UI", "Additional", "Familiar"]
+    assert len(tailored.skills_categories[1].items) == 2  # the 2 overflow
+
+
+def test_cap_lead_category_no_op_when_already_under_cap():
+    """No-op path: lead has 8 items, no movement happens."""
+    from jobhunt.pipeline.tailor import _cap_lead_category_size
+
+    tailored = TailoredResume(
+        summary="x",
+        skills_categories=[
+            TailoredCategory("Frontend & UI", ["React"] * 8),
+            TailoredCategory("Familiar", ["Java"]),
+        ],
+        roles=[], certifications=[], education=[], coursework=[], model="test",
+    )
+    before = [(c.name, list(c.items)) for c in tailored.skills_categories]
+    _cap_lead_category_size(tailored)
+    after = [(c.name, list(c.items)) for c in tailored.skills_categories]
+    assert before == after
 
 
 def test_shrink_to_one_page_trims_familiar_first():

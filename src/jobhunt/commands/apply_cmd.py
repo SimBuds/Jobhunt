@@ -34,7 +34,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult, prompt_hash, score_job
-from jobhunt.pipeline.tailor import TailoredResume, tailor_resume
+from jobhunt.pipeline.tailor import TailoredResume, tailor_resume_with_retry
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
 
@@ -529,10 +529,16 @@ async def _apply_one(
 
     typer.echo("    … tailoring resume (LLM, ~30–60s)")
     try:
-        tailored = await tailor_resume(cfg, job)
+        tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
+            cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
+        )
     except JobHuntError as e:
         typer.echo(f"    ! tailor failed: {e}", err=True)
         return None, []
+    if tailor_attempts > 1:
+        n = len(tailor_violations)
+        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
+        typer.echo(f"    tailor: {tailor_attempts} attempts ({tag})")
 
     typer.echo("    … writing cover letter (LLM, ~30s)")
     try:
@@ -591,8 +597,17 @@ async def _apply_one(
         for v in audit_result.alignment_flags:
             typer.echo(f"    revise: {v}", err=True)
         if audit_result.missing_must_haves:
+            # Cap the printed list to keep terminal output scannable; the full
+            # set is always in audit.json on disk.
+            preview = audit_result.missing_must_haves[:5]
+            tail = (
+                f" (+{len(audit_result.missing_must_haves) - 5} more)"
+                if len(audit_result.missing_must_haves) > 5
+                else ""
+            )
             typer.echo(
-                f"    revise: {len(audit_result.missing_must_haves)} JD must-haves not in resume "
+                f"    revise: {len(audit_result.missing_must_haves)} JD must-have(s) "
+                f"not in resume — {', '.join(preview)}{tail} "
                 f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
                 err=True,
             )
