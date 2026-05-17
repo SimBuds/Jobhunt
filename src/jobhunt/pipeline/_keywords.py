@@ -79,6 +79,27 @@ for _members in PEER_FAMILIES.values():
         _PEER_INDEX[_m] = _members
 
 
+def peer_family_of(verified_skill: str) -> frozenset[str] | None:
+    """Return the peer family (frozenset of member techs) that `verified_skill`
+    belongs to, or None if it isn't in any registered family.
+
+    Resolves parenthetical detail at lookup time:
+      "PostgreSQL (Postgres)" → looks up "postgresql"
+      "Shopify (Liquid)"      → falls back to "shopify"
+
+    Phase 10.1: audit's `_extract_must_haves_from_jd` uses this to dedupe
+    peer-broadened additions — if AWS is already directly matched, suppress
+    adding Azure as an inferred must-have via the `cloud_provider` family.
+    """
+    key = verified_skill.lower().strip()
+    key = re.sub(r"\s*\(.*?\)\s*", "", key).strip()
+    family = _PEER_INDEX.get(key)
+    if family is None:
+        first_token = key.split()[0] if key else ""
+        family = _PEER_INDEX.get(first_token)
+    return family
+
+
 def peer_match(verified_skill: str, jd_blob_lower: str) -> bool:
     """True if `jd_blob_lower` mentions any peer of `verified_skill` (per
     PEER_FAMILIES), OR if it mentions `verified_skill` itself. The JD blob
@@ -93,14 +114,7 @@ def peer_match(verified_skill: str, jd_blob_lower: str) -> bool:
     that case the caller falls back to plain substring presence via
     `phrase_present`.
     """
-    key = verified_skill.lower().strip()
-    # Strip parenthetical detail: "PostgreSQL (Postgres)" → "postgresql".
-    key = re.sub(r"\s*\(.*?\)\s*", "", key).strip()
-    family = _PEER_INDEX.get(key)
-    if family is None:
-        # Try parenthetical contents too: "Shopify (Liquid)" → look up "shopify".
-        first_token = key.split()[0] if key else ""
-        family = _PEER_INDEX.get(first_token)
+    family = peer_family_of(verified_skill)
     if family is None:
         return False
     return any(peer in jd_blob_lower for peer in family)

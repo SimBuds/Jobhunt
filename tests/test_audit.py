@@ -227,6 +227,73 @@ def test_audit_short_jd_uses_peer_families(verified: dict) -> None:
     )
 
 
+def test_audit_peer_broadening_suppressed_when_sibling_already_matched(
+    verified: dict,
+) -> None:
+    """Phase 10.1: Casey has both AWS and Azure verified. JD only names AWS.
+    Old peer-broadening (Phase 5.2) added Azure as an inferred must-have via
+    the cloud_provider family — but AWS already matched directly. The tailor
+    didn't include Azure (JD doesn't ask), audit marked it missing, coverage
+    dropped to 80%. Dedupe: when a family sibling is already directly matched,
+    suppress the peer-broadened add."""
+    empty_score = ScoreResult(
+        score=82, matched_must_haves=[], gaps=[],
+        decline_reason=None, ai_bonus_present=False, model="test",
+    )
+    short_jd = (
+        "AWS Cloud Developer: design serverless apps using AWS Lambda, "
+        "API Gateway, DynamoDB, and S3. Strong AWS background required."
+    )
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=empty_score,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+        job_description=short_jd,
+    )
+    # AWS should be surfaced as a must-have (in matched OR missing) — JD
+    # mentions AWS directly. Whether it's matched or missing depends on
+    # whether the minimal tailored fixture includes AWS in its skills.
+    all_must_haves = [*result.matched_keywords, *result.missing_must_haves]
+    assert any("aws" in m.lower() for m in all_must_haves), (
+        f"AWS should surface as a must-have: matched={result.matched_keywords}, "
+        f"missing={result.missing_must_haves}"
+    )
+    # Azure must NOT appear anywhere — peer-broadening was suppressed because
+    # AWS (its cloud_provider sibling) already matched directly. Without the
+    # Phase 10.1 dedupe, Azure would show up as a spurious missing must-have.
+    assert not any("azure" in m.lower() for m in all_must_haves), (
+        f"Azure spuriously surfaced via peer broadening: "
+        f"matched={result.matched_keywords}, missing={result.missing_must_haves}"
+    )
+
+
+def test_audit_peer_broadening_still_fires_when_no_sibling_matched(
+    verified: dict,
+) -> None:
+    """Sanity: the dedupe must not suppress the legitimate Vue→React inference.
+    JD names Vue (no AWS/Azure equivalent overlap), verified has React but no
+    Vue. Peer-broadening should still add React as an inferred must-have."""
+    empty_score = ScoreResult(
+        score=72, matched_must_haves=[], gaps=[],
+        decline_reason=None, ai_bonus_present=False, model="test",
+    )
+    short_jd = "Frontend role: Vue, TypeScript, REST APIs."
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=empty_score,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+        job_description=short_jd,
+    )
+    # React must still surface as matched (verified peer of JD-named Vue).
+    assert any("react" in m.lower() for m in result.matched_keywords)
+
+
 def test_audit_long_jd_does_not_use_peer_broadening(verified: dict) -> None:
     """Long JDs (>= 800 chars) skip the peer-family broadening — they have
     enough surface text to name canonical tech directly, and broadening would

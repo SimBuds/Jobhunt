@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from jobhunt.errors import PipelineError
-from jobhunt.pipeline._keywords import peer_match, phrase_present
+from jobhunt.pipeline._keywords import peer_family_of, peer_match, phrase_present
 from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.cover_validate import validate_cover
 from jobhunt.pipeline.score import ScoreResult
@@ -216,12 +216,38 @@ def _extract_must_haves_from_jd(
         return []
     blob = "\n".join(parts).lower()
     is_short = (job_description or "") and len(job_description) < _SHORT_JD_THRESHOLD
-    out: list[str] = []
+
+    # Two-pass: first pass collects direct hits and tracks which peer families
+    # are already covered. Second pass adds peer-broadened inferences only
+    # when no sibling from the same family already matched directly.
+    #
+    # Phase 10.1 fix: Casey has both AWS and Azure verified; when the JD names
+    # only AWS, the old single-pass added Azure as an inferred must-have via
+    # the cloud_provider family. The tailor (correctly) didn't include Azure,
+    # so audit marked it missing and dropped coverage to 80%. With the dedupe,
+    # AWS matches directly → cloud_provider family is "covered" → Azure is
+    # not added as a peer inference. Coverage stays 100% honestly.
+    direct: list[str] = []
+    covered_families: set[frozenset[str]] = set()
     for s in _verified_skills(verified):
         if phrase_present(s, blob):
-            out.append(s)
-        elif is_short and peer_match(s, blob):
-            out.append(s)
+            direct.append(s)
+            family = peer_family_of(s)
+            if family is not None:
+                covered_families.add(family)
+
+    out: list[str] = list(direct)
+    if is_short:
+        for s in _verified_skills(verified):
+            if s in direct:
+                continue
+            family = peer_family_of(s)
+            if family is not None and family in covered_families:
+                # Same-family sibling already matched directly; skip the
+                # inferred add to avoid manufactured "missing" must-haves.
+                continue
+            if peer_match(s, blob):
+                out.append(s)
     return out
 
 

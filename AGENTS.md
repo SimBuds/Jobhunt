@@ -329,6 +329,19 @@ top-level commands that touch scoring/listing/applying must call it too.
    given his interview-rate situation. Raise back to 65 in config.toml if
    the list gets noisy.
 
+   **Familiar-only-fit cap (Phase 10.2).** When every matched must-have
+   resolves into `verified.skills_familiar` (Java, Spring Boot, MCP
+   Servers, Agile/Scrum, Headless Architecture, Figma) and NOT into any
+   Core bucket, the deterministic post-filter in `pipeline.score`
+   (`_all_matched_are_familiar`) caps the score at 54 and sets
+   `decline_reason = "role's matched skills are all Familiar (academic/
+   light use only)..."`. Without this cap, qwen's transferable-skill
+   rubric over-credited a Java Developer role at score=78 and the tailor
+   shipped a resume containing ONLY a Familiar category — actively
+   misrepresenting Casey. Word-boundary matching is used so "Java" does
+   not match the "JavaScript" substring (which would incorrectly resolve
+   Java into skills_core and bypass the cap).
+
 ## Post-generation audit rules
 
 After `tailor_resume` + `write_cover`, `pipeline.audit.audit()` runs before
@@ -355,6 +368,18 @@ to it without explicit discussion.
    broadening to avoid false positives. `PEER_FAMILIES` is shared between
    `kb/prompts/score.md` (transferable matching) and audit fallback
    (must-have extraction) — single source of truth in `pipeline._keywords`.
+
+   **Peer-broadening dedupe (Phase 10.1).** When a verified skill is
+   already matched directly via `phrase_present`, its peer-family
+   siblings are NOT added as inferred must-haves. Example: Casey has
+   both AWS and Azure verified; JD only names AWS. AWS matches directly
+   → cloud_provider family is "covered" → Azure is not inferred. Without
+   this dedupe, the tailor (correctly omitting Azure since the JD doesn't
+   ask) saw audit mark Azure as a missing must-have and `keyword_coverage`
+   drop to 80%. The `peer_family_of` helper exposed by
+   `pipeline._keywords` powers this check; same-family verified skills
+   that ALL went into `gaps` rather than `matched` still surface
+   normally.
 
    **Resume↔cover alignment check (May 2026)** — `audit._alignment_flags`
    scans both artifacts for project anchors mined from `verified.json`
