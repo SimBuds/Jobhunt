@@ -26,6 +26,10 @@ a trimmed, prompt-injectable mirror — keep it short. Update both when rules ch
 - **First skills-category matches the JD's primary stack.** Frontend role →
   lead with a category named for frontend; backend role → lead with backend;
   CMS → CMS; AI/LLM → AI tooling. `Familiar` bucket is always last.
+- **Category sizes** (May 2026, Phase 8): first category 6–10 items,
+  secondary categories 4–8 items, `Familiar` ≥4. Don't cram every Core/DevOps
+  skill into the lead category — a 16-item lead reads like a keyword wall.
+  Split across two or three categories when the JD spans multiple stacks.
 - Split one dense bullet into two if both halves are relevant.
 - Reorder bullets within a job. Never move bullets between jobs.
 - The **Present** role (current contract) keeps ≥2 bullets — older roles

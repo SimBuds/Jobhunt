@@ -86,6 +86,11 @@ class PipelineConfig(BaseModel):
     tailor_max_words: int = 700
     cover_max_words: int = 280
     cover_retry_attempts: int = 3
+    # Mirrors cover_retry_attempts. When _enforce_no_fabrication rejects a
+    # tailored resume (LLM leaks an unverified skill like 'Redux'), the retry
+    # layer re-prompts with a "REMOVE X" hint. Most fabrications recover on
+    # attempt 2; 3 attempts is the same backstop the cover-letter loop uses.
+    tailor_retry_attempts: int = 3
     # Default lowered from 65 to 55 in May 2026. Casey's interview-rate problem
     # is volume-of-good-applications, not noise-in-the-list — the 55-65 band is
     # the "stretch, tailor required" zone where a strong AI/LLM cover hook can

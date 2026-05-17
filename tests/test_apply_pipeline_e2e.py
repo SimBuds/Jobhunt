@@ -88,8 +88,11 @@ def _patch_pipeline(monkeypatch: pytest.MonkeyPatch, *, audit_verdict: str) -> d
     inspect to verify which side effects fired."""
     calls: dict[str, Any] = {"render": 0, "render_cover": 0, "autofill": 0, "prompt": 0}
 
-    async def fake_tailor(cfg: Config, job: Job) -> TailoredResume:
-        return _fake_tailored()
+    async def fake_tailor_retry(*args: Any, **kwargs: Any) -> tuple[TailoredResume, list[Any], int]:
+        # Matches the (tailored, violations, attempts) tuple shape of
+        # `tailor_resume_with_retry`. Tests don't exercise the retry path,
+        # so always return a clean first-attempt result.
+        return _fake_tailored(), [], 1
 
     async def fake_cover_retry(*args: Any, **kwargs: Any) -> tuple[CoverLetter, list[str], int]:
         return _fake_cover(), [], 1
@@ -115,7 +118,7 @@ def _patch_pipeline(monkeypatch: pytest.MonkeyPatch, *, audit_verdict: str) -> d
         calls["prompt"] += 1
         return "n"  # not submitted
 
-    monkeypatch.setattr(apply_cmd, "tailor_resume", fake_tailor)
+    monkeypatch.setattr(apply_cmd, "tailor_resume_with_retry", fake_tailor_retry)
     monkeypatch.setattr(apply_cmd, "write_cover_with_retry", fake_cover_retry)
     monkeypatch.setattr(apply_cmd, "audit", fake_audit)
     monkeypatch.setattr(apply_cmd, "render", fake_render)

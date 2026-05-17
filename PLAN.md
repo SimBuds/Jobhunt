@@ -142,6 +142,16 @@ in five places, not just the prompt:
      for parenthetical variants like `Shopify (Liquid)` vs
      `Shopify (Liquid, Custom Themes)`);
    - rejects "Familiar" skills appearing in any non-Familiar category.
+
+   **Retry layer (May 2026).** `_enforce_no_fabrication` raises a
+   `FabricationError` carrying structured violations.
+   `tailor_resume_with_retry` consumes those violations to build a
+   kind-specific correction hint and re-runs the tailor LLM up to
+   `cfg.pipeline.tailor_retry_attempts` times. The retry NEVER weakens
+   the check: every attempt's output runs through the same invariants,
+   and a final-attempt failure still raises so the apply loop skips the
+   job. Recovery, not relaxation — mirrors the cover-validator retry
+   pattern in `pipeline.cover.write_cover_with_retry`.
 4. **Score clamp.** `pipeline.score` re-partitions the LLM's claimed
    must-haves against `verified.json` and caps the score band by
    deterministic coverage (100 % → keep, 80–99 % → 89, 60–79 % → 79,

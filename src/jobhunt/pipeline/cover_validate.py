@@ -62,6 +62,18 @@ _DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bthe model transfers\b", "defensive 'the model transfers' phrasing"),
     # Standalone "rather than <Tech>" claims about Casey's stack
     (r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b", "defensive familiarity disclaimer"),
+    # "I have also worked with GraphQL concepts" / "exposure to Kubernetes
+    # concepts" — the cover talks about a tech as "concepts" because Casey
+    # doesn't actually have hands-on experience with it. The defensive
+    # phrasing volunteers a gap the JD didn't ask about; reject structurally
+    # so the cover prompt's "silence is stronger than apology" rule is
+    # actually enforced.
+    (
+        r"\b(?:worked with|experience (?:in|with)|exposure to|familiarity with|"
+        r"familiar with|knowledge of|understanding of)\s+"
+        r"[a-z][a-z0-9+#./-]*\s+concepts\b",
+        "defensive 'concepts' framing (gap-volunteering)",
+    ),
     # Formulaic gap-volunteering closer. "I am available to discuss …" is
     # legitimate and not matched; only the "ready to" variant trips, since it
     # signals the model is filling space rather than naming a next step.
@@ -98,7 +110,14 @@ _NEGATION_PRECEDES_RE = re.compile(
     re.IGNORECASE,
 )
 
-_DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z\d])\d[\d,.]*(?![A-Za-z\d])")
+# Boundary class includes `_` (May 2026 fix): without it, qwen's legitimate
+# mention of verified tech like `q5_0` (KV-cache quantization name in
+# skills_ai) fragments into `q5` + `_` + `0`, and the trailing `0` gets
+# flagged as an unverified number. With `_` in the exclusion class, `0` is
+# preceded by `_` ∈ class → no match; `q5_0` stays atomic. Legitimate
+# standalone `0` (e.g. "0% regression") still flags because it's preceded
+# by whitespace/punctuation, not `_`.
+_DIGIT_CLUSTER_RE = re.compile(r"(?<![A-Za-z\d_])\d[\d,.]*(?![A-Za-z\d_])")
 _WORD_RE = re.compile(r"\b\w+\b")
 # Clock-style time references: "11:00 AM", "9 a.m.", "5pm", "12:30". Stripped
 # before the digit-cluster pass so the colon-split doesn't fabricate "11"/"00"

@@ -116,6 +116,7 @@ Follow this order. Do not skip steps.
    - Move skills inside the categories so the JD's keywords appear first.
    - The **`Familiar` bucket is always last.**
    - Drop categories that are irrelevant clutter for the target role (e.g., for a backend role, "CMS & E-Commerce" can be demoted to a single line at the bottom).
+   - **Category sizes:** first (most-JD-relevant) category should be 6–10 items; secondary categories 4–8; `Familiar` ≥4. Don't cram every Core/DevOps skill into the lead — a 16-item lead reads like a keyword wall to a human reviewer, and the ATS already scores at 8 items.
    - Never promote a "Familiar" skill (Java, Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma) into a primary category. Honesty signal stays.
 
 6. **Re-emphasize bullet points, do not invent.**
