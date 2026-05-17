@@ -165,6 +165,14 @@ in five places, not just the prompt:
    signal-poor postings rather than reflecting real fit. Three or more
    must-haves still get clamped — protects against the Pigment-style
    regression where the model lists missing tech as matched.
+
+   **Familiar-only-fit cap (Phase 10.2):** when EVERY phrase in `matched`
+   resolves only into `verified.skills_familiar` (and not into any Core
+   bucket), the score caps at 54 and a `decline_reason` is set. The
+   Java-Developer @ Ignite Talent case scored 78 and shipped a
+   Familiar-only-skills resume — this cap prevents that misrepresentation
+   pattern. Word-boundary matching is used so "Java" doesn't match
+   "JavaScript" in the Core bucket.
 5. **Cover validator + retry.** `pipeline.cover_validate` catches banned
    phrases, structural violations, and unverified numeric claims;
    `pipeline.cover.write_cover_with_retry` re-prompts up to 3 times with the

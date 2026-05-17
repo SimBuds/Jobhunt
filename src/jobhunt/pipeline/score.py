@@ -84,6 +84,27 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     if _is_bogus_senior_decline(decline_reason, job.title or ""):
         decline_reason = None
 
+    # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
+    # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...
+    # — academic / light-use only), the role is at most a stretch — Casey
+    # would be misrepresenting himself if the tailored resume claimed Core
+    # expertise. Cap the score at 55 and set a decline reason so the role
+    # drops out of the default min_score=55 selection band.
+    # Reasoning: the May 2026 Java Developer @ Ignite Talent case scored 78
+    # (transferable coursework matching let it through) and shipped a
+    # Familiar-only-skills resume that misrepresented Casey to any human
+    # reviewer. This guard catches that pattern at the score boundary.
+    if (
+        decline_reason is None
+        and matched
+        and _all_matched_are_familiar(matched, verified)
+    ):
+        score = min(score, 54)
+        decline_reason = (
+            "role's matched skills are all Familiar (academic/light use only); "
+            "applying would misrepresent Core production experience"
+        )
+
     # qwen3.5:9b sometimes uses score=0 as a silent decline (no decline_reason).
     # The prompt forbids this; enforce a floor so non-declined jobs stay in
     # the rubric's 30+ range and remain visible to calibration.
@@ -159,6 +180,56 @@ def _is_bogus_senior_decline(decline_reason: str | None, title: str) -> bool:
     hard_title_triggers = ("manager", "director", "head of", "vp ", "vice president")
     if any(k in t for k in hard_title_triggers):
         return False
+    return True
+
+
+def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
+    """True when every phrase in `matched` resolves into the Familiar bucket
+    only (i.e. NOT into skills_core / skills_cms / skills_data_devops /
+    skills_ai). Used by the May 2026 Familiar-only-fit cap.
+
+    Word-boundary matching (not substring) — "Java" must NOT match the token
+    "JavaScript". If the same phrase is also present in a non-Familiar
+    bucket, treat it as Core (the role is salvageable). Conservative —
+    err on the side of NOT capping when classification is ambiguous.
+    """
+    import json as _json
+    import re as _re
+
+    try:
+        v = _json.loads(verified_blob)
+    except (ValueError, TypeError):
+        return False
+    familiar_items = [s.lower() for s in (v.get("skills_familiar", []) or [])]
+    core_items = [
+        item.lower()
+        for key in ("skills_core", "skills_cms", "skills_data_devops", "skills_ai")
+        for item in (v.get(key, []) or [])
+    ]
+    if not familiar_items:
+        return False
+
+    def _in_bucket(phrase: str, items: list[str]) -> bool:
+        """Word-boundary match: phrase token-by-token, every token bordered
+        by non-word characters in at least one bucket item. 'Java' matches
+        'Java' but not 'JavaScript'."""
+        tokens = [t for t in _re.findall(r"[a-z0-9+#]+", phrase.lower()) if t]
+        if not tokens:
+            return False
+        for item in items:
+            # Build a regex requiring every token to appear as a whole word
+            # (or +-#-bounded chunk) within this item.
+            if all(_re.search(rf"\b{_re.escape(t)}\b", item) for t in tokens):
+                return True
+        return False
+
+    for phrase in matched:
+        if not _in_bucket(phrase, familiar_items):
+            return False
+        if _in_bucket(phrase, core_items):
+            # Phrase is present in BOTH Familiar and a Core bucket. Treat as
+            # Core (the matched item is a legitimate production skill).
+            return False
     return True
 
 

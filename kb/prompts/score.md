@@ -103,6 +103,15 @@ invalid and will be rejected by the deterministic post-filter.
 - Domain requires regulated experience (clinical software, securities
   trading, medical devices, defense) and verified_facts shows none.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
+- **All matched skills are Familiar-only.** When every entry you'd put in
+  `matched_must_haves` comes from `verified_facts.skills_familiar` (Java,
+  Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma —
+  academic / coursework / light-use only), the role is a misrepresentation
+  risk. Casey's rendered resume would contain only a Familiar bucket with
+  no Core skills section. Decline with reason
+  `"role's matched skills are all Familiar (academic/light use); not Core
+  production experience"`. The deterministic post-filter enforces this cap
+  at score ≤ 54 even if you over-credit — but emit it here for clarity.
 
 If none apply, set `decline_reason` to null and return a score.
 

@@ -271,6 +271,82 @@ async def test_score_job_still_clamps_when_denominator_sufficient(
     assert result.score == 64
 
 
+# --- Familiar-only-fit cap (May 2026, Phase 10.2) ---
+
+
+@pytest.mark.asyncio
+async def test_score_job_caps_familiar_only_fit(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 10.2 regression: when every matched must-have resolves to a
+    Familiar-bucket skill (Java/Spring Boot, academic-only), the score must
+    cap at <55 and set a decline reason. Avoids the Java-Developer-shipped-
+    with-Familiar-only-section pattern."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 78,  # LLM was overly generous
+            "matched_must_haves": ["Java", "Spring Boot"],
+            "gaps": ["10+ years"],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    assert result.score <= 54, f"expected cap, got {result.score}"
+    assert result.decline_reason is not None
+    assert "familiar" in result.decline_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_score_job_does_not_cap_when_core_skill_also_matched(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When at least one matched must-have is a Core skill (TypeScript,
+    React, etc.), the Familiar-only cap should NOT fire. Roles with mixed
+    Core+Familiar matches are legitimate fits."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 78,
+            "matched_must_haves": ["TypeScript", "Java"],  # mixed
+            "gaps": ["Kubernetes"],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    # Phase 2.5 tiny-denominator carve-out applies (3 must-haves total), so
+    # the clamp kicks in: 2/3 = 67% → cap at 79. Result stays at 78 since
+    # raw was already at 78. Confirm no Familiar-only cap fires.
+    assert result.score >= 64
+    assert result.decline_reason is None
+
+
+@pytest.mark.asyncio
+async def test_score_job_does_not_cap_when_already_declined(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the LLM already returned a decline_reason, the Familiar-only cap
+    shouldn't overwrite it. Pre-existing decline survives."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 0,
+            "matched_must_haves": ["Java"],
+            "gaps": [],
+            "decline_reason": "Title is people-management (Engineering Manager)",
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    # Pre-existing decline reason preserved.
+    assert result.decline_reason == "Title is people-management (Engineering Manager)"
+
+
 @pytest.mark.asyncio
 async def test_score_job_keeps_score_when_coverage_full(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
