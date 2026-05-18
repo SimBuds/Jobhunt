@@ -86,6 +86,7 @@ src/jobhunt/
 │   ├── scan_cmd.py            # P2: ingest + score + cross-source dedupe
 │   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
 │   ├── add_cmd.py             # URL → ATS slug → config.toml (primary slug-acquisition surface)
+│   ├── answer_cmd.py          # P11: application-form question assistant
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
 │   ├── discover_cmd.py        # legacy: harvest URLs + probe Greenhouse/Ashby/Lever/SmartRecruiters
 │   ├── _config_write.py       # atomic `.bak`-then-tmp-rename helper (shared by add, config seed, discover --apply)
@@ -114,12 +115,13 @@ src/jobhunt/
 │   ├── slug_candidates.py     # pure name→slug normalizer (staffing-agency filter)
 │   ├── url_extract.py         # deterministic URL → (ats, slug, site, host) parser
 │   └── probe.py               # async Greenhouse/Ashby/Lever/SmartRecruiters probe + slug_probes cache
-├── pipeline/                  # score, tailor, cover, audit, cover_validate
+├── pipeline/                  # score, tailor, cover, audit, cover_validate, answer
 │   ├── score.py
 │   ├── tailor.py              # enforces no-fabrication invariants
 │   ├── cover.py
 │   ├── cover_validate.py      # deterministic cover-letter validator (banned phrases, etc.)
-│   └── audit.py               # post-generation audit: keyword coverage + verdict
+│   ├── audit.py               # post-generation audit: keyword coverage + verdict
+│   └── answer.py              # application-form question pipeline (reuses cover validators)
 ├── browser/
 │   ├── autofill.py            # headed Playwright session, fill-plan.json
 │   ├── profile_map.py         # ApplicantProfile → form key map
@@ -134,7 +136,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **seven** commands. `db` and `config` are hidden internals
+User-facing surface is **eight** commands. `db` and `config` are hidden internals
 (except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
@@ -145,12 +147,36 @@ jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor; prints `add` suggestion
 jobhunt add <URL>            # parse URL → write ATS slug to config.toml
+jobhunt answer "<question>"  # draft a tailored response to a form question
 jobhunt list [--week N]      # pipeline view + weekly rollup
 jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
                              # cert frequency, trends, and fit verdicts
 jobhunt discover slugs       # legacy: harvest URLs in jobs DB + probe Greenhouse/Ashby
 jobhunt config seed --apply  # import kb/seeds/gta-employers.toml into config
 ```
+
+`answer` drafts a response to a single application-form question using the
+same honesty rules as the cover-letter pipeline (banned phrases, fabrication
+watchlist, defensive-pattern regex, unverified-number guard). Reuses
+`cover_validate`'s core check helpers via `pipeline.answer.validate_answer`,
+dropping the cover-only structural rules (salutation, sign-off, paragraph
+count, company-in-lead). Retry loop mirrors `write_cover_with_retry` and
+forces `temperature=0` on attempts 2+ (Phase 9.2 pattern).
+
+Two modes:
+- `jobhunt answer "..."` — standalone, no JD context.
+- `jobhunt answer "..." --job <id>` — loads JD title/company/description from
+  the `jobs` table and injects it into the prompt.
+
+Output: prints the answer to stdout for paste-to-form, AND saves a markdown
+artifact at `data/applications/<id>/answers/<sha1>.md` (job-scoped) or
+`data/answers/<sha1>.md` (standalone). Filename is a 12-char sha1 of the
+question text — re-running the same question overwrites the same file.
+Use `--no-save` to skip the artifact and only print to stdout.
+
+Length default: `cfg.pipeline.answer_max_words` (200). Override per call
+with `--max-words` (use 60 for "years of experience"-style factual
+questions, 250 for STAR-style behavioural ones).
 
 `analyze` is a deterministic, LLM-free aggregation surface — do not add an
 Ollama call to any `analyze` subcommand without explicit discussion. It mirrors
