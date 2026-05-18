@@ -112,11 +112,23 @@ def test_keyword_coverage_all_present(verified: dict) -> None:
 
 def test_keyword_coverage_partial(verified: dict) -> None:
     tailored = _minimal_tailored(verified)
-    pct, matched, missing = keyword_coverage(["TypeScript", "Angular", "Vue"], tailored)
+    pct, matched, missing = keyword_coverage(["TypeScript", "Rust", "Kubernetes"], tailored)
     assert "TypeScript" in matched
-    assert "Angular" in missing
-    assert "Vue" in missing
-    assert pct < 50
+    assert "Rust" in missing
+    assert "Kubernetes" in missing
+    assert pct is not None and pct < 50
+
+
+def test_keyword_coverage_peer_family(verified: dict) -> None:
+    # Tailor renders JD surface forms per tailor.md rule 9; audit must accept any
+    # peer-family member. Resume has React; JD asking for Angular/Vue/Svelte
+    # should resolve via the frontend_framework peer family.
+    tailored = _minimal_tailored(verified)
+    pct, matched, missing = keyword_coverage(["Angular", "Vue", "Svelte"], tailored)
+    assert "Angular" in matched
+    assert "Vue" in matched
+    assert "Svelte" in matched
+    assert missing == []
 
 
 def test_keyword_coverage_empty_must_haves(verified: dict) -> None:
