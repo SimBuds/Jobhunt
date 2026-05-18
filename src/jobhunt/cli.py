@@ -9,6 +9,7 @@ import typer
 from jobhunt.commands import (
     add_cmd,
     analyze_cmd,
+    answer_cmd,
     apply_cmd,
     config_cmd,
     convert_resume_cmd,
@@ -28,6 +29,7 @@ app.command("convert-resume", help=convert_resume_cmd.app.info.help)(convert_res
 app.command("scan", help=scan_cmd.app.info.help)(scan_cmd.run)
 app.command("apply", help=apply_cmd.app.info.help)(apply_cmd.run)
 app.command("add", help=add_cmd.app.info.help)(add_cmd.run)
+app.command("answer", help=answer_cmd.app.info.help)(answer_cmd.run)
 app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
 app.add_typer(analyze_cmd.app, name="analyze")
 app.add_typer(discover_cmd.app, name="discover")

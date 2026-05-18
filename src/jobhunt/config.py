@@ -76,6 +76,7 @@ class GatewayConfig(BaseModel):
             "score": "qwen-custom:latest",
             "tailor": "qwen-custom:latest",
             "cover": "qwen-custom:latest",
+            "answer": "qwen-custom:latest",
             "embed": "nomic-embed-text",
         }
     )
@@ -91,6 +92,11 @@ class PipelineConfig(BaseModel):
     # layer re-prompts with a "REMOVE X" hint. Most fabrications recover on
     # attempt 2; 3 attempts is the same backstop the cover-letter loop uses.
     tailor_retry_attempts: int = 3
+    # Default word cap for `jobhunt answer` responses. Short-factual
+    # questions ("years of TypeScript?") need ~25 words; STAR-style
+    # behavioural questions land closer to 150-200. 200 is a sane default
+    # that the CLI's `--max-words` flag overrides per-call.
+    answer_max_words: int = 200
     # Default lowered from 65 to 55 in May 2026. Casey's interview-rate problem
     # is volume-of-good-applications, not noise-in-the-list — the 55-65 band is
     # the "stretch, tailor required" zone where a strong AI/LLM cover hook can
