@@ -165,7 +165,7 @@ def keyword_coverage(
     matched: list[str] = []
     missing: list[str] = []
     for phrase in must_haves:
-        if phrase_present(phrase, blob):
+        if phrase_present(phrase, blob) or peer_match(phrase, blob):
             matched.append(phrase)
         else:
             missing.append(phrase)

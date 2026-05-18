@@ -57,12 +57,12 @@ The gateway is tuned to a specific server config. Mirror these
 Environment="OLLAMA_KV_CACHE_TYPE=q5_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_CONTEXT_LENGTH=16384"
+Environment="OLLAMA_CONTEXT_LENGTH=20480"
 Environment="OLLAMA_KEEP_ALIVE=10m"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ```
 
-These pair with per-call gateway values (`num_ctx=16384`, `keep_alive=-1`).
+Context length is the server's responsibility — the gateway does NOT send `num_ctx`. Pair only with the per-call `keep_alive=-1` the gateway uses.
 Rationale and tuning notes live in [AGENTS.md](AGENTS.md) §Hardware context.
 
 ## First run
@@ -95,6 +95,9 @@ jobhunt scan                   # pull new jobs + score them
 jobhunt list --min-score 70    # high-fit subset
 jobhunt apply --best           # pick which to apply to
 # Browser opens. You review, click Submit yourself.
+
+# One-off posting from a URL (bypass scan):
+jobhunt apply --url https://jobs.example.com/p/12345
 
 # When a form has a free-form question:
 jobhunt answer "Why are you interested in this role?" --job <id>

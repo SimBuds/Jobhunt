@@ -18,7 +18,6 @@ async def complete_json(
     user: str,
     schema: dict[str, Any],
     temperature: float = 0.0,
-    num_ctx: int = 16384,
     timeout_s: float = 180.0,
     keep_alive: str | int = -1,
 ) -> dict[str, Any]:
@@ -27,8 +26,9 @@ async def complete_json(
     `base_url` may end with `/v1` (OpenAI-compatible) or be a bare host. We hit the
     native /api/chat endpoint either way for the format-as-schema feature.
 
-    `num_ctx` defaults to 16384 to match the user's `OLLAMA_CONTEXT_LENGTH=16384`
-    server setting. Pair with a roomier `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` so the
+    Context length is governed by the Ollama server (`OLLAMA_CONTEXT_LENGTH`),
+    not by this client — keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in
+    `pipeline.score` aligned with whatever the server is configured for so the
     JD and policy aren't truncated for the score/tailor/cover slots.
 
     `keep_alive` defaults to `-1` (load forever) so the hot model stays resident
@@ -50,7 +50,7 @@ async def complete_json(
         "format": schema,
         "think": False,
         "keep_alive": keep_alive,
-        "options": {"temperature": temperature, "num_ctx": num_ctx},
+        "options": {"temperature": temperature},
     }
     async def _post(p: dict[str, Any]) -> str:
         try:
