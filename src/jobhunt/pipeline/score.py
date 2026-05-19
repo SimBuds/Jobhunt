@@ -12,12 +12,12 @@ from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
 
 # Cap inputs to keep prompts within the Ollama server's configured context
-# (`OLLAMA_CONTEXT_LENGTH`, currently 20480 tokens). Rule of thumb: ~4 chars/
+# (`OLLAMA_CONTEXT_LENGTH`, currently 16384 tokens). Rule of thumb: ~4 chars/
 # token. Combined desc + policy + verified + prompt bodies should leave
 # headroom for the model's structured-JSON output. If you change the server
 # env, adjust these in step.
-MAX_DESC_CHARS = 20000
-MAX_POLICY_CHARS = 8000
+MAX_DESC_CHARS = 16000
+MAX_POLICY_CHARS = 6000
 
 
 def truncate(s: str, limit: int) -> str:

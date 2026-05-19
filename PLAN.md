@@ -56,7 +56,7 @@ between every call. Set in config (`gateway.tasks`).
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset — `qwen-custom:latest` (base: `qwen3.5:9b`) lands around ~9 GB resident at `OLLAMA_CONTEXT_LENGTH=20480` with a `q5_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q5_0` + `OLLAMA_FLASH_ATTENTION=1`). Context length is set server-side only — the gateway does not pass `num_ctx`. Single hot model; never unloads (`keep_alive=-1` per call + `OLLAMA_KEEP_ALIVE=-1` server-side) plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
+| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset — `qwen-custom:latest` (base: `qwen3.5:9b`) lands around ~9 GB resident at `OLLAMA_CONTEXT_LENGTH=16384` with a `q5_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q5_0` + `OLLAMA_FLASH_ATTENTION=1`). Context length is set server-side only — the gateway does not pass `num_ctx`. Single hot model; never unloads (`keep_alive=-1` per call + `OLLAMA_KEEP_ALIVE=-1` server-side) plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU; SQLite cache; Playwright when active. |
 | Disk | Models in `~/.ollama/models`; project DB in `data/jobhunt.db`. |
 
