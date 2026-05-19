@@ -50,6 +50,10 @@ class IngestConfig(BaseModel):
     user_agent: str = "jobhunt/0.1 (+personal-use; your-email@example.com)"
     rate_limit_per_sec: float = 1.0
     cache_ttl_hours: int = 6
+    # Drop postings older than N days at ingest. 0 disables. Per-run override
+    # via `jobhunt scan --max-age-days N`. Adapters that don't populate
+    # `posted_at` (Workday) pass the filter — treated as fresh.
+    max_age_days: int = 14
     greenhouse: list[str] = Field(default_factory=list)
     lever: list[str] = Field(default_factory=list)
     ashby: list[str] = Field(default_factory=list)

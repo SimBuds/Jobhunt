@@ -110,22 +110,40 @@ def unscored_jobs(conn: sqlite3.Connection, limit: int | None = None) -> list[sq
 
 
 def jobs_to_score(
-    conn: sqlite3.Connection, *, current_hash: str, limit: int | None = None
+    conn: sqlite3.Connection,
+    *,
+    current_hash: str,
+    limit: int | None = None,
+    max_age_days: int = 0,
 ) -> list[sqlite3.Row]:
     """Jobs that need (re)scoring: never scored, or scored under a different prompt_hash.
 
     Each row carries a `prev_hash` column: NULL for new jobs, a string for stale
     ones — the caller can split counts on that.
+
+    `max_age_days > 0` excludes jobs whose `posted_at` is older than the window
+    (NULL `posted_at` passes through — matches the ingest-side freshness rule
+    in `ingest._filter.is_within_age_window`). This prevents the score loop
+    from chewing through backlog rows that the ingest filter would now drop.
     """
+    where_clauses = ["(s.job_id IS NULL OR s.prompt_hash IS NOT ?)"]
+    params: list[object] = [current_hash]
+    if max_age_days > 0:
+        # SQLite `datetime('now', '-N days')` returns an ISO-8601 string that
+        # sorts correctly against the stored `posted_at` ISO strings.
+        where_clauses.append(
+            "(j.posted_at IS NULL OR j.posted_at >= datetime('now', ?))"
+        )
+        params.append(f"-{int(max_age_days)} days")
     sql = (
         "SELECT j.*, s.prompt_hash AS prev_hash FROM jobs j "
         "LEFT JOIN scores s ON s.job_id = j.id "
-        "WHERE s.job_id IS NULL OR s.prompt_hash IS NOT ? "
+        "WHERE " + " AND ".join(where_clauses) + " "
         "ORDER BY (s.job_id IS NULL) DESC, j.ingested_at DESC"
     )
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
-    return list(conn.execute(sql, (current_hash,)))
+    return list(conn.execute(sql, params))
 
 
 _TERMINAL_STATUSES = frozenset({"interviewing", "offer", "rejected", "withdrawn"})

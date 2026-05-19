@@ -7,6 +7,7 @@ Also accepts Remote-Canada / Remote-Ontario postings as eligible.
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 RemoteType = Literal["onsite", "hybrid", "remote", "unknown"]
@@ -79,6 +80,54 @@ def is_gta_eligible(location: str | None) -> bool:
         return True
     # Bare "Remote" with no country qualifier — too ambiguous, skip.
     return False
+
+
+# People-management title regex. Drops Manager/Director/Head of/VP/Vice
+# President/Chief X Officer at ingest so the score prompt doesn't have to
+# decline them. Word-boundaried to avoid false matches like "Markham" or
+# "managerial" within a longer non-management word.
+#
+# DOES NOT match Senior / Lead / Staff / Principal / Architect — those are
+# legitimate IC titles per `kb/prompts/score.md`. The recent ship/100%
+# Search Atlas conversion came from a Senior-band role.
+#
+# Keep in sync with `pipeline.score._is_bogus_senior_decline`'s
+# `hard_title_triggers` tuple — if you edit one, edit the other.
+_MANAGEMENT_TITLE_RE = re.compile(
+    r"\b(?:manager|director|head\s+of|vp|vice\s+president|"
+    r"engineering\s+manager|people\s+manager|chief\s+\w+\s+officer)\b",
+    re.IGNORECASE,
+)
+
+
+def is_management_title(title: str | None) -> bool:
+    """True when the title is a people-management role we shouldn't apply to."""
+    if not title:
+        return False
+    return bool(_MANAGEMENT_TITLE_RE.search(title))
+
+
+def is_within_age_window(
+    posted_at: datetime | None,
+    max_age_days: int,
+) -> bool:
+    """True when the job is fresh enough to ingest.
+
+    - `max_age_days <= 0` disables the filter (returns True).
+    - `posted_at is None` returns True (adapter gap — don't penalize;
+      e.g. Workday doesn't populate this field yet).
+    - Otherwise: True when `posted_at >= now - max_age_days`.
+
+    Naive datetimes are coerced to UTC for comparison.
+    """
+    if max_age_days <= 0:
+        return True
+    if posted_at is None:
+        return True
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=UTC)
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+    return posted_at >= cutoff
 
 
 def classify_remote_type(*, location: str | None, extra: str | None = None) -> RemoteType:
