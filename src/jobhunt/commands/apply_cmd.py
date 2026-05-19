@@ -253,6 +253,14 @@ def _run_set_status(job_id: str, status: str) -> None:
                 applied_week=None,
             )
         typer.echo(f"{job_id}: {row['status']} → {status}")
+        if status == "interviewing":
+            prep_path = (
+                cfg.paths.data_dir / "interview-prep" / f"{_safe_id(job_id)}.md"
+            )
+            if prep_path.is_file():
+                typer.echo(f"  prep doc exists: {prep_path}")
+            else:
+                typer.echo(f"  → draft prep doc: jobhunt interview-prep {job_id}")
     finally:
         conn.close()
 

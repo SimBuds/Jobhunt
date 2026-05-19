@@ -102,6 +102,10 @@ jobhunt apply --url https://jobs.example.com/p/12345
 # When a form has a free-form question:
 jobhunt answer "Why are you interested in this role?" --job <id>
 
+# When you get an interview, mark it and draft a prep doc:
+jobhunt apply --set-status interviewing <job-id>
+jobhunt interview-prep <job-id> --stage screen --research
+
 jobhunt list --week 0          # weekly pipeline view
 ```
 
@@ -111,7 +115,7 @@ warning categories seen across the batch.
 
 ## Commands
 
-Eight user-facing commands. Run `<command> --help` for full flags.
+Nine user-facing commands. Run `<command> --help` for full flags.
 
 | Command | Purpose |
 |---|---|
@@ -120,6 +124,7 @@ Eight user-facing commands. Run `<command> --help` for full flags.
 | `apply` | Tailor resume + cover letter; autofill the form |
 | `add` | URL → ATS slug → `config.toml` |
 | `answer` | Draft a tailored response to a form question |
+| `interview-prep` | Draft a stage-aware interview prep doc |
 | `list` | Pipeline view + weekly tracking |
 | `analyze certs` | Cert frequency, trends, fit verdicts |
 | `discover slugs` | Maintenance: harvest URLs in jobs DB + probe public ATS APIs |
@@ -189,6 +194,34 @@ overwrites the same file. Validation reuses the cover-letter rules
 (banned phrases, defensive gap-volunteering, fabrication watchlist,
 unverified numbers). Up to 3 retries on violations; the final attempt
 ships with warnings on stderr if retries don't recover.
+
+### `interview-prep` — stage-aware interview prep doc
+
+When an application converts to an interview, draft a prep doc anchored
+on your verified profile and the cached JD:
+
+```bash
+jobhunt interview-prep <job-id>                       # default --stage screen
+jobhunt interview-prep <job-id> --stage hm            # hiring-manager round
+jobhunt interview-prep <job-id> --stage assessment    # take-home / live coding
+jobhunt interview-prep <job-id> --stage onsite        # final round
+jobhunt interview-prep <job-id> --research            # fetch JD URL + company root
+jobhunt interview-prep <job-id> --research --force-robots
+jobhunt interview-prep <job-id> --no-llm              # skeleton-only (debug)
+```
+
+Output: `data/interview-prep/<job-id-safe>.md`. Re-runs overwrite — use
+the same file as the doc evolves across stages.
+
+Hybrid generation: deterministic skeleton (header, comp heads-up,
+pre-call checklist, after-the-call footer) wraps an LLM-drafted middle
+(role decode, strongest anchors, likely questions with answer beats,
+questions to ask back, honest gaps with reframes). Anchors must trace
+to verified facts; the same honesty rules as the cover-letter pipeline
+apply. Up to 3 retries on validator violations.
+
+`apply --set-status interviewing <job-id>` prints a nudge pointing at
+this command (or notes that a prep doc already exists).
 
 ### `list` filters
 
@@ -378,22 +411,6 @@ for the full mechanism.
 
 ## License
 
-MIT License — Copyright (c) [2026] [Casey Hsu]
+Copyright (c) [2026] [Casey Hsu]
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
+Permission is hereby denied :D

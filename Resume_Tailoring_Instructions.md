@@ -35,7 +35,7 @@ Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
 ### Skills Casey actually uses (Core / production)
 
-JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes), HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (q5_0 KV cache, flash attention), prompt engineering, Stripe integration, Google Tag Manager.
+JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes, apps), Shopify App Development, HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (q5_0 KV cache, flash attention), prompt engineering, Stripe integration, Google Tag Manager.
 
 ### Skills Casey is "Familiar" with (academic / light use)
 
@@ -65,6 +65,7 @@ The original resume lists only "Machine Learning, Data Structures & Algorithms, 
 
 - 14+ page Shopify storefront, 200+ SKUs, 500+ monthly visitors (Custom Jewelry Brand).
 - 3 project phases over 2+ years on the Shopify migration from WordPress.
+- Interactive ring builder app on the Shopify storefront (Atelier Dacko) — configurator for stone, band, and size options replacing the legacy manual quote workflow.
 - Custom 8-page HubSpot theme from scratch (AI Agency).
 - 30% page load reduction; PageSpeed scores above 90.
 - 400+ item vintage gaming catalog.

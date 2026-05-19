@@ -15,6 +15,7 @@ from jobhunt.commands import (
     convert_resume_cmd,
     db_cmd,
     discover_cmd,
+    interview_prep_cmd,
     list_cmd,
     scan_cmd,
 )
@@ -30,6 +31,7 @@ app.command("scan", help=scan_cmd.app.info.help)(scan_cmd.run)
 app.command("apply", help=apply_cmd.app.info.help)(apply_cmd.run)
 app.command("add", help=add_cmd.app.info.help)(add_cmd.run)
 app.command("answer", help=answer_cmd.app.info.help)(answer_cmd.run)
+app.command("interview-prep", help=interview_prep_cmd.app.info.help)(interview_prep_cmd.run)
 app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
 app.add_typer(analyze_cmd.app, name="analyze")
 app.add_typer(discover_cmd.app, name="discover")

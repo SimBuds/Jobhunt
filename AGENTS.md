@@ -136,7 +136,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **eight** commands. `db` and `config` are hidden internals
+User-facing surface is **nine** commands. `db` and `config` are hidden internals
 (except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
@@ -148,12 +148,40 @@ jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor; prints `add` suggestion
 jobhunt add <URL>            # parse URL → write ATS slug to config.toml
 jobhunt answer "<question>"  # draft a tailored response to a form question
+jobhunt interview-prep <id> [--stage screen|assessment|hm|onsite] [--research]
+                             # hybrid prep doc: deterministic skeleton + LLM middle
 jobhunt list [--week N]      # pipeline view + weekly rollup
 jobhunt analyze certs [--top N] [--trend] [--window-days N] [--min-score N]
                              # cert frequency, trends, and fit verdicts
 jobhunt discover slugs       # legacy: harvest URLs in jobs DB + probe Greenhouse/Ashby
 jobhunt config seed --apply  # import kb/seeds/gta-employers.toml into config
 ```
+
+`interview-prep` is the post-conversion companion to `apply`. When a job
+moves to `interviewing` (via `apply --set-status interviewing`), the apply
+command prints a nudge pointing at this command. Hybrid generation:
+deterministic skeleton owns the header + comp heads-up + pre-call
+checklist + after-the-call footer; one structured LLM call produces the
+role decode, strongest anchors, likely questions (with answer beats),
+questions to ask back, and honest gaps (with non-defensive reframes).
+
+Honesty enforcement reuses existing infrastructure — no new validators:
+- `cover_validate` banned phrases / defensive patterns / fabrication
+  watchlist / unverified-numbers run against the concatenated LLM output.
+- A separate anchor-authenticity check requires each anchor to contain
+  at least one substantive token (alphabetic, length ≥ 5) appearing
+  verbatim in the verified blob (skills + work history + summary). This
+  rejects fabricated anchors like "Built Kubernetes clusters" while
+  accepting full sentences like "Built a 14+ page Shopify storefront for
+  Atelier Dacko" where stop words like "for" wouldn't survive the strict
+  identity-subset rule the tailor uses for skills.
+
+Retry loop mirrors `write_answer_with_retry` (Phase 9.2 pattern: forces
+`temperature=0` on attempts 2+). Stage value tunes prompt emphasis;
+re-running with a different `--stage` overwrites the same single file
+at `data/interview-prep/<job-id-safe>.md`. Opt-in `--research` fetches
+the JD URL and company root (robots-checked; `--force-robots` overrides
+for personal-use only) and attaches stripped HTML to the prompt.
 
 `answer` drafts a response to a single application-form question using the
 same honesty rules as the cover-letter pipeline (banned phrases, fabrication
