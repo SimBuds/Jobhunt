@@ -44,6 +44,7 @@ from jobhunt.ingest import (
     smartrecruiters,
     workday,
 )
+from jobhunt.ingest._filter import is_management_title, is_within_age_window
 from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
 from jobhunt.secrets import load_secrets
@@ -65,16 +66,43 @@ def run(
             "Jobs with an existing application row are kept so history stays intact."
         ),
     ),
+    max_age_days: int | None = typer.Option(
+        None,
+        "--max-age-days",
+        help=(
+            "Drop postings older than N days at ingest. 0 disables. "
+            "Default: cfg.ingest.max_age_days (14). Adapters without "
+            "`posted_at` (Workday) are treated as fresh."
+        ),
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
     ensure_profile(cfg)
-    asyncio.run(_run(cfg, skip_score=skip_score, skip_ingest=skip_ingest, limit=limit, refresh=refresh))
+    effective_max_age = (
+        max_age_days if max_age_days is not None else cfg.ingest.max_age_days
+    )
+    asyncio.run(
+        _run(
+            cfg,
+            skip_score=skip_score,
+            skip_ingest=skip_ingest,
+            limit=limit,
+            refresh=refresh,
+            max_age_days=effective_max_age,
+        )
+    )
 
 
 async def _run(
-    cfg: Config, *, skip_score: bool, skip_ingest: bool, limit: int | None, refresh: bool = False
+    cfg: Config,
+    *,
+    skip_score: bool,
+    skip_ingest: bool,
+    limit: int | None,
+    refresh: bool = False,
+    max_age_days: int = 14,
 ) -> None:
     conn = connect(cfg.paths.db_path)
     try:
@@ -84,9 +112,16 @@ async def _run(
             _refresh_scan_state(cfg, conn)
 
         if not skip_ingest:
-            inserted, per_source = await _ingest_all(cfg, conn)
+            inserted, per_source, filtered = await _ingest_all(
+                cfg, conn, max_age_days=max_age_days
+            )
             _print_ingest_summary(per_source)
             typer.echo(f"ingest: {inserted} new job(s) inserted")
+            if filtered["mgmt"] or filtered["stale"]:
+                typer.echo(
+                    f"ingest: filtered {filtered['mgmt']} management-title + "
+                    f"{filtered['stale']} stale (>{max_age_days}d) job(s)"
+                )
         else:
             typer.echo("ingest: skipped")
 
@@ -94,7 +129,9 @@ async def _run(
             return
 
         ph = prompt_hash(cfg.paths.kb_dir)
-        rows = jobs_to_score(conn, current_hash=ph, limit=limit)
+        rows = jobs_to_score(
+            conn, current_hash=ph, limit=limit, max_age_days=max_age_days
+        )
         if not rows:
             typer.echo("score: nothing to score")
             return
@@ -224,12 +261,15 @@ async def _warm_model(cfg: Config) -> None:
 
 
 async def _ingest_all(
-    cfg: Config, conn: sqlite3.Connection
-) -> tuple[int, list[tuple[str, str, int, str | None]]]:
+    cfg: Config, conn: sqlite3.Connection, *, max_age_days: int = 14
+) -> tuple[int, list[tuple[str, str, int, str | None]], dict[str, int]]:
     """Run all configured ingest adapters concurrently.
 
-    Returns (inserted, per_source) where per_source is a list of
-    (source, label, count, error) tuples — error is None on success.
+    Returns (inserted, per_source, filtered) where:
+      - per_source is a list of (source, label, count, error) tuples
+        (error is None on success);
+      - filtered is `{"mgmt": N, "stale": N}` counting jobs dropped at the
+        drain chokepoint for management-title or freshness reasons.
     """
     secrets = load_secrets()
     limiter = RateLimiter(cfg.ingest.rate_limit_per_sec)
@@ -259,8 +299,9 @@ async def _ingest_all(
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
         adzuna_queries = cfg.ingest.adzuna.queries
         if not adzuna_queries:
-            from jobhunt.ingest._query_planner import derive_adzuna_queries
             import json as _json
+
+            from jobhunt.ingest._query_planner import derive_adzuna_queries
             verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
             if verified_path.is_file():
                 verified = _json.loads(verified_path.read_text(encoding="utf-8"))
@@ -299,7 +340,7 @@ async def _ingest_all(
                 "set ingest.greenhouse/lever/ashby slugs.",
                 err=True,
             )
-            return 0, []
+            return 0, [], {"mgmt": 0, "stale": 0}
 
         non_adzuna = [a for a in adapters if a[0] != "adzuna_ca"]
         if not non_adzuna:
@@ -352,11 +393,22 @@ async def _ingest_all(
             closer_task = asyncio.create_task(closer())
 
             inserted = 0
+            filtered = {"mgmt": 0, "stale": 0}
             seen_dedup: set[str] = set()
             while True:
                 item = await queue.get()
                 if item is None:
                     break
+                # Pre-score filters at the drain chokepoint: management
+                # title (drops Manager/Director/Head of/VP/etc — Senior /
+                # Lead / Staff / Principal pass through as IC) + freshness
+                # window. Both filters are pure and adapter-agnostic.
+                if is_management_title(item.title):
+                    filtered["mgmt"] += 1
+                    continue
+                if not is_within_age_window(item.posted_at, max_age_days):
+                    filtered["stale"] += 1
+                    continue
                 dedup_key = _dedup_key(item)
                 if dedup_key in seen_dedup:
                     continue
@@ -370,7 +422,7 @@ async def _ingest_all(
                  results.get((source, label), (0, None))[1])
                 for (source, label, _) in adapters
             ]
-            return inserted, per_source
+            return inserted, per_source, filtered
 
 
 _DEDUP_RE = __import__("re").compile(r"[^a-z0-9]+")

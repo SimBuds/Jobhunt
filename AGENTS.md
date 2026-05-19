@@ -290,6 +290,9 @@ top-level commands that touch scoring/listing/applying must call it too.
 6. **User-Agent:** identifies the tool and provides a contact, e.g. `jobhunt/0.1 (+personal-use; your-email@example.com)`. Set via `config.toml` under `[ingest] user_agent`.
 7. **Cache** raw responses to `data/cache/` with a TTL; don't re-hit APIs needlessly during dev.
 8. **Adzuna queries auto-derive from `verified.json`** when `cfg.ingest.adzuna.queries` is empty. `ingest._query_planner.derive_adzuna_queries` walks `skills_core` / `skills_cms` / `skills_familiar` plus work-history bullets and emits up to 10 role-suffixed queries (capped to keep budget at ~30 API calls/scan with `pages=3`). Umbrella triggers (`cms developer`, `ai engineer`, `seo specialist`) fire on bucket-presence / bullet-token signals. Populated `queries` list bypasses the planner entirely. Adding new skill buckets to verified.json requires extending `_SKILL_QUERIES` or `_CATEGORY_TRIGGERS` to surface them.
+9. **Pre-score chokepoint filters** at `commands.scan_cmd._ingest_all`'s drain loop (applied after dedupe, before `upsert_job`):
+   - **Management-title drop** via `ingest._filter.is_management_title` — regex matches Manager / Director / Head of / VP / Vice President / Chief X Officer. **Does NOT** match Senior / Lead / Staff / Principal / Architect — those are IC titles per `kb/prompts/score.md`. Keep `_MANAGEMENT_TITLE_RE` in sync with `pipeline.score._is_bogus_senior_decline`'s `hard_title_triggers` tuple.
+   - **Freshness window** via `ingest._filter.is_within_age_window` — `cfg.ingest.max_age_days` (default 14) caps how stale a `posted_at` can be. CLI override via `jobhunt scan --max-age-days N`; 0 disables. Adapters that don't populate `posted_at` (Workday) pass through. Both filters report drop counts in the per-scan summary.
 
 ## Browser automation rules — non-negotiable
 

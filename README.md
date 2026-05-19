@@ -91,7 +91,8 @@ jobhunt convert-resume
 ## Daily flow
 
 ```bash
-jobhunt scan                   # pull new jobs + score them
+jobhunt scan                   # pull new jobs + score them (filters: 14-day freshness, no management titles)
+jobhunt scan --max-age-days 30 # widen the freshness window for a specific run (0 disables)
 jobhunt list --min-score 70    # high-fit subset
 jobhunt apply --best           # pick which to apply to
 # Browser opens. You review, click Submit yourself.
