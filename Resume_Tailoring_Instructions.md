@@ -22,20 +22,24 @@ If Casey gives you a job title and asks you to "tailor a resume for a Senior Rea
 
 Use only the items below. If a job needs something not on this list, do not add it.
 
-### Work history (true as of April 2026)
+### Work history (true as of May 2026)
 
 | Role | Employer | Dates |
 |---|---|---|
 | Web Developer (Contract) | Custom Jewelry Brand (NDA) | 2023 – Present |
-| Web Developer (Contract) | AI Agency (NDA) | 2026 |
+| Web Developer (Contract) | AI Agency (NDA) | 2026 – Present |
 | Web Developer (Contract) | Vintage Gaming Retailer (NDA) | 2024 |
 | Sous Chef & Team Lead | Multiple Venues, Toronto | 2015 – 2024 |
+
+Two roles currently carry "Present". The shrink ladder's Present-role guard (see `pipeline.tailor._try_drop_weakest_bullet`) treats both as protected — older roles get trimmed first. Confirm with Casey if one of these has actually wrapped before tailoring.
 
 Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
 ### Skills Casey actually uses (Core / production)
 
-JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes, apps), Shopify App Development, HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (q5_0 KV cache, flash attention), prompt engineering, Stripe integration, Google Tag Manager.
+JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes, apps), Shopify App Development, HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (cache, flash attention), prompt engineering, Claude Code CLI, OpenAI Codex, Stripe integration, Google Tag Manager.
+
+The **AI & Tooling row in `Resume.docx`** is the canonical source of truth for the tools Casey uses daily. Keep it in sync with this list whenever you add or remove a daily-use tool. Deep implementation details (e.g. specific quantization names like `q5_0`) belong in project descriptions or cover notes, not the docx skills row — they over-specify for a recruiter glance.
 
 ### Skills Casey is "Familiar" with (academic / light use)
 
@@ -72,6 +76,22 @@ The original resume lists only "Machine Learning, Data Structures & Algorithms, 
 - 9 years leading culinary teams of 5–20.
 
 Do not invent new numbers. Do not change these numbers up or down to sound stronger.
+
+### Personal projects (real, shippable — surface when JD touches AI/LLM, local infra, Linux, or automation)
+
+**Not in the baseline `Resume.docx` (one-page constraint). Surface only in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant; do not list them as professional experience or attach employer-style metrics.
+
+- **AI Context Stack** (`github.com/SimBuds/Ollama-LLM-Prompts`) — custom `qwen3.5:9b` via Ollama with a transparent prompt-assembly pipeline. Plain-Markdown sources under `prompts/`, `memory/`, `knowledge/` compiled in fixed order into a generated system prompt + Modelfile. Tuned for q5_0 KV cache, flash attention, 16k context, thinking mode as explicit opt-in. *Stack: Ollama, qwen3.5:9b, Modelfile, local LLM.*
+- **Job Hunt AI Buddy** (`github.com/SimBuds/Jobhunt`) — this CLI. Local-first GTA job search: Greenhouse/Lever/Ashby/SmartRecruiters/Workday/Job Bank CA/Adzuna CA ingest, local Ollama scoring + resume/cover tailoring under structural honesty rules, Playwright autofill (human submits). No LinkedIn scraping, no bot submissions, no stored credentials. *Stack: Python, uv, Ollama, SQLite, Playwright, ATS APIs.*
+- **macOS Ventura on KVM** (`github.com/SimBuds/Auto-Agent/projects`) — battle-tested AMD virtualization path on Ryzen 5900X + RTX 3080. Quickemu-git/QEMU 11, nocow qcow2 on Btrfs, power-of-two CPU topology, CCX-pinned launches via taskset to dodge Infinity Fabric latency. Software rendering forced Ventura over newer releases. *Stack: KVM, QEMU, Quickemu, macOS, Btrfs, Arch Linux.*
+- **Arch autonomous agent stack** (`github.com/SimBuds/Auto-Agent`) — 24/7 lingered `systemd --user` units boot the stack without a graphical session. Docker-sandboxed containers handle tool calls; loopback FastAPI capability server bridges agent intents to `notify-send`, `wl-copy`, `xdg-open`, KDE D-Bus. *Stack: Arch Linux, Docker, FastAPI, D-Bus, Claude API.* **In progress:** Hermes planning layer and OpenClaw Telegram/Discord gateway — name them only if the JD asks for in-flight project framing; do not present as shipped.
+- **Hybrid local+cloud coding agent** (in progress) — daily-driver developer agent stack: Claude Code CLI as the interactive shell, Ollama serving the custom `qwen-custom:latest` (qwen3.6 base, same Modelfile assembly pipeline as AI Context Stack) for cheap local turns, with Claude API called for the complex multi-file / long-context tasks. *Stack: Claude Code CLI, Ollama, qwen3.6 (custom Modelfile), Claude API.*
+
+How to use these in tailoring:
+- They reinforce the baseline AI & Tooling skills row (the source of truth for what Casey uses daily) and back the AI/LLM differentiator line in the Summary — concrete proof that the Ollama / prompt-engineering / GPU-tuning claims are real.
+- Acceptable to mention by name in a tailored Summary or a cover note when the JD asks for AI tooling, local LLM, Linux/infra fluency, or automation maturity.
+- Surface in the cover-note lead paragraph when the JD asks for AI/LLM, local LLM hosting, Linux/infra, or automation — name the project by name so the AI-screener summarizer pulls it. Do not list under Professional Experience and do not add a Projects section to the baseline resume.
+- Do not invent metrics (users, stars, uptime). Describe what the project does, not how popular it is.
 
 ### What Casey has NOT done (common asks to refuse)
 
@@ -151,7 +171,7 @@ Follow this order. Do not skip steps.
 | Coursework line | Surface specific courses from the GBC list when relevant | List courses Casey didn't take |
 | Job entry visibility | The Sous Chef entry can be shortened to one line, or in rare cases moved below Education for very senior dev roles where it's noise | Delete real work history; lie about dates |
 | AI/LLM angle | Lead with this whenever the job lists AI as a bonus; it's Casey's strongest differentiator | Claim production AI products that don't exist |
-| Adjacent skill framing | "Coming from HubL/Liquid rather than AmpScript directly, but…" — name the gap, name the transfer | Imply Casey has the missing skill |
+| Adjacent skill framing | Positive map only — e.g. "Built custom HubL templates and Liquid sections, the same templating-engine pattern AmpScript follows." Lead with what Casey has done. | "Rather than X", "coming from X", "the model transfers" — these volunteer weakness the JD didn't ask about and the cover validator rejects them |
 
 ---
 
@@ -222,7 +242,7 @@ You are not just a writer; you are a check on the application strategy. Speak up
 - **The JD requires a hard skill Casey doesn't have** as a must-have (e.g., "5+ years SFMC + AmpScript" — no resume tailoring fixes this). Recommend skip.
 - **The years gap is more than 2x** what Casey has. (5+ year roles for a 2.5-year candidate.)
 - **The role is in a city Casey isn't in** and isn't remote. He is in Toronto.
-- **The seniority is wrong** (Senior, Staff, Lead, Principal, Architect). These titles imply not just years but org influence Casey hasn't built.
+- **The seniority is wrong as a people-management role.** Senior / Staff / Lead / Principal / Architect titles are **not** auto-declines on their own — IC roles at those titles are valid. Decline only when the JD body names hard people-management responsibilities (mentoring 4+ direct reports, owning headcount, performance reviews), when the title is hard people-management (Manager / Director / Head of / VP), or when years required ≥ 7 with no transferable bridge. This matches the scorer's auto-decline rubric in `AGENTS.md` and `kb/prompts/score.md`; do not pre-decline roles the scorer would accept.
 - **The domain requires regulated experience** Casey doesn't have (clinical software, securities trading systems, medical devices). Tailoring won't get past compliance screening.
 - **The title is people-management or non-IC** (Manager, Senior Manager, Director, Head of, VP — including "Engineering Manager"). Casey is an IC engineer, not a people leader.
 - **The title is a non-engineering function** (Sales, Partnerships, Account Executive/Manager, Customer Success, Marketing, Product/Project/Program Manager, Recruiter, Designer, Analyst, non-technical Consultant). Only hands-on coding roles qualify.
@@ -255,4 +275,6 @@ When Casey asks for a cover note or a follow-up email to a recruiter, the same h
 
 ---
 
-*Last updated: April 27, 2026. Update Section 2 whenever Casey's experience changes.*
+*Last updated: May 20, 2026. Update Section 2 whenever Casey's experience changes.*
+
+*Related: see `AGENTS.md` for the broader CLI rules, including the `interview-prep` honesty checks that apply to interview prep docs (anchor authenticity, banned phrases, retry-on-violation). The same no-fabrication spirit governs both surfaces.*
