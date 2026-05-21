@@ -74,8 +74,8 @@ def _parse_question_from_file(path: Path) -> str | None:
 
 def backfill_existing(conn: sqlite3.Connection, data_dir: Path) -> int:
     """Walk `data/answers/` and `data/applications/*/answers/` to populate
-    the index from any artifacts written before Phase 12. Returns the
-    number of rows inserted/updated. Safe to re-run."""
+    the index from any artifacts written before the index existed. Returns
+    the number of rows inserted/updated. Safe to re-run."""
     candidates: list[tuple[Path, str | None]] = []
     standalone = data_dir / "answers"
     if standalone.is_dir():

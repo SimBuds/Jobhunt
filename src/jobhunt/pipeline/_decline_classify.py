@@ -6,8 +6,9 @@ enough that wording converges) into a small enum. Used by:
 - `pipeline.score` at score time: stamps `jobs.decline_category` so
   future analyses can group rows in SQL rather than re-scanning text.
 - `db.migrate`-time backfill: classifies any pre-existing
-  `decline_reason` rows on first `jobhunt db migrate` after Phase 4.
-- `analyze declines` (Phase 14): aggregates by category over a window.
+  `decline_reason` rows the first time the `decline_category` column
+  exists (`0007_decline_category` migration).
+- `analyze` subcommands: aggregate by category over a window.
 
 The classifier is pure regex + ordered match. No LLM. Add new patterns
 to `_PATTERNS` (most specific first) — the first match wins.

@@ -31,8 +31,8 @@ from jobhunt.db import (
     upsert_job,
     write_score,
 )
-from jobhunt.errors import GatewayError, IngestError, JobHuntError
-from jobhunt.gateway import complete_json
+from jobhunt.errors import IngestError, JobHuntError
+from jobhunt.gateway.warm import warm_model
 from jobhunt.http import RateLimiter
 from jobhunt.ingest import (
     adzuna_ca,
@@ -142,7 +142,7 @@ async def _run(
             f"({new_n} new, {stale_n} stale — profile/prompt/policy changed) "
             "(this can take a while on Ollama)"
         )
-        await _warm_model(cfg)
+        await warm_model(cfg, task="score")
         ok = 0
         for row in rows:
             job = Job(
@@ -234,14 +234,6 @@ def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
     if kept:
         bits.append(f"{kept} submitted application(s) kept")
     typer.echo("refresh: " + "; ".join(bits))
-
-
-# `_warm_model` was moved to `jobhunt.gateway.warm.warm_model` in Phase 9 so
-# `apply` can reuse it. Local thin wrapper kept for backwards-compatibility
-# with any external script that imports `_warm_model` directly.
-async def _warm_model(cfg: Config) -> None:
-    from jobhunt.gateway.warm import warm_model
-    await warm_model(cfg, task="score")
 
 
 async def _ingest_all(

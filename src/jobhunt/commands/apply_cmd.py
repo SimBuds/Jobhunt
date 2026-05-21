@@ -597,8 +597,8 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
     verdicts: list[str] = []
     violation_topics: Counter[str] = Counter()
 
-    # Phase 11: overlap the next job's LLM phase with the current job's IO
-    # phase (render + browser + user-confirms-submission). Single-VRAM-slot
+    # Overlap the next job's LLM phase with the current job's IO phase
+    # (render + browser + user-confirms-submission). Single-VRAM-slot
     # Ollama still serves LLM calls sequentially, but the user's review time
     # between jobs is dead time we can use to pre-generate the next tailor +
     # cover. Worst case (user wants to skip the next job): we wasted one
@@ -671,10 +671,10 @@ from dataclasses import dataclass
 @dataclass
 class _LLMPhaseResult:
     """Output of the LLM-bound phase of `_apply_one`. Carries everything the
-    IO phase needs to finish (render + browser + record). Phase 11: produced
-    by `_apply_llm_phase` and consumed by `_apply_io_phase`, with an
-    asyncio task between them so the next job's LLM can overlap the current
-    job's user-review/browser time."""
+    IO phase needs to finish (render + browser + record). Produced by
+    `_apply_llm_phase` and consumed by `_apply_io_phase`, with an asyncio
+    task between them so the next job's LLM can overlap the current job's
+    user-review/browser time."""
     out_dir: Path
     tailored: TailoredResume
     cover: CoverLetter
@@ -838,9 +838,10 @@ async def _apply_one(
     so the caller can skip it cleanly. Topics are short coarse-grained labels
     like "fabrication", "cover-violation", "coverage", "alignment".
 
-    Phase 11: delegates to `_apply_llm_phase` + `_apply_io_phase`. Kept as the
+    Delegates to `_apply_llm_phase` + `_apply_io_phase`. Kept as the
     single-job entry point so external callers (tests, ad-hoc invocations)
-    don't have to manage the phase split. The pipelined overlap lives in
+    don't have to manage the phase split. The pipelined overlap (next job's
+    LLM running while the current job's IO is in flight) lives in
     `_apply_each`, not here.
     """
     phase = await _apply_llm_phase(cfg, job, verified=verified)
