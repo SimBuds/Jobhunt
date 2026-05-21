@@ -201,6 +201,66 @@ def set_decline_reason(conn: sqlite3.Connection, job_id: str, reason: str | None
     conn.execute("UPDATE jobs SET decline_reason = ? WHERE id = ?", (reason, job_id))
 
 
+_VALID_OUTCOMES = frozenset({"offer", "rejected", "withdrawn", "ghosted"})
+_VALID_RECRUITER_TYPES = frozenset(
+    {"internal_recruiter", "hiring_manager", "external_agency", "unknown"}
+)
+
+
+def mark_response_received(
+    conn: sqlite3.Connection, job_id: str, at: str, recruiter_type: str | None = None
+) -> None:
+    """Record that a recruiter responded to an application.
+
+    `at` is an ISO-8601 timestamp string (YYYY-MM-DD or full timestamp).
+    `recruiter_type` (optional) tags who responded — drives interview-prep
+    question biasing in Phase 13. Allowed values: `internal_recruiter`,
+    `hiring_manager`, `external_agency`, `unknown`. Idempotent —
+    overwrites prior values.
+    """
+    if recruiter_type is not None and recruiter_type not in _VALID_RECRUITER_TYPES:
+        raise ValueError(
+            f"invalid recruiter_type {recruiter_type!r}; expected one of "
+            f"{sorted(_VALID_RECRUITER_TYPES)}"
+        )
+    conn.execute(
+        "UPDATE applications SET response_received_at = ?, "
+        "recruiter_type = COALESCE(?, recruiter_type) "
+        "WHERE job_id = ?",
+        (at, recruiter_type, job_id),
+    )
+
+
+def mark_interview_scheduled(conn: sqlite3.Connection, job_id: str, at: str) -> None:
+    """Record when the first interview is scheduled. Sets `status` to
+    'interviewing' if it isn't already past that point."""
+    conn.execute(
+        "UPDATE applications SET interview_at = ?, "
+        "status = CASE WHEN status IN ('drafted','applied') THEN 'interviewing' "
+        "ELSE status END "
+        "WHERE job_id = ?",
+        (at, job_id),
+    )
+
+
+def set_outcome(conn: sqlite3.Connection, job_id: str, outcome: str) -> None:
+    """Set the final outcome ('offer' / 'rejected' / 'withdrawn' / 'ghosted').
+
+    Distinct from `status` — `outcome` is the terminal disposition, set once
+    the application is closed. Also stamps `outcome_at` if not already set.
+    """
+    if outcome not in _VALID_OUTCOMES:
+        raise ValueError(
+            f"invalid outcome {outcome!r}; expected one of {sorted(_VALID_OUTCOMES)}"
+        )
+    conn.execute(
+        "UPDATE applications SET outcome = ?, "
+        "outcome_at = COALESCE(outcome_at, CURRENT_TIMESTAMP) "
+        "WHERE job_id = ?",
+        (outcome, job_id),
+    )
+
+
 def write_score(
     conn: sqlite3.Connection,
     *,

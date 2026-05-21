@@ -415,7 +415,14 @@ def test_set_status_interviewing_prints_nudge(
     monkeypatch.setattr(apply_cmd, "connect", lambda _path: FakeConn())
     monkeypatch.setattr(apply_cmd, "upsert_application", lambda *a, **kw: None)
 
-    apply_cmd._run_set_status("manual:abc123", "interviewing")
+    apply_cmd._run_lifecycle(
+        "manual:abc123",
+        set_status="interviewing",
+        mark_response=None,
+        mark_interview=None,
+        set_outcome=None,
+        recruiter_type=None,
+    )
     out = capsys.readouterr().out
     assert "applied → interviewing" in out
     assert "draft prep doc: jobhunt interview-prep manual:abc123" in out
@@ -450,6 +457,13 @@ def test_set_status_applied_no_nudge(
     monkeypatch.setattr(apply_cmd, "connect", lambda _p: FakeConn())
     monkeypatch.setattr(apply_cmd, "upsert_application", lambda *a, **kw: None)
 
-    apply_cmd._run_set_status("manual:abc123", "applied")
+    apply_cmd._run_lifecycle(
+        "manual:abc123",
+        set_status="applied",
+        mark_response=None,
+        mark_interview=None,
+        set_outcome=None,
+        recruiter_type=None,
+    )
     out = capsys.readouterr().out
     assert "draft prep doc" not in out
