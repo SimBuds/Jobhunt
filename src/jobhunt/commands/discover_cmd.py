@@ -21,7 +21,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_SUPPORTED_ATSES = ("greenhouse", "ashby", "lever", "smartrecruiters")
+_SUPPORTED_ATSES = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee")
 
 
 def _parse_atses(raw: str) -> list[str]:
@@ -40,14 +40,17 @@ def _parse_atses(raw: str) -> list[str]:
     "slugs",
     help=(
         "Find ATS slugs for past-scan companies via URL parsing + public-API "
-        "probes (Greenhouse/Ashby/Lever/SmartRecruiters)."
+        "probes (Greenhouse/Ashby/Lever/SmartRecruiters/Workable/Recruitee)."
     ),
 )
 def slugs(
     ats: str = typer.Option(
-        "greenhouse,ashby,lever,smartrecruiters",
+        "greenhouse,ashby,lever,smartrecruiters,workable,recruitee",
         "--ats",
-        help="Comma-separated ATSes to probe (greenhouse, ashby, lever, smartrecruiters).",
+        help=(
+            "Comma-separated ATSes to probe "
+            "(greenhouse, ashby, lever, smartrecruiters, workable, recruitee)."
+        ),
     ),
     limit: int = typer.Option(
         100, "--limit", "-n", min=1, max=2000, help="Cap on companies probed per run."

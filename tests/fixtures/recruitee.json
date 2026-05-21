@@ -1,0 +1,37 @@
+{
+  "offers": [
+    {
+      "id": 201,
+      "slug": "senior-backend-engineer",
+      "title": "Senior Backend Engineer",
+      "company_name": "Example Co",
+      "location": "Toronto, Ontario, Canada",
+      "remote": false,
+      "description": "Postgres, Go, Kubernetes.",
+      "careers_url": "https://example.recruitee.com/o/senior-backend-engineer",
+      "published_at": "2026-05-10T09:00:00Z"
+    },
+    {
+      "id": 202,
+      "slug": "remote-platform-engineer",
+      "title": "Remote Platform Engineer",
+      "company_name": "Example Co",
+      "location": "Canada",
+      "remote": true,
+      "description": "Remote-Canada role.",
+      "careers_url": "https://example.recruitee.com/o/remote-platform-engineer",
+      "published_at": "2026-05-11T09:00:00Z"
+    },
+    {
+      "id": 203,
+      "slug": "berlin-engineer",
+      "title": "Berlin Engineer",
+      "company_name": "Example Co",
+      "location": "Berlin, Germany",
+      "remote": false,
+      "description": "On-site in Berlin.",
+      "careers_url": "https://example.recruitee.com/o/berlin-engineer",
+      "published_at": "2026-05-12T09:00:00Z"
+    }
+  ]
+}
