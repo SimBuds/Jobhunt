@@ -71,6 +71,21 @@ def run(
         "--no-llm",
         help="Skeleton-only fallback. No LLM call. Useful for offline/debug.",
     ),
+    recruiter_type: str | None = typer.Option(
+        None,
+        "--recruiter-type",
+        help=(
+            "Bias likely-questions for a specific recruiter type. One of "
+            "internal_recruiter, hiring_manager, external_agency, unknown. "
+            "When omitted, reads applications.recruiter_type for this job "
+            "(if a response has been recorded) or defaults to 'unknown'."
+        ),
+    ),
+    refresh_research: bool = typer.Option(
+        False,
+        "--refresh-research",
+        help="Bypass the per-day research cache and refetch the JD URL.",
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
@@ -90,11 +105,18 @@ def run(
 
     research_blob = ""
     if research:
-        research_blob = _fetch_research(cfg, job_row["url"], force_robots=force_robots)
+        research_blob = _fetch_research(
+            cfg, job_row["url"], force_robots=force_robots,
+            refresh=refresh_research,
+        )
 
     comp_section = extract_comp_section(
         job_row["description"] or "",
         cfg.applicant.salary_expectation_cad,
+    )
+
+    effective_recruiter_type = _resolve_recruiter_type(
+        cfg, job_id, override=recruiter_type
     )
 
     ctx = PrepContext(
@@ -108,6 +130,7 @@ def run(
         cover_summary=cover_summary,
         research_blob=research_blob,
         comp_section=comp_section,
+        recruiter_type=effective_recruiter_type,
     )
 
     if no_llm:
@@ -208,14 +231,61 @@ def _load_verified(cfg: Config) -> dict[str, Any]:
     return data
 
 
-def _fetch_research(cfg: Config, job_url: str, *, force_robots: bool) -> str:
+_VALID_RECRUITER_TYPES_CLI = (
+    "internal_recruiter", "hiring_manager", "external_agency", "unknown"
+)
+
+
+def _resolve_recruiter_type(
+    cfg: Config, job_id: str, *, override: str | None
+) -> str:
+    """Resolve which recruiter_type to use for biasing the LLM prompt.
+
+    Precedence: CLI --recruiter-type > applications.recruiter_type > 'unknown'.
+    The CLI override is validated here so a bad value exits before the LLM
+    call (cheap fail-fast).
+    """
+    if override is not None:
+        if override not in _VALID_RECRUITER_TYPES_CLI:
+            typer.echo(
+                f"error: invalid --recruiter-type {override!r}. Allowed: "
+                f"{', '.join(_VALID_RECRUITER_TYPES_CLI)}",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        return override
+    conn = connect(cfg.paths.db_path)
+    try:
+        row = conn.execute(
+            "SELECT recruiter_type FROM applications WHERE job_id = ?", (job_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None or not row["recruiter_type"]:
+        return "unknown"
+    return row["recruiter_type"]
+
+
+def _fetch_research(
+    cfg: Config, job_url: str, *, force_robots: bool, refresh: bool = False
+) -> str:
     """Best-effort fetch of the JD URL + company root. Returns a single
     concatenated string for the LLM prompt. Robots-checked; non-fatal on
     any error (research is opt-in nice-to-have).
+
+    Phase 13: per-host, per-day cache at
+    `data/research-cache/<host>/<yyyy-mm-dd>.html`. Same-day hits reuse the
+    cached fetch; `refresh=True` (CLI `--refresh-research`) bypasses it.
+    Cache writes are best-effort — if disk is full or perms are bad we just
+    skip caching that URL.
     """
     if not job_url:
         return ""
     import httpx
+    from datetime import date as _date
+
+    cache_root = cfg.paths.data_dir / "research-cache"
+    today = _date.today().isoformat()
 
     blobs: list[str] = []
     urls = _research_urls(job_url)
@@ -223,6 +293,18 @@ def _fetch_research(cfg: Config, job_url: str, *, force_robots: bool) -> str:
         if not force_robots and not robots_allowed(url, cfg.ingest.user_agent):
             blobs.append(f"[skipped {url}: robots.txt disallows]")
             continue
+
+        cache_path = _cache_path_for(cache_root, url, today)
+        cached_text: str | None = None
+        if not refresh and cache_path is not None and cache_path.is_file():
+            try:
+                cached_text = cache_path.read_text(encoding="utf-8")
+            except OSError:
+                cached_text = None
+        if cached_text is not None:
+            blobs.append(f"### {url} [cache hit]\n{cached_text}")
+            continue
+
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(15.0),
@@ -233,9 +315,32 @@ def _fetch_research(cfg: Config, job_url: str, *, force_robots: bool) -> str:
                 resp.raise_for_status()
                 text = _strip_html(resp.text)
                 blobs.append(f"### {url}\n{text}")
+                if cache_path is not None:
+                    try:
+                        cache_path.parent.mkdir(parents=True, exist_ok=True)
+                        cache_path.write_text(text, encoding="utf-8")
+                    except OSError:
+                        pass
         except Exception as e:
             blobs.append(f"[fetch failed {url}: {e}]")
     return "\n\n".join(blobs)
+
+
+def _cache_path_for(cache_root: Path, url: str, day: str) -> Path | None:
+    """Return `<cache_root>/<host>/<day>__<url-hash>.txt` or None on bad URL.
+    Hash keeps the JD URL distinct from the company root URL even though
+    they share a host."""
+    import hashlib
+
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return None
+    host = parts.netloc.lower()
+    if not host:
+        return None
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+    return cache_root / host / f"{day}__{digest}.txt"
 
 
 def _research_urls(job_url: str) -> list[str]:
@@ -252,10 +357,30 @@ def _research_urls(job_url: str) -> list[str]:
     return out
 
 
+# Decimals and currency clusters in fetched HTML are the #1 source of
+# unverified-number violations in interview-prep retries. qwen picks them
+# up from pricing pages / metric strips / "1,247 customers" hero copy and
+# parrots them back in anchor beats. We scrub them at fetch time so they
+# never enter the prompt. Single-digit standalone integers (1, 2, 3...)
+# survive because they're too common to filter and tend to appear in
+# legitimate text fragments ("3-year roadmap").
+import re as _re
+
+_NUMERIC_SCRUB_RE = _re.compile(
+    r"(?<![A-Za-z_])"            # not after a word char (preserves q5_0, ES6, etc.)
+    r"(?:"
+    r"\$\d[\d,]*(?:\.\d+)?\b"    # $1,234.56 / $99
+    r"|\d+\.\d+%?"               # 17.32 / 28.86%
+    r"|\d+(?:,\d{3})+"           # 1,247 / 50,000 (1+ prefix digits + comma groups)
+    r")"
+)
+
+
 def _strip_html(html: str) -> str:
     """Minimal HTML→text strip. Reuses the stdlib parser the manual ingest
     path uses; we don't need fidelity here, just enough for the LLM to
-    pick up product names and headlines.
+    pick up product names and headlines. Then scrubs numeric noise that
+    consistently leaks into interview-prep retries as unverified numbers.
     """
     from html.parser import HTMLParser
 
@@ -280,7 +405,8 @@ def _strip_html(html: str) -> str:
     p = _Stripper()
     p.feed(html)
     raw = "\n".join(part.strip() for part in p.parts if part.strip())
-    # Collapse runs of blank-ish whitespace and cap.
+    # Scrub decimals / currency / thousands-separated counts before the cap.
+    raw = _NUMERIC_SCRUB_RE.sub("[N]", raw)
     return raw[:6000]
 
 

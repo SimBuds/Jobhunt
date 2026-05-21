@@ -134,6 +134,9 @@ Cover-letter draft (anchors already chosen): {cover_summary}
 # Optional research blob (may be empty)
 {research_blob}
 
+# Recruiter type — bias the likely_questions mix accordingly
+{recruiter_bias}
+
 # Length guidance
 - `role_decode`: 3-6 bullets, 12-30 words each.
 - `strongest_anchors`: 4-8 bullets, each a single sentence anchored on a

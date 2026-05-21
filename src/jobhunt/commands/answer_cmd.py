@@ -64,11 +64,24 @@ def run(
         "--no-save",
         help="Print the answer to stdout only; skip writing the .md artifact.",
     ),
+    recall: bool = typer.Option(
+        False,
+        "--recall",
+        help=(
+            "Don't generate — search past answers for the phrase given as the "
+            "question argument. Lists the most-recent matches with the saved "
+            "artifact path so you can paste/edit prior drafts."
+        ),
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
     ensure_profile(cfg)
+
+    if recall:
+        _run_recall(cfg, phrase=question)
+        return
 
     effective_max = max_words if max_words is not None else cfg.pipeline.answer_max_words
 
@@ -160,11 +173,15 @@ def _load_jd_context(cfg: Config, job_id: str) -> tuple[str, str]:
 def _save_answer(
     cfg: Config, *, question: str, answer_text: str, job_id_safe: str | None
 ) -> Path:
-    """Write the answer as `<sha1-12>.md` under the appropriate directory.
-    Filename is derived from the question text so the same question
-    regenerates to the same file (overwrite-friendly across iterations).
+    """Write the answer as `<sha1-12>.md` under the appropriate directory
+    AND index it in the `answers` table. Filename is derived from the
+    question text so the same question regenerates to the same file
+    (overwrite-friendly across iterations); the index follows the same
+    semantics via INSERT OR REPLACE.
     """
-    digest = hashlib.sha1(question.encode("utf-8")).hexdigest()[:12]
+    from jobhunt.pipeline._answer_index import index_answer, question_sha1
+
+    digest = question_sha1(question)
     if job_id_safe is not None:
         out_dir = cfg.paths.data_dir / "applications" / job_id_safe / "answers"
     else:
@@ -177,7 +194,53 @@ def _save_answer(
         f"# Answer\n\n{answer_text.strip()}\n"
     )
     path.write_text(body, encoding="utf-8")
+
+    # Index for --recall. DB write failures are non-fatal — the file is
+    # the source of truth and the next `db migrate` backfill will
+    # re-index from disk.
+    try:
+        conn = connect(cfg.paths.db_path)
+        try:
+            with conn:
+                index_answer(
+                    conn,
+                    sha1=digest,
+                    question=question.strip(),
+                    job_id=job_id_safe,
+                    path=path,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
     return path
+
+
+def _run_recall(cfg: Config, *, phrase: str) -> None:
+    """Print past answers whose question text contains `phrase`."""
+    from jobhunt.pipeline._answer_index import recall
+
+    conn = connect(cfg.paths.db_path)
+    try:
+        rows = recall(conn, phrase, limit=10)
+    finally:
+        conn.close()
+
+    if not rows:
+        typer.echo(
+            f"no past answers matching {phrase!r}.\n"
+            f"(if you've used `jobhunt answer` before Phase 12 shipped, "
+            f"run `jobhunt db migrate` to backfill the index from disk.)"
+        )
+        return
+
+    typer.echo(f"\nfound {len(rows)} match(es) for {phrase!r}:\n")
+    for r in rows:
+        scope = f"job={r['job_id']}" if r["job_id"] else "standalone"
+        typer.echo(f"  [{r['created_at']}] {scope}")
+        typer.echo(f"    Q: {r['question']}")
+        typer.echo(f"    → {r['path']}")
+        typer.echo("")
 
 
 __all__ = ["app", "run"]

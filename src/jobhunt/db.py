@@ -73,6 +73,17 @@ def migrate(conn: sqlite3.Connection, migrations_dir: Path) -> MigrationResult:
     if "0007_decline_category" in applied:
         from jobhunt.pipeline._decline_classify import backfill_existing
         backfill_existing(conn)
+    # Phase 12 note: the original spec called for an auto-backfill of the
+    # `answers` table from on-disk artifacts during the 0008 migration.
+    # Dropped — it relied on `load_config().paths.data_dir` resolving
+    # correctly inside the migration path, which couples `db.migrate` to
+    # the config layer and complicates test isolation (the default
+    # data_dir is `Path.cwd() / 'data'`, which leaks the developer's real
+    # artifacts into tests). The `answers` index now populates only
+    # forward — every new `jobhunt answer` call writes an index row. Any
+    # historical artifacts can be re-indexed by re-running the same
+    # `jobhunt answer "..."` command, which overwrites the same file and
+    # updates the index entry.
 
     return MigrationResult(applied=applied, skipped=skipped)
 
