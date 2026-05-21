@@ -429,3 +429,48 @@ def validate_cover(
         violations.append(f"unverified tech claim: {token!r}")
 
     return violations
+
+
+# === Phase 10: rule-id categorization ======================================
+#
+# `validate_cover` returns free-text strings ("unverified number: '42'"). For
+# aggregation in `analyze validators`, we need stable rule_ids. `_DEFENSIVE_PATTERNS`
+# already carries human-friendly labels (e.g. "defensive: 'rather than X'") so
+# we treat the label itself as the rule_id when no other prefix matches.
+
+# Prefix → rule_id mapping. Order doesn't matter; first match wins via the
+# longest-prefix scan in `categorize_violation`.
+_VIOLATION_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("banned phrase:", "banned_phrase"),
+    ("form-letter opener:", "banned_opener"),
+    ("unverified number:", "unverified_number"),
+    ("unverified tech claim:", "unverified_tech"),
+    ("body is", "word_count_over"),
+    ("expected 3-4 paragraphs", "paragraph_count"),
+    ("lead paragraph does not name company", "company_missing"),
+    ("salutation:", "banned_salutation"),
+    ("body contains an exclamation mark", "exclamation"),
+    ("body contains an unfilled template placeholder", "template_placeholder"),
+    ("body recaps resume material:", "recap_in_body"),
+    # The sign-off-in-body string is "paragraph N ends with a sign-off line";
+    # use a substring match because the leading text varies on N.
+    ("ends with a sign-off line", "sign_off_in_body"),
+)
+
+
+def categorize_violation(message: str) -> str:
+    """Map a free-text violation message to a stable rule_id.
+
+    Falls back to the literal message lower-cased + space-joined when no
+    prefix matches — this captures the `_DEFENSIVE_PATTERNS` labels
+    verbatim ("defensive: 'rather than X'") and surfaces them in
+    `analyze validators` so over-broad patterns can be tuned.
+    """
+    msg = message.strip()
+    for prefix, rule_id in _VIOLATION_PREFIXES:
+        if prefix in msg:
+            return rule_id
+    # Fall-through: defensive patterns already use stable labels.
+    # Lower-case and replace spaces with underscores so the rule_id is
+    # SQL/Counter-friendly.
+    return msg.lower().replace(" ", "_")[:80]

@@ -71,7 +71,7 @@ def run(
         "--max-age-days",
         help=(
             "Drop postings older than N days at ingest. 0 disables. "
-            "Default: cfg.ingest.max_age_days (14). Adapters that can't "
+            "Default: cfg.ingest.max_age_days (7). Adapters that can't "
             "infer a posted-at timestamp are treated as fresh."
         ),
     ),
@@ -102,7 +102,7 @@ async def _run(
     skip_ingest: bool,
     limit: int | None,
     refresh: bool = False,
-    max_age_days: int = 14,
+    max_age_days: int = 7,
 ) -> None:
     conn = connect(cfg.paths.db_path)
     try:
@@ -236,32 +236,16 @@ def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
     typer.echo("refresh: " + "; ".join(bits))
 
 
+# `_warm_model` was moved to `jobhunt.gateway.warm.warm_model` in Phase 9 so
+# `apply` can reuse it. Local thin wrapper kept for backwards-compatibility
+# with any external script that imports `_warm_model` directly.
 async def _warm_model(cfg: Config) -> None:
-    """Pre-warm the score model so the first real call doesn't pay the cold-load
-    cost on top of the 180 s gateway timeout. A trivial chat with the configured
-    keep_alive leaves the model resident for subsequent scoring calls."""
-    model = cfg.gateway.tasks.get("score", "")
-    if not model:
-        return
-    typer.echo(f"score: warming {model}...")
-    try:
-        await complete_json(
-            base_url=cfg.gateway.base_url,
-            model=model,
-            system="Return JSON.",
-            user="ok",
-            schema={
-                "type": "object",
-                "properties": {"ok": {"type": "boolean"}},
-                "required": ["ok"],
-            },
-        )
-    except GatewayError as e:
-        typer.echo(f"  ! warm-up failed (continuing): {e}", err=True)
+    from jobhunt.gateway.warm import warm_model
+    await warm_model(cfg, task="score")
 
 
 async def _ingest_all(
-    cfg: Config, conn: sqlite3.Connection, *, max_age_days: int = 14
+    cfg: Config, conn: sqlite3.Connection, *, max_age_days: int = 7
 ) -> tuple[int, list[tuple[str, str, int, str | None]], dict[str, int]]:
     """Run all configured ingest adapters concurrently.
 

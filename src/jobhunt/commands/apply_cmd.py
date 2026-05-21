@@ -17,6 +17,7 @@ Per selected job:
 from __future__ import annotations
 
 import asyncio
+import sys
 import re
 import sqlite3
 import uuid
@@ -580,20 +581,73 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
     import json as _json
     from collections import Counter
 
+    from jobhunt.gateway.warm import warm_model
+
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     verified: dict[str, object] = {}
     if verified_path.is_file():
         verified = _json.loads(verified_path.read_text(encoding="utf-8"))
 
+    # Warm the model once before the per-job loop. All task slots (score,
+    # tailor, cover) share the same model on Casey's setup, so warming any
+    # one of them keeps the others warm. Saves the cold-load cost on the
+    # first real call.
+    await warm_model(cfg, task="score")
+
     verdicts: list[str] = []
     violation_topics: Counter[str] = Counter()
-    for row in rows:
+
+    # Phase 11: overlap the next job's LLM phase with the current job's IO
+    # phase (render + browser + user-confirms-submission). Single-VRAM-slot
+    # Ollama still serves LLM calls sequentially, but the user's review time
+    # between jobs is dead time we can use to pre-generate the next tailor +
+    # cover. Worst case (user wants to skip the next job): we wasted one
+    # tailor + cover. Best case (the usual path): the next job is already
+    # drafted by the time the user moves on.
+    if not rows:
+        return
+
+    next_llm: asyncio.Task[_LLMPhaseResult | None] = asyncio.create_task(
+        _apply_llm_phase(cfg, _row_to_job(rows[0]), verified=verified)
+    )
+    for i, row in enumerate(rows):
         job = _row_to_job(row)
-        verdict, topics = await _apply_one(cfg, job, verified=verified, no_browser=no_browser)
-        if verdict is not None:
+        phase = await next_llm
+        # Kick off the *next* job's LLM phase BEFORE the current IO phase,
+        # so the LLM is already running while the user reads/submits.
+        if i + 1 < len(rows):
+            next_job = _row_to_job(rows[i + 1])
+            next_llm = asyncio.create_task(
+                _apply_llm_phase(cfg, next_job, verified=verified)
+            )
+
+        if phase is None:
+            pass  # tailor/cover/audit failed — fall through to between-jobs prompt
+        elif phase.early_exit:
+            verdicts.append(phase.audit_result.verdict)
+            for t in phase.topics:
+                violation_topics[t] += 1
+        else:
+            verdict, topics = await _apply_io_phase(
+                cfg, job, phase, no_browser=no_browser
+            )
             verdicts.append(verdict)
             for t in topics:
                 violation_topics[t] += 1
+
+        # Between-jobs prompt: give the user a clean exit. Only show when
+        # there's another job queued and stdin is a TTY (non-interactive
+        # runs auto-continue so the loop can complete unattended).
+        if i + 1 < len(rows) and sys.stdin.isatty():
+            keep_going = await _prompt_continue(_row_to_job(rows[i + 1]))
+            if not keep_going:
+                next_llm.cancel()
+                try:
+                    await next_llm
+                except (asyncio.CancelledError, Exception):
+                    pass
+                typer.echo("stopping loop. unprocessed jobs remain unapplied.")
+                break
 
     # End-of-loop summary — only useful when more than one job ran.
     if len(verdicts) > 1:
@@ -609,6 +663,159 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                 f"{topic}×{n}" for topic, n in violation_topics.most_common(5)
             )
             typer.echo(f"top warning categories: {top}")
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class _LLMPhaseResult:
+    """Output of the LLM-bound phase of `_apply_one`. Carries everything the
+    IO phase needs to finish (render + browser + record). Phase 11: produced
+    by `_apply_llm_phase` and consumed by `_apply_io_phase`, with an
+    asyncio task between them so the next job's LLM can overlap the current
+    job's user-review/browser time."""
+    out_dir: Path
+    tailored: TailoredResume
+    cover: CoverLetter
+    audit_result: AuditResult
+    audit_path: Path
+    topics: list[str]
+    # When verdict == "block", IO phase short-circuits.
+    early_exit: bool
+
+
+async def _apply_llm_phase(
+    cfg: Config, job: Job, *, verified: dict[str, object]
+) -> _LLMPhaseResult | None:
+    """LLM-bound work for one job: tailor + cover + audit + write artifacts.
+
+    Returns None when an unrecoverable LLM/audit error means the caller
+    should skip this job entirely. Returns `_LLMPhaseResult` otherwise —
+    `early_exit=True` when audit verdict was 'block' (no render/browser).
+    """
+    out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    typer.echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
+    typer.echo("    … tailoring resume (LLM, ~30–60s)")
+    try:
+        tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
+            cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
+        )
+    except JobHuntError as e:
+        typer.echo(f"    ! tailor failed: {e}", err=True)
+        return None
+    if tailor_attempts > 1:
+        n = len(tailor_violations)
+        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
+        typer.echo(f"    tailor: {tailor_attempts} attempts ({tag})")
+
+    typer.echo("    … writing cover letter (LLM, ~30s)")
+    try:
+        cover, cover_violations, cover_attempts = await write_cover_with_retry(
+            cfg, job,
+            verified=verified, company=job.company,
+            max_words=cfg.pipeline.cover_max_words,
+            max_attempts=cfg.pipeline.cover_retry_attempts,
+        )
+    except JobHuntError as e:
+        typer.echo(f"    ! cover letter failed: {e}", err=True)
+        return None
+    if cover_attempts > 1:
+        n = len(cover_violations)
+        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
+        typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
+
+    score_result = _load_score(cfg, job.id)
+    try:
+        audit_result = audit(
+            tailored=tailored, cover=cover, score=score_result, verified=verified,
+            company=job.company, cover_max_words=cfg.pipeline.cover_max_words,
+            job_description=job.description, job_title=job.title,
+        )
+    except PipelineError as e:
+        typer.echo(f"    ! audit failed: {e}", err=True)
+        return None
+
+    audit_path = write_audit(out_dir, audit_result)
+    diff_path = out_dir / "tailor-diff.md"
+    diff_path.write_text(
+        build_tailor_diff(
+            verified=verified, tailored=tailored, score=score_result,
+            job_title=job.title, job_company=job.company,
+        ),
+        encoding="utf-8",
+    )
+    typer.echo(
+        f"    audit: verdict={audit_result.verdict} "
+        f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
+        f"missing={len(audit_result.missing_must_haves)} "
+        f"cover_violations={len(audit_result.cover_letter_violations)} "
+        f"alignment={len(audit_result.alignment_flags)}"
+    )
+
+    topics = _audit_topics(audit_result)
+    early_exit = audit_result.verdict == "block"
+    if early_exit:
+        for flag in audit_result.fabrication_flags:
+            typer.echo(f"    BLOCK: {flag}", err=True)
+        typer.echo(f"    + {audit_path.name} (see for details)")
+
+    return _LLMPhaseResult(
+        out_dir=out_dir,
+        tailored=tailored,
+        cover=cover,
+        audit_result=audit_result,
+        audit_path=audit_path,
+        topics=topics,
+        early_exit=early_exit,
+    )
+
+
+async def _apply_io_phase(
+    cfg: Config,
+    job: Job,
+    phase: _LLMPhaseResult,
+    *,
+    no_browser: bool,
+) -> tuple[str, list[str]]:
+    """IO-bound finish for one job: print revise warnings, render docx,
+    optional browser autofill, prompt submission status, record."""
+    audit_result = phase.audit_result
+    if audit_result.verdict == "revise":
+        for v in audit_result.cover_letter_violations:
+            typer.echo(f"    revise: {v}", err=True)
+        for v in audit_result.alignment_flags:
+            typer.echo(f"    revise: {v}", err=True)
+        if audit_result.missing_must_haves:
+            preview = audit_result.missing_must_haves[:5]
+            tail = (
+                f" (+{len(audit_result.missing_must_haves) - 5} more)"
+                if len(audit_result.missing_must_haves) > 5 else ""
+            )
+            typer.echo(
+                f"    revise: {len(audit_result.missing_must_haves)} JD must-have(s) "
+                f"not in resume — {', '.join(preview)}{tail} "
+                f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
+                err=True,
+            )
+
+    resume_path, cover_docx_path = _render_artifacts(
+        cfg, job, phase.tailored, phase.cover, phase.out_dir
+    )
+    typer.echo(f"    + {resume_path.name}")
+    typer.echo(f"    + {cover_docx_path.name}")
+
+    plan_path = await _run_browser_step(
+        cfg, job, resume_path=resume_path, cover_path=cover_docx_path,
+        out_dir=phase.out_dir, no_browser=no_browser,
+    )
+    status = _confirm_submission_status(
+        plan_path, browser_attempted=not no_browser and bool(job.url)
+    )
+    _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
+    return audit_result.verdict, phase.topics
 
 
 async def _apply_one(
@@ -630,120 +837,20 @@ async def _apply_one(
     (None, []) when the job failed before producing an audit (tailor/cover error)
     so the caller can skip it cleanly. Topics are short coarse-grained labels
     like "fabrication", "cover-violation", "coverage", "alignment".
+
+    Phase 11: delegates to `_apply_llm_phase` + `_apply_io_phase`. Kept as the
+    single-job entry point so external callers (tests, ad-hoc invocations)
+    don't have to manage the phase split. The pipelined overlap lives in
+    `_apply_each`, not here.
     """
-    out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    typer.echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
-
-    typer.echo("    … tailoring resume (LLM, ~30–60s)")
-    try:
-        tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
-            cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
-        )
-    except JobHuntError as e:
-        typer.echo(f"    ! tailor failed: {e}", err=True)
+    phase = await _apply_llm_phase(cfg, job, verified=verified)
+    if phase is None:
         return None, []
-    if tailor_attempts > 1:
-        n = len(tailor_violations)
-        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
-        typer.echo(f"    tailor: {tailor_attempts} attempts ({tag})")
+    if phase.early_exit:
+        return phase.audit_result.verdict, phase.topics
+    return await _apply_io_phase(cfg, job, phase, no_browser=no_browser)
 
-    typer.echo("    … writing cover letter (LLM, ~30s)")
-    try:
-        cover, cover_violations, cover_attempts = await write_cover_with_retry(
-            cfg,
-            job,
-            verified=verified,
-            company=job.company,
-            max_words=cfg.pipeline.cover_max_words,
-            max_attempts=cfg.pipeline.cover_retry_attempts,
-        )
-    except JobHuntError as e:
-        typer.echo(f"    ! cover letter failed: {e}", err=True)
-        return None, []
-    if cover_attempts > 1:
-        n = len(cover_violations)
-        tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
-        typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
 
-    # Audit pass — deterministic, fast, no LLM call.
-    score_result = _load_score(cfg, job.id)
-    try:
-        audit_result = audit(
-            tailored=tailored,
-            cover=cover,
-            score=score_result,
-            verified=verified,
-            company=job.company,
-            cover_max_words=cfg.pipeline.cover_max_words,
-            job_description=job.description,
-            job_title=job.title,
-        )
-    except PipelineError as e:
-        typer.echo(f"    ! audit failed: {e}", err=True)
-        return None, []
-
-    audit_path = write_audit(out_dir, audit_result)
-    diff_path = out_dir / "tailor-diff.md"
-    diff_path.write_text(
-        build_tailor_diff(
-            verified=verified,
-            tailored=tailored,
-            score=score_result,
-            job_title=job.title,
-            job_company=job.company,
-        ),
-        encoding="utf-8",
-    )
-    typer.echo(
-        f"    audit: verdict={audit_result.verdict} "
-        f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
-        f"missing={len(audit_result.missing_must_haves)} "
-        f"cover_violations={len(audit_result.cover_letter_violations)} "
-        f"alignment={len(audit_result.alignment_flags)}"
-    )
-
-    topics = _audit_topics(audit_result)
-
-    if audit_result.verdict == "block":
-        for flag in audit_result.fabrication_flags:
-            typer.echo(f"    BLOCK: {flag}", err=True)
-        typer.echo(f"    + {audit_path.name} (see for details)")
-        return audit_result.verdict, topics
-    if audit_result.verdict == "revise":
-        for v in audit_result.cover_letter_violations:
-            typer.echo(f"    revise: {v}", err=True)
-        for v in audit_result.alignment_flags:
-            typer.echo(f"    revise: {v}", err=True)
-        if audit_result.missing_must_haves:
-            # Cap the printed list to keep terminal output scannable; the full
-            # set is always in audit.json on disk.
-            preview = audit_result.missing_must_haves[:5]
-            tail = (
-                f" (+{len(audit_result.missing_must_haves) - 5} more)"
-                if len(audit_result.missing_must_haves) > 5
-                else ""
-            )
-            typer.echo(
-                f"    revise: {len(audit_result.missing_must_haves)} JD must-have(s) "
-                f"not in resume — {', '.join(preview)}{tail} "
-                f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
-                err=True,
-            )
-
-    resume_path, cover_docx_path = _render_artifacts(cfg, job, tailored, cover, out_dir)
-    typer.echo(f"    + {resume_path.name}")
-    typer.echo(f"    + {cover_docx_path.name}")
-
-    plan_path = await _run_browser_step(
-        cfg, job, resume_path=resume_path, cover_path=cover_docx_path, out_dir=out_dir,
-        no_browser=no_browser,
-    )
-
-    status = _confirm_submission_status(plan_path, browser_attempted=not no_browser and bool(job.url))
-    _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
-    return audit_result.verdict, topics
 
 
 def _audit_topics(audit_result: AuditResult) -> list[str]:
@@ -846,6 +953,25 @@ async def _run_browser_step(
             if raw in ("r", "retry"):
                 continue
             return None
+
+
+async def _prompt_continue(next_job: Job) -> bool:
+    """Ask the user whether to proceed with the next job in a `--top N` loop.
+
+    Returns True on yes (default), False on no. Uses `asyncio.to_thread`
+    so the prefetched LLM task can keep running on the event loop while
+    the user thinks. EOFError (closed stdin) and unrecognised input both
+    default to yes — the loop is opt-out, not opt-in.
+    """
+    prompt = (
+        f"\nnext: {next_job.title or '?'} @ {next_job.company or '?'}\n"
+        f"    continue? [Y]es / [n]o: "
+    )
+    try:
+        raw = await asyncio.to_thread(input, prompt)
+    except EOFError:
+        return True
+    return raw.strip().lower() not in ("n", "no")
 
 
 def _confirm_submission_status(
