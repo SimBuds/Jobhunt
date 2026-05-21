@@ -229,8 +229,9 @@ def _run_recall(cfg: Config, *, phrase: str) -> None:
     if not rows:
         typer.echo(
             f"no past answers matching {phrase!r}.\n"
-            f"(if you've used `jobhunt answer` before Phase 12 shipped, "
-            f"run `jobhunt db migrate` to backfill the index from disk.)"
+            f"(if you have older .md artifacts on disk that pre-date the "
+            f"index, re-run the same `jobhunt answer` invocation once to "
+            f"populate the index entry.)"
         )
         return
 

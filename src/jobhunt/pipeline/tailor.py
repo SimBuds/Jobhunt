@@ -222,10 +222,10 @@ def _complete_familiar_bucket(tailored: TailoredResume, verified: dict[str, Any]
 
 _FAMILIAR_FLOOR = 4
 
-# Phase 9 enforcement: tailor.md rule 10 caps the first skills category at
-# 6-10 items, but qwen3.5:9b obeyed it only ~38% of the time in live runs
-# (5/8 outputs landed 11-12 items in the lead category). This post-process
-# trims any overflow deterministically, mirroring the shrink-ladder pattern.
+# tailor.md rule 10 caps the first skills category at 6-10 items, but
+# qwen3.5:9b obeyed it only ~38% of the time in live runs (5/8 outputs
+# landed 11-12 items in the lead category). This post-process trims any
+# overflow deterministically, mirroring the shrink-ladder pattern.
 _LEAD_CATEGORY_MAX = 10
 
 
@@ -527,9 +527,9 @@ class FabricationError(PipelineError):
     attribute is consumed by `tailor_resume_with_retry` to build a
     deterministic correction hint for the next attempt.
 
-    The exception's `str()` form mirrors the legacy single-message format
-    (first violation's human-readable text) so tests that match against
-    `PipelineError(match="not in verified")` still pass.
+    The exception's `str()` form carries the first violation's human-readable
+    text so tests that match against `PipelineError(match="not in verified")`
+    continue to work.
     """
 
     def __init__(self, violations: list[FabricationViolation], message: str):
@@ -544,8 +544,8 @@ def _has_word(text: str, word: str) -> bool:
 def _check_summary(summary: str, verified: dict[str, Any]) -> None:
     """Reject summaries that inflate seniority or lead with culinary context.
 
-    Raises FabricationError with a single violation. First-violation-wins is
-    the legacy behaviour; we don't try to collect every summary issue.
+    Raises FabricationError with a single violation. First-violation-wins —
+    we don't try to collect every summary issue.
     """
     s = summary.lower()
     verified_summary = (verified.get("summary") or "").lower()

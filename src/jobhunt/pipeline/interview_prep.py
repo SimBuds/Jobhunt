@@ -85,7 +85,7 @@ class PrepContext:
     cover_summary: str = ""
     research_blob: str = ""
     comp_section: str = ""  # rendered comp heads-up markdown (may be empty)
-    # Phase 13: drives interview-prep likely-questions bias. One of
+    # Drives the likely-questions bias in `_RECRUITER_BIAS_BLURB`. One of
     # `internal_recruiter`, `hiring_manager`, `external_agency`, `unknown`
     # (matches `db._VALID_RECRUITER_TYPES`). Defaults to `unknown` →
     # balanced mix.
@@ -155,7 +155,9 @@ async def draft_prep_sections(
     )
 
     # Force temperature=0 on retry attempts so the corrective hint isn't
-    # re-sampled away (matches pipeline.answer / pipeline.tailor Phase 9).
+    # re-sampled away (matches the same pattern in pipeline.answer and
+    # pipeline.tailor — at the frontmatter default temperature qwen often
+    # re-samples the violation it was just told to fix).
     temperature = 0.0 if revisions else prompt.temperature
 
     model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get(

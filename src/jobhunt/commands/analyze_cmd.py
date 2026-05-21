@@ -333,15 +333,6 @@ def _render_trend(
     typer.echo(footer)
 
 
-# === Phase 14: analyze expansion ============================================
-#
-# Three deterministic, LLM-free subcommands that close the feedback loop on
-# the Phases 1 + 4 data foundations:
-#
-#   analyze skills --gaps        — tech tokens over-represented in declines
-#   analyze employers --hiring-velocity — posts per configured slug in window
-#   analyze response-rate         — interview rate by score / ATS
-
 # Common tech tokens. Mirrors the families surfaced by the score prompt + the
 # audit. Matched against JD bodies as word-boundary regexes so "node" doesn't
 # match "nodes" and "react" doesn't match "reactive". Order does not matter.

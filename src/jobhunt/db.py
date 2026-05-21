@@ -238,10 +238,10 @@ def mark_response_received(
     """Record that a recruiter responded to an application.
 
     `at` is an ISO-8601 timestamp string (YYYY-MM-DD or full timestamp).
-    `recruiter_type` (optional) tags who responded — drives interview-prep
-    question biasing in Phase 13. Allowed values: `internal_recruiter`,
-    `hiring_manager`, `external_agency`, `unknown`. Idempotent —
-    overwrites prior values.
+    `recruiter_type` (optional) tags who responded — drives the
+    interview-prep likely-questions bias. Allowed values:
+    `internal_recruiter`, `hiring_manager`, `external_agency`, `unknown`.
+    Idempotent — overwrites prior values.
     """
     if recruiter_type is not None and recruiter_type not in _VALID_RECRUITER_TYPES:
         raise ValueError(

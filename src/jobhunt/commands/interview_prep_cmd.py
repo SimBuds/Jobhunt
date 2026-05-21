@@ -273,7 +273,7 @@ def _fetch_research(
     concatenated string for the LLM prompt. Robots-checked; non-fatal on
     any error (research is opt-in nice-to-have).
 
-    Phase 13: per-host, per-day cache at
+    Per-host, per-day cache at
     `data/research-cache/<host>/<yyyy-mm-dd>.html`. Same-day hits reuse the
     cached fetch; `refresh=True` (CLI `--refresh-research`) bypasses it.
     Cache writes are best-effort — if disk is full or perms are bad we just

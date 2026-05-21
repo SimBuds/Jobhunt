@@ -431,10 +431,10 @@ def validate_cover(
     return violations
 
 
-# === Phase 10: rule-id categorization ======================================
+# --- rule-id categorization for `analyze validators` -----------------------
 #
 # `validate_cover` returns free-text strings ("unverified number: '42'"). For
-# aggregation in `analyze validators`, we need stable rule_ids. `_DEFENSIVE_PATTERNS`
+# aggregation across a window, we need stable rule_ids. `_DEFENSIVE_PATTERNS`
 # already carries human-friendly labels (e.g. "defensive: 'rather than X'") so
 # we treat the label itself as the rule_id when no other prefix matches.
 
