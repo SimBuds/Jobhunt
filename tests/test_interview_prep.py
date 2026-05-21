@@ -35,6 +35,7 @@ from jobhunt.pipeline.interview_prep import (
     _coerce_honest_gap,
     _coerce_likely_question,
     _patch_prep_sections,
+    build_interview_context,
     draft_prep_with_retry,
     extract_comp_section,
     has_blocking_prep_violations,
@@ -552,6 +553,7 @@ def test_render_markdown_has_all_sections() -> None:
     assert "Senior Shopify Developer" in out
     assert "Agency Screen" in out
     assert "## Comp heads-up" in out
+    assert "## 2026 interview context" in out
     assert "## Role decode" in out
     assert "## Strongest anchors" in out
     assert "## Likely questions" in out
@@ -560,6 +562,15 @@ def test_render_markdown_has_all_sections() -> None:
     assert "## Pre-call checklist" in out
     assert "## After the call" in out
     assert "qwen-custom:latest" in out
+
+
+def test_interview_context_is_stage_specific() -> None:
+    agency = "\n".join(build_interview_context("agency")).lower()
+    assessment = "\n".join(build_interview_context("assessment")).lower()
+    assert "salary range" in agency
+    assert "ai tools are allowed" in agency
+    assert "job-simulation" in assessment
+    assert agency != assessment
 
 
 def test_render_markdown_skips_comp_when_empty() -> None:
