@@ -44,6 +44,7 @@ from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult, prompt_hash, score_job
 from jobhunt.pipeline.tailor import TailoredResume, tailor_resume_with_retry
+from jobhunt.pipeline.tailor_diff import build_tailor_diff
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
 
@@ -684,6 +685,17 @@ async def _apply_one(
         return None, []
 
     audit_path = write_audit(out_dir, audit_result)
+    diff_path = out_dir / "tailor-diff.md"
+    diff_path.write_text(
+        build_tailor_diff(
+            verified=verified,
+            tailored=tailored,
+            score=score_result,
+            job_title=job.title,
+            job_company=job.company,
+        ),
+        encoding="utf-8",
+    )
     typer.echo(
         f"    audit: verdict={audit_result.verdict} "
         f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
