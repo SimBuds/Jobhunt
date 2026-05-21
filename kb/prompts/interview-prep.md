@@ -170,6 +170,9 @@ Cover-letter draft (anchors already chosen): {cover_summary}
 # Optional research blob (may be empty)
 {research_blob}
 
+# 2026 interview context
+{interview_context}
+
 # Recruiter type — bias the likely_questions mix accordingly
 {recruiter_bias}
 

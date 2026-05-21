@@ -159,6 +159,9 @@ async def draft_prep_sections(
         audit_summary=ctx.audit_summary or "(no application yet)",
         cover_summary=ctx.cover_summary or "(no cover letter drafted)",
         research_blob=_truncate(ctx.research_blob, _RESEARCH_MAX_CHARS) or "(none)",
+        interview_context=_format_interview_context_for_prompt(
+            build_interview_context(ctx.stage)
+        ),
         recruiter_type=recruiter_type,
         recruiter_bias=recruiter_bias,
         revisions=revisions,
@@ -753,6 +756,43 @@ _STAGE_LABEL: dict[str, str] = {
 }
 
 
+def build_interview_context(stage: str) -> list[str]:
+    """Deterministic May 2026 interview-prep context.
+
+    Keep this focused on likely interview coverage and candidate strategy, not
+    Casey-specific claims. It is rendered into the prep doc and injected into
+    the prompt so the LLM's question choices match the current hiring loop.
+    """
+    common = [
+        "AI-tool fluency is now a normal screening topic, but teams verify judgment: be ready to explain where AI helped, what you reviewed manually, and where you would not trust it.",
+        "Practical work samples are favored over abstract trivia in many technical loops; expect the next stage to test a real CMS/API/QA workflow rather than only definitions.",
+        "Recruiters and hiring managers are filtering for specificity because AI-written applications have made generic answers less useful.",
+    ]
+    by_stage: dict[str, list[str]] = {
+        "agency": [
+            "Agency screens usually validate basics before selling you internally: salary range, work authorization, remote/timezone fit, notice period, motivation, and whether your resume maps to the JD.",
+            "Keep technical stories short and concrete; the recruiter needs portable proof points they can repeat to the client or hiring manager.",
+            "Ask what the assessment covers, whether AI tools are allowed, who evaluates it, and what signals matter most for advancement.",
+            "Avoid over-claiming gaps. A good agency answer is narrow: confirm the gap, name the closest verified bridge, and move back to the role's core need.",
+        ],
+        "hiring_manager": [
+            "Hiring-manager rounds usually probe ownership, tradeoffs, debugging, stakeholder communication, and how you decide what to automate versus leave manual.",
+            "Expect follow-ups on project scope: what you personally built, what broke, what you measured, and how you kept quality high.",
+            "Ask about the first 30-60 days, current failure modes, review process, and how AI-assisted code is accepted or audited on the team.",
+        ],
+        "assessment": [
+            "Assessment rounds increasingly resemble job-simulation work: reading an existing codebase, building a small feature, fixing a bug, wiring an API, or explaining QA coverage.",
+            "Clarify AI-tool policy before using assistants. If tools are allowed, narrate review steps, tests, and security/privacy judgment.",
+            "Prepare to discuss tradeoffs in the submitted work: what you optimized, what you deferred, and how you would harden it for production.",
+        ],
+    }
+    return by_stage.get(stage, by_stage["agency"]) + common
+
+
+def _format_interview_context_for_prompt(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
 def render_prep_markdown(
     sections: PrepDocSections,
     *,
@@ -776,6 +816,14 @@ def render_prep_markdown(
         parts.append("## Comp heads-up")
         parts.append("")
         parts.append(ctx.comp_section)
+        parts.append("")
+
+    context = build_interview_context(ctx.stage)
+    if context:
+        parts.append("## 2026 interview context")
+        parts.append("")
+        for item in context:
+            parts.append(f"- {item}")
         parts.append("")
 
     parts.append("## Role decode")
