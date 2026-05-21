@@ -34,8 +34,10 @@ from jobhunt.pipeline.interview_prep import (
     PrepDocSections,
     _coerce_honest_gap,
     _coerce_likely_question,
+    _patch_prep_sections,
     draft_prep_with_retry,
     extract_comp_section,
+    has_blocking_prep_violations,
     render_prep_markdown,
     render_skeleton_offline,
     validate_prep_sections,
@@ -103,7 +105,7 @@ def _ctx() -> PrepContext:
         job_company="Acme Corp",
         job_description="We need someone with Shopify + Liquid experience.",
         job_url="https://acme.example.com/jobs/1",
-        stage="screen",
+        stage="agency",
     )
 
 
@@ -268,14 +270,267 @@ def test_validator_catches_unverified_anchor() -> None:
 
 def test_validator_catches_unverified_number() -> None:
     sections = PrepDocSections(
-        role_decode=["Cut load time by 87%."],   # 87 not in verified
+        role_decode=[],
         strongest_anchors=[],
-        likely_questions=[],
+        likely_questions=[
+            LikelyQuestion("What result should you mention?", "Cut load time by 87%.")
+        ],
         questions_to_ask=[],
         honest_gaps=[],
     )
     v = validate_prep_sections(sections, verified=VERIFIED)
     assert any("unverified number" in s.lower() for s in v)
+
+
+def test_validator_allows_jd_numbers_in_questions_to_ask() -> None:
+    sections = PrepDocSections(
+        role_decode=["Support automation across 100+ client websites."],
+        strongest_anchors=[],
+        likely_questions=[],
+        questions_to_ask=["How many of the 100+ client sites are on Shopify?"],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert not any("unverified number" in s.lower() for s in v)
+
+
+def test_validator_allows_configured_salary_numbers() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "What are your salary expectations?",
+                "My configured range is 50,000 - 90,000 CAD.",
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        allowed_numbers={"50,000", "90,000"},
+    )
+    assert not any("unverified number" in s.lower() for s in v)
+
+
+def test_validator_catches_education_recap() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "How do you stay current?",
+                "I apply my coursework in Machine Learning.",
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("education recap" in s.lower() for s in v)
+
+
+def test_validator_catches_unverified_immediate_start() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "When can you start?",
+                "I can start immediately with full work authorization.",
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("availability claim" in s.lower() for s in v)
+
+
+def test_validator_catches_unverified_two_week_notice() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "What is your notice period?",
+                "I can start within two weeks depending on the offer.",
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("two-week notice" in s.lower() for s in v)
+
+
+def test_validator_catches_blank_likely_question_beat() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[LikelyQuestion("How do you handle QA?", "")],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("missing an answer beat" in s.lower() for s in v)
+
+
+def test_validator_catches_blank_honest_gap_reframe() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[],
+        questions_to_ask=[],
+        honest_gaps=[HonestGap("I haven't shipped Webflow.", "")],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("missing a reframe" in s.lower() for s in v)
+
+
+def test_validator_catches_gap_reframe_without_verified_trace() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "I have not shipped Webflow specifically.",
+                "Closest verified bridge: I can learn the workflow quickly.",
+            )
+        ],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("reframe lacks verified trace" in s.lower() for s in v)
+
+
+def test_validator_catches_gap_reframe_that_mirrors_unverified_jd_phrase() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "I have not shipped a dedicated SEO automation product.",
+                (
+                    "Closest verified bridge: I built automated content upload "
+                    "systems across Shopify and WordPress."
+                ),
+            )
+        ],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        job_description=(
+            "Design and build automated content upload systems across CMS "
+            "platforms."
+        ),
+    )
+    assert any("mirrors unverified jd phrase" in s.lower() for s in v)
+
+
+def test_validator_catches_likely_beat_that_mirrors_unverified_jd_phrase() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "How do you handle QA?",
+                "I use GitHub Actions to ensure zero errors on client sites.",
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        job_description="Own quality end-to-end with zero errors on client sites.",
+    )
+    assert any("casey claim mirrors unverified jd phrase" in s.lower() for s in v)
+
+
+def test_validator_catches_gap_reframe_with_scripts_api_jd_phrase() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "I have not used n8n.",
+                (
+                    "Closest verified bridge: I developed scripts and API "
+                    "integrations that keep pipelines running smoothly."
+                ),
+            )
+        ],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        job_description="Develop and maintain scripts and API integrations.",
+    )
+    assert any("casey claim mirrors unverified jd phrase" in s.lower() for s in v)
+
+
+def test_blocking_violations_include_unusable_or_unsafe_output() -> None:
+    assert has_blocking_prep_violations(["likely question 1 is missing an answer beat"])
+    assert has_blocking_prep_violations(["honest gap 1 is missing a reframe"])
+    assert has_blocking_prep_violations(["unverified number: '100'"])
+    assert has_blocking_prep_violations(["interview-prep education recap: 'coursework'"])
+    assert has_blocking_prep_violations(["unverified availability claim: immediate start"])
+    assert has_blocking_prep_violations(["honest gap 1 reframe lacks verified trace"])
+    assert has_blocking_prep_violations([
+        "honest gap 1 reframe mirrors unverified JD phrase: 'full automation'"
+    ])
+    assert has_blocking_prep_violations([
+        "casey claim mirrors unverified JD phrase: 'zero errors'"
+    ])
+    assert has_blocking_prep_violations(["unverified anchor: 'Kubernetes'"])
+    assert not has_blocking_prep_violations(["banned phrase: 'spearheaded'"])
+
+
+def test_patch_prep_sections_rewrites_observed_bad_gap_patterns() -> None:
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[
+            "I am authorized to work in Canada and can start within the timeline you need."
+        ],
+        likely_questions=[
+            LikelyQuestion(
+                "When can you start?",
+                "I can start immediately with full work authorization.",
+            ),
+            LikelyQuestion(
+                "How do you stay current?",
+                "I apply my coursework in Machine Learning.",
+            ),
+        ],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "I have not shipped a full automation product.",
+                "Closest verified bridge: I have worked on full automation.",
+            )
+        ],
+    )
+    patched = _patch_prep_sections(sections, cfg=Config())
+    assert patched is not None
+    out = "\n".join(
+        [q.beat for q in patched.likely_questions]
+        + [g.reframe for g in patched.honest_gaps]
+    ).lower()
+    assert "start immediately" not in out
+    assert "coursework" not in out
+    assert "full automation" not in out
+    assert "ollama" in out
+    assert patched.strongest_anchors == []
 
 
 # --- renderers --------------------------------------------------------------
@@ -295,7 +550,7 @@ def test_render_markdown_has_all_sections() -> None:
     out = render_prep_markdown(sections, ctx=ctx)
     assert "Acme Corp" in out
     assert "Senior Shopify Developer" in out
-    assert "Initial Screen" in out
+    assert "Agency Screen" in out
     assert "## Comp heads-up" in out
     assert "## Role decode" in out
     assert "## Strongest anchors" in out

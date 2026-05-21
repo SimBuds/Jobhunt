@@ -152,7 +152,7 @@ jobhunt answer "<question>" [--recall]
                              # with --recall, treats the argument as a phrase
                              # and lists past saved answers whose question
                              # text contains it (case-insensitive).
-jobhunt interview-prep <id> [--stage screen|assessment|hm|onsite] [--research]
+jobhunt interview-prep <id> [--stage agency|hiring_manager|assessment] [--research]
                             [--refresh-research]
                             [--recruiter-type internal_recruiter|hiring_manager|external_agency|unknown]
                              # hybrid prep doc: deterministic skeleton + LLM middle

@@ -105,7 +105,7 @@ jobhunt answer "Why are you interested in this role?" --job <id>
 
 # When you get an interview, mark it and draft a prep doc:
 jobhunt apply --set-status interviewing <job-id>
-jobhunt interview-prep <job-id> --stage screen --research
+jobhunt interview-prep <job-id> --stage agency --research
 
 jobhunt list --week 0          # weekly pipeline view
 ```
@@ -202,10 +202,10 @@ When an application converts to an interview, draft a prep doc anchored
 on your verified profile and the cached JD:
 
 ```bash
-jobhunt interview-prep <job-id>                       # default --stage screen
-jobhunt interview-prep <job-id> --stage hm            # hiring-manager round
-jobhunt interview-prep <job-id> --stage assessment    # take-home / live coding
-jobhunt interview-prep <job-id> --stage onsite        # final round
+jobhunt interview-prep <job-id>                       # default --stage agency
+jobhunt interview-prep <job-id> --stage agency        # agency / recruiter screen
+jobhunt interview-prep <job-id> --stage hiring_manager # hiring-manager round
+jobhunt interview-prep <job-id> --stage assessment    # assessment / final round
 jobhunt interview-prep <job-id> --research            # fetch JD URL + company root
 jobhunt interview-prep <job-id> --research --force-robots
 jobhunt interview-prep <job-id> --no-llm              # skeleton-only (debug)

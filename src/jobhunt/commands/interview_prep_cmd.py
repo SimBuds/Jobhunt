@@ -5,8 +5,8 @@ call for high-judgment middle sections (anchors, likely questions, gaps).
 Output saved to `data/interview-prep/<job-id-safe>.md`.
 
 Modes:
-- `jobhunt interview-prep <job-id>` — default `screen` stage, no research.
-- `--stage screen|assessment|hm|onsite` — tunes the LLM prompt emphasis.
+- `jobhunt interview-prep <job-id>` — default `agency` stage, no research.
+- `--stage agency|hiring_manager|assessment` — tunes the LLM prompt emphasis.
 - `--research` — fetches the JD URL and company root for additional
   context. Robots-checked; `--force-robots` overrides for personal use.
 - `--no-llm` — skeleton-only fallback (debug / offline).
@@ -31,6 +31,7 @@ from jobhunt.pipeline.interview_prep import (
     PrepContext,
     draft_prep_with_retry,
     extract_comp_section,
+    has_blocking_prep_violations,
     render_prep_markdown,
     render_skeleton_offline,
 )
@@ -48,7 +49,7 @@ def run(
         help="Job ID (e.g. `manual:89f772b92cf1` or `adzuna_ca:5730918359`).",
     ),
     stage: str = typer.Option(
-        "screen",
+        "agency",
         "--stage",
         help=(
             "Interview stage. One of: "
@@ -92,6 +93,7 @@ def run(
     cfg = load_config()
     ensure_profile(cfg)
 
+    stage = _normalize_stage(stage)
     if stage not in VALID_STAGES:
         typer.echo(
             f"error: invalid --stage {stage!r}. Allowed: {', '.join(VALID_STAGES)}",
@@ -130,6 +132,7 @@ def run(
         cover_summary=cover_summary,
         research_blob=research_blob,
         comp_section=comp_section,
+        applicant_salary_expectation=cfg.applicant.salary_expectation_cad,
         recruiter_type=effective_recruiter_type,
     )
 
@@ -159,10 +162,23 @@ def run(
         typer.echo(f"  prep: {attempts} attempts ({tag})")
     for v in violations:
         typer.echo(f"  revise: {v}", err=True)
+    if has_blocking_prep_violations(violations):
+        typer.echo(
+            "  ! interview-prep failed: generated prep still has blocking "
+            "honesty or completeness violations; leaving existing artifact "
+            "unchanged.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     body = render_prep_markdown(sections, ctx=ctx)
     path = _save(cfg, job_id, body)
     typer.echo(f"  saved: {path}")
+
+
+def _normalize_stage(stage: str) -> str:
+    """Accept human spellings while storing the prompt-friendly enum."""
+    return stage.strip().lower().replace(" ", "_").replace("-", "_")
 
 
 def _load_job(cfg: Config, job_id: str) -> dict[str, str]:

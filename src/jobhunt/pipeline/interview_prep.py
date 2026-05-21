@@ -41,7 +41,7 @@ from jobhunt.pipeline.cover_validate import (
 
 # Valid `--stage` values. Kept here (not in config) so the prompt and CLI
 # agree on the enum.
-VALID_STAGES: tuple[str, ...] = ("screen", "assessment", "hm", "onsite")
+VALID_STAGES: tuple[str, ...] = ("agency", "hiring_manager", "assessment")
 
 # JD body cap matches answer.py's truncation budget. Comfortably under the
 # 20k-token server context with room for verified.json + prompt template.
@@ -85,6 +85,7 @@ class PrepContext:
     cover_summary: str = ""
     research_blob: str = ""
     comp_section: str = ""  # rendered comp heads-up markdown (may be empty)
+    applicant_salary_expectation: str = ""
     # Drives the likely-questions bias in `_RECRUITER_BIAS_BLURB`. One of
     # `internal_recruiter`, `hiring_manager`, `external_agency`, `unknown`
     # (matches `db._VALID_RECRUITER_TYPES`). Defaults to `unknown` →
@@ -146,6 +147,15 @@ async def draft_prep_sections(
         job_title=ctx.job_title or "(unknown)",
         job_company=ctx.job_company or "(unknown)",
         job_description=_truncate(ctx.job_description, _JD_MAX_CHARS),
+        applicant_salary_expectation=(
+            ctx.applicant_salary_expectation
+            or cfg.applicant.salary_expectation_cad
+            or "(not configured)"
+        ),
+        applicant_work_auth_canada=str(cfg.applicant.work_auth_canada).lower(),
+        applicant_requires_visa_sponsorship=str(
+            cfg.applicant.requires_visa_sponsorship
+        ).lower(),
         audit_summary=ctx.audit_summary or "(no application yet)",
         cover_summary=ctx.cover_summary or "(no cover letter drafted)",
         research_blob=_truncate(ctx.research_blob, _RESEARCH_MAX_CHARS) or "(none)",
@@ -249,6 +259,8 @@ def validate_prep_sections(
     sections: PrepDocSections,
     *,
     verified: dict[str, Any],
+    allowed_numbers: set[str] | None = None,
+    job_description: str = "",
 ) -> list[str]:
     """Return a list of violation strings. Empty list = clean.
 
@@ -258,6 +270,18 @@ def validate_prep_sections(
     violations: list[str] = []
     free_text = _concat_freeform(sections)
     body_lower = _normalize(free_text)
+
+    for i, q in enumerate(sections.likely_questions, start=1):
+        if not q.question.strip():
+            violations.append(f"likely question {i} is blank")
+        if not q.beat.strip():
+            violations.append(f"likely question {i} is missing an answer beat")
+
+    for i, gap in enumerate(sections.honest_gaps, start=1):
+        if not gap.gap.strip():
+            violations.append(f"honest gap {i} is blank")
+        if not gap.reframe.strip():
+            violations.append(f"honest gap {i} is missing a reframe")
 
     # Banned phrases (substring tier).
     for phrase in BANNED_PHRASES:
@@ -271,8 +295,13 @@ def validate_prep_sections(
 
     # Unverified numbers (digit-cluster check) — strip year ranges and
     # clock-style references first, matching the cover/answer preprocessor.
+    # Only check Casey-owned claims. Role decode / questions-to-ask often cite
+    # employer-scale JD context ("100+ client sites", "Fortune 500"), which is
+    # useful interview prep and not a claim about Casey.
     allowed = _verified_numbers(verified)
-    scratch = _TIME_OF_DAY_RE.sub(" ", free_text)
+    if allowed_numbers:
+        allowed.update(allowed_numbers)
+    scratch = _TIME_OF_DAY_RE.sub(" ", _casey_claim_text(sections))
     scratch = _YEAR_RANGE_RE.sub(" ", scratch)
     for cluster in _DIGIT_CLUSTER_RE.findall(scratch):
         normalized = cluster.rstrip(".,")
@@ -284,8 +313,34 @@ def validate_prep_sections(
             continue
         violations.append(f"unverified number: {cluster!r}")
 
+    for token in ("coursework", "george brown", "dean's list", "diploma"):
+        if token in body_lower:
+            violations.append(f"interview-prep education recap: {token!r}")
+
+    if re.search(r"\b(?:start|available)\s+immediately\b", body_lower):
+        violations.append("unverified availability claim: immediate start")
+    if re.search(r"\b(?:within|in)\s+two\s+weeks\b|\btwo-week\b", body_lower):
+        violations.append("unverified availability claim: two-week notice")
+
     # Fabrication watchlist with negation-context suppression.
     verified_blob = _verified_skill_blob(verified)
+    verified_blob_lower = verified_blob.lower()
+    jd_only_phrases = _jd_only_claim_phrases(job_description, verified_blob)
+    casey_claim_lower = _casey_claim_text(sections).lower()
+    for phrase in jd_only_phrases:
+        if phrase in casey_claim_lower:
+            violations.append(f"casey claim mirrors unverified JD phrase: {phrase!r}")
+
+    for i, gap in enumerate(sections.honest_gaps, start=1):
+        reframe_lower = gap.reframe.lower()
+        if gap.reframe.strip() and not _has_verified_trace(gap.reframe, verified_blob_lower):
+            violations.append(f"honest gap {i} reframe lacks verified trace")
+        for phrase in jd_only_phrases:
+            if phrase in reframe_lower:
+                violations.append(
+                    f"honest gap {i} reframe mirrors unverified JD phrase: {phrase!r}"
+                )
+
     for tech in _FABRICATION_WATCHLIST:
         token = tech.strip(", ")
         if not token:
@@ -313,21 +368,42 @@ def validate_prep_sections(
     # history + summary). This rejects "Built Kubernetes clusters" (no
     # substantive token traces) while accepting "Built a 14+ page Shopify
     # storefront for Atelier Dacko" (shopify, storefront, atelier all trace).
-    verified_blob_lower = verified_blob.lower()
     for anchor in sections.strongest_anchors:
-        substantive = [
-            t for t in re.findall(r"[a-z]+", anchor.lower()) if len(t) >= 5
-        ]
-        if not substantive:
+        if not _substantive_tokens(anchor):
             # Pure stop-word / numeric anchor — too vague, but don't reject;
             # the LLM may emit a project-style phrase ("Three phases over
             # two years") that's still a valid anchor.
             continue
-        if any(tok in verified_blob_lower for tok in substantive):
+        if _has_verified_trace(anchor, verified_blob_lower):
             continue
         violations.append(f"unverified anchor: {anchor!r}")
 
     return violations
+
+
+def has_blocking_prep_violations(violations: list[str]) -> bool:
+    """Return True for structural failures that make the rendered prep unusable.
+
+    Content warnings like an unverified number can still be surfaced for human
+    review, but missing answer beats/reframes produce hollow sections and should
+    not overwrite a usable prep artifact.
+    """
+    blocking_needles = (
+        "is blank",
+        "missing an answer beat",
+        "missing a reframe",
+        "unverified number",
+        "interview-prep education recap",
+        "unverified availability claim",
+        "reframe lacks verified trace",
+        "reframe mirrors unverified jd phrase",
+        "casey claim mirrors unverified jd phrase",
+        "unverified anchor",
+    )
+    return any(
+        any(needle in violation.lower() for needle in blocking_needles)
+        for violation in violations
+    )
 
 
 def _concat_freeform(sections: PrepDocSections) -> str:
@@ -340,6 +416,16 @@ def _concat_freeform(sections: PrepDocSections) -> str:
     parts.extend(sections.questions_to_ask)
     for g in sections.honest_gaps:
         parts.append(g.gap)
+        parts.append(g.reframe)
+    return "\n".join(parts)
+
+
+def _casey_claim_text(sections: PrepDocSections) -> str:
+    parts: list[str] = []
+    parts.extend(sections.strongest_anchors)
+    for q in sections.likely_questions:
+        parts.append(q.beat)
+    for g in sections.honest_gaps:
         parts.append(g.reframe)
     return "\n".join(parts)
 
@@ -370,14 +456,177 @@ async def draft_prep_with_retry(
     revisions = ""
     for attempt in range(1, attempts + 1):
         sections = await draft_prep_sections(cfg, ctx=ctx, revisions=revisions)
-        violations = validate_prep_sections(sections, verified=verified)
+        allowed_numbers = _numbers_from_text(cfg.applicant.salary_expectation_cad)
+        violations = validate_prep_sections(
+            sections,
+            verified=verified,
+            allowed_numbers=allowed_numbers,
+            job_description=ctx.job_description,
+        )
         if not violations:
             return sections, [], attempt
         last_sections = sections
         last_violations = violations
         revisions = _format_revision_hint(violations, attempt)
     assert last_sections is not None
+
+    # Last-resort cleanup for qwen's repeat offenders in interview prep.
+    # These are narrow rewrites from unsafe generic phrasing to verified,
+    # lower-claim phrasing. Only keep them when they reduce violations.
+    patched = _patch_prep_sections(last_sections, cfg=cfg)
+    if patched is not None:
+        allowed_numbers = _numbers_from_text(cfg.applicant.salary_expectation_cad)
+        patched_violations = validate_prep_sections(
+            patched,
+            verified=verified,
+            allowed_numbers=allowed_numbers,
+            job_description=ctx.job_description,
+        )
+        if len(patched_violations) < len(last_violations):
+            return patched, patched_violations, attempts
+
     return last_sections, last_violations, attempts
+
+
+def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSections | None:
+    changed = False
+
+    def patch_claim(text: str) -> str:
+        nonlocal changed
+        original = text
+        out = text
+        if "coursework" in out.lower():
+            out = (
+                "I stay current through hands-on project work, local LLM "
+                "tooling with Ollama, and CMS implementation work across "
+                "Shopify and HubSpot."
+            )
+        out = _replace_case_insensitive(
+            out,
+            "I can start immediately with full work authorization.",
+            "I have Canadian work authorization and can discuss availability once the role structure and timeline are clear.",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "can start immediately",
+            "can discuss availability once the role structure and timeline are clear",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "or within two weeks depending on the offer",
+            "",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "within two weeks depending on the offer",
+            "once the role structure and timeline are clear",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "full automation",
+            "CMS implementation, scripting, and QA work",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "fully automate",
+            "improve CMS publishing workflows",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "zero errors",
+            "fewer preventable QA issues",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "automated content upload systems",
+            "CMS implementation and scripting workflows",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "automated systems",
+            "CMS and scripting workflows",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "developed scripts and API integrations that keep pipelines running smoothly",
+            "wrote bulk JSON migrations and set up GitHub Actions CI pipelines with automated linting",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "scripts and API integrations",
+            "bulk JSON migrations and GitHub Actions CI",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "error-free implementation",
+            "careful implementation",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "replace manual uploads",
+            "reduce manual CMS work",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "replacing manual uploads",
+            "reducing manual CMS work",
+        )
+        if out != original:
+            changed = True
+        return out
+
+    likely = [
+        LikelyQuestion(question=q.question, beat=patch_claim(q.beat))
+        for q in sections.likely_questions
+    ]
+    gaps = [
+        HonestGap(gap=g.gap, reframe=patch_claim(g.reframe))
+        for g in sections.honest_gaps
+    ]
+    anchors = [
+        patch_claim(a)
+        for a in sections.strongest_anchors
+        if not _is_logistics_anchor(a)
+    ]
+    if len(anchors) != len(sections.strongest_anchors):
+        changed = True
+
+    if not changed:
+        return None
+    return PrepDocSections(
+        role_decode=sections.role_decode,
+        strongest_anchors=anchors,
+        likely_questions=likely,
+        questions_to_ask=sections.questions_to_ask,
+        honest_gaps=gaps,
+        model=sections.model,
+    )
+
+
+def _replace_case_insensitive(text: str, needle: str, replacement: str) -> str:
+    pattern = re.compile(re.escape(needle), re.IGNORECASE)
+
+    def repl(match: re.Match[str]) -> str:
+        matched = match.group(0)
+        if matched and matched[0].isupper():
+            return replacement[:1].upper() + replacement[1:]
+        return replacement
+
+    return pattern.sub(repl, text)
+
+
+def _is_logistics_anchor(text: str) -> bool:
+    low = text.lower()
+    logistics_tokens = (
+        "authorized to work",
+        "work authorization",
+        "visa sponsorship",
+        "can start",
+        "notice period",
+        "availability",
+        "timeline you need",
+    )
+    return any(token in low for token in logistics_tokens)
 
 
 def _format_revision_hint(violations: list[str], attempt: int) -> str:
@@ -407,17 +656,100 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
             "stat at all, name it as 'their N customers' or similar — "
             "never as your own work product."
         )
+        lines.append(
+            "For this retry, avoid all unverified employer-scale numbers in "
+            "answers and gap reframes, including client counts, team sizes, "
+            "Fortune rankings, and the JD's posted pay range. Salary answers "
+            "must use applicant logistics only."
+        )
+    if any("missing an answer beat" in v.lower() for v in violations):
+        lines.append(
+            "Every likely_questions item must include a non-empty beat: 1-2 "
+            "sentences naming how Casey should answer using verified facts."
+        )
+    if any("missing a reframe" in v.lower() for v in violations):
+        lines.append(
+            "Every honest_gaps item must include a non-empty reframe: one "
+            "non-defensive sentence connecting the gap to adjacent verified "
+            "experience."
+        )
+    if any("education recap" in v.lower() for v in violations):
+        lines.append(
+            "Do not mention George Brown, diploma, Dean's List, or coursework "
+            "inside interview prep answers. That material belongs on the resume."
+        )
+    if any("availability claim" in v.lower() for v in violations):
+        lines.append(
+            "Do not claim Casey can start immediately unless that exact fact is "
+            "present in applicant logistics. Use a confirm-on-call phrasing instead."
+        )
+    if any("reframe lacks verified trace" in v.lower() for v in violations):
+        lines.append(
+            "Every honest gap reframe must name a verified adjacent project, "
+            "skill, or work-history fact. Do not answer with generic confidence."
+        )
+    if any("reframe mirrors unverified jd phrase" in v.lower() for v in violations):
+        lines.append(
+            "Do not reframe a gap by claiming Casey has already done the JD's "
+            "exact unverified work. Use a narrower verified bridge instead."
+        )
+    if any("casey claim mirrors unverified jd phrase" in v.lower() for v in violations):
+        lines.append(
+            "Do not put the JD's exact ownership phrases into Casey-owned "
+            "answers, anchors, or gap reframes unless verified_facts already "
+            "contains that work. Replace them with narrower verified facts."
+        )
     return "\n".join(lines)
+
+
+def _numbers_from_text(text: str) -> set[str]:
+    return set(_DIGIT_CLUSTER_RE.findall(text or ""))
+
+
+_CLAIM_JD_PHRASES: tuple[str, ...] = (
+    "automated content upload systems",
+    "ai-generated content pipeline",
+    "full content automation",
+    "full automation",
+    "automated systems",
+    "scripts and api integrations",
+    "pipelines running smoothly",
+    "error-free implementation",
+    "replace manual uploads",
+    "replacing manual uploads",
+    "zero errors",
+    "100+ client",
+    "fortune 500",
+    "director of search",
+    "content and fulfillment teams",
+)
+
+
+def _jd_only_claim_phrases(job_description: str, verified_blob: str) -> list[str]:
+    jd_lower = job_description.lower()
+    verified_lower = verified_blob.lower()
+    return [
+        phrase
+        for phrase in _CLAIM_JD_PHRASES
+        if phrase in jd_lower and phrase not in verified_lower
+    ]
+
+
+def _substantive_tokens(text: str) -> list[str]:
+    return [t for t in re.findall(r"[a-z]+", text.lower()) if len(t) >= 5]
+
+
+def _has_verified_trace(text: str, verified_blob_lower: str) -> bool:
+    return any(tok in verified_blob_lower for tok in _substantive_tokens(text))
 
 
 # --- markdown renderer --------------------------------------------------------
 
 
 _STAGE_LABEL: dict[str, str] = {
-    "screen": "Initial Screen",
-    "assessment": "Skills Assessment",
-    "hm": "Hiring Manager",
-    "onsite": "Onsite / Final Round",
+    "agency": "Agency Screen",
+    "hiring_manager": "Hiring Manager",
+    "assessment": "Assessment / Final Round",
 }
 
 
@@ -556,8 +888,8 @@ _SALARY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Conservative USD→CAD multiplier. Static value is fine here — this is a
-# screen-call heads-up, not a contract negotiation.
+# Conservative USD→CAD multiplier. Static value is fine here: this is a
+# recruiter-call heads-up, not a contract negotiation.
 _USD_TO_CAD = 1.37
 # Hours per year for hourly-rate annualization.
 _FT_HOURS_PER_YEAR = 2080
@@ -613,7 +945,7 @@ def extract_comp_section(
         lines.append(f"- ~${cad_low:,.0f}–${cad_high:,.0f} CAD")
     lines.append(f"- Your stated range: **{applicant_range_cad}**")
     lines.append(
-        "- Suggested screen phrasing: \"Your range looks in line with what "
+        "- Suggested recruiter phrasing: \"Your range looks in line with what "
         "I'm looking at. I'd want to confirm contract vs full-time structure "
         "and benefits before locking a specific number.\""
     )
