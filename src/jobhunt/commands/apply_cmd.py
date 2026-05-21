@@ -27,7 +27,16 @@ import typer
 
 from jobhunt.browser import autofill
 from jobhunt.config import Config, load_config
-from jobhunt.db import connect, set_decline_reason, upsert_application, upsert_job, write_score
+from jobhunt.db import (
+    connect,
+    mark_interview_scheduled,
+    mark_response_received,
+    set_decline_reason,
+    set_outcome as db_set_outcome,
+    upsert_application,
+    upsert_job,
+    write_score,
+)
 from jobhunt.errors import BrowserError, IngestError, JobHuntError, PipelineError
 from jobhunt.ingest.manual import build_job_from_text, fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
@@ -68,6 +77,42 @@ def run(
             "One of: drafted, applied, interviewing, offer, rejected, withdrawn."
         ),
     ),
+    mark_response: str | None = typer.Option(
+        None,
+        "--mark-response",
+        help=(
+            "Record that a recruiter responded. Pass an ISO date (YYYY-MM-DD) "
+            "or full timestamp. Combine with --recruiter to also stamp the "
+            "recruiter handle. Bypasses re-tailoring."
+        ),
+    ),
+    mark_interview: str | None = typer.Option(
+        None,
+        "--mark-interview",
+        help=(
+            "Record when the first interview is scheduled (ISO date or full "
+            "timestamp). Promotes status to 'interviewing' if still earlier."
+        ),
+    ),
+    set_outcome: str | None = typer.Option(
+        None,
+        "--set-outcome",
+        help=(
+            "Record the final disposition: offer, rejected, withdrawn, ghosted. "
+            "Distinct from --set-status; outcome is terminal."
+        ),
+    ),
+    recruiter_type: str | None = typer.Option(
+        None,
+        "--recruiter-type",
+        help=(
+            "Tag who responded, alongside --mark-response. One of: "
+            "internal_recruiter, hiring_manager, external_agency, unknown. "
+            "Drives interview-prep question biasing — agencies skew "
+            "personal/soft-skills, hiring managers skew deep technical, "
+            "internal recruiters skew behavioral+comp."
+        ),
+    ),
     url: str | None = typer.Option(
         None, "--url", help='Fetch a single JD from this URL, score it, then apply. Quote the URL if it contains & characters, e.g. --url "https://..."'
     ),
@@ -104,14 +149,40 @@ def run(
         ),
     ),
 ) -> None:
-    if set_status is not None:
+    lifecycle_only = (
+        set_status is not None
+        or mark_response is not None
+        or mark_interview is not None
+        or set_outcome is not None
+    )
+    if lifecycle_only:
         if job_id is None:
-            typer.echo("error: --set-status requires <job-id>.", err=True)
+            typer.echo(
+                "error: lifecycle flags (--set-status / --mark-response / "
+                "--mark-interview / --set-outcome) require <job-id>.",
+                err=True,
+            )
             raise typer.Exit(code=2)
         if top is not None or best:
-            typer.echo("error: --set-status is incompatible with --top / --best.", err=True)
+            typer.echo(
+                "error: lifecycle flags are incompatible with --top / --best.",
+                err=True,
+            )
             raise typer.Exit(code=2)
-        _run_set_status(job_id, set_status)
+        if recruiter_type is not None and mark_response is None:
+            typer.echo(
+                "error: --recruiter-type requires --mark-response.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        _run_lifecycle(
+            job_id,
+            set_status=set_status,
+            mark_response=mark_response,
+            mark_interview=mark_interview,
+            set_outcome=set_outcome,
+            recruiter_type=recruiter_type,
+        )
         return
 
     manual_mode = url is not None
@@ -222,10 +293,18 @@ VALID_STATUSES = (
 )
 
 
-def _run_set_status(job_id: str, status: str) -> None:
-    if status not in VALID_STATUSES:
+def _run_lifecycle(
+    job_id: str,
+    *,
+    set_status: str | None,
+    mark_response: str | None,
+    mark_interview: str | None,
+    set_outcome: str | None,
+    recruiter_type: str | None,
+) -> None:
+    if set_status is not None and set_status not in VALID_STATUSES:
         typer.echo(
-            f"error: invalid status {status!r}. Allowed: {', '.join(VALID_STATUSES)}",
+            f"error: invalid status {set_status!r}. Allowed: {', '.join(VALID_STATUSES)}",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -242,18 +321,39 @@ def _run_set_status(job_id: str, status: str) -> None:
             )
             raise typer.Exit(code=1)
         with conn:
-            upsert_application(
-                conn,
-                application_id=row["id"],
-                job_id=job_id,
-                status=status,
-                resume_path=None,
-                cover_path=None,
-                fill_plan_path=None,
-                applied_week=None,
-            )
-        typer.echo(f"{job_id}: {row['status']} → {status}")
-        if status == "interviewing":
+            if set_status is not None:
+                upsert_application(
+                    conn,
+                    application_id=row["id"],
+                    job_id=job_id,
+                    status=set_status,
+                    resume_path=None,
+                    cover_path=None,
+                    fill_plan_path=None,
+                    applied_week=None,
+                )
+                typer.echo(f"{job_id}: status {row['status']} → {set_status}")
+            if mark_response is not None:
+                try:
+                    mark_response_received(conn, job_id, mark_response, recruiter_type)
+                except ValueError as e:
+                    typer.echo(f"error: {e}", err=True)
+                    raise typer.Exit(code=2)
+                type_note = f" (type: {recruiter_type})" if recruiter_type else ""
+                typer.echo(f"{job_id}: response received {mark_response}{type_note}")
+            if mark_interview is not None:
+                mark_interview_scheduled(conn, job_id, mark_interview)
+                typer.echo(f"{job_id}: interview scheduled {mark_interview}")
+            if set_outcome is not None:
+                try:
+                    db_set_outcome(conn, job_id, set_outcome)
+                except ValueError as e:
+                    typer.echo(f"error: {e}", err=True)
+                    raise typer.Exit(code=2)
+                typer.echo(f"{job_id}: outcome set to {set_outcome}")
+
+        effective_status = set_status or row["status"]
+        if effective_status == "interviewing" or mark_interview is not None:
             prep_path = (
                 cfg.paths.data_dir / "interview-prep" / f"{_safe_id(job_id)}.md"
             )
