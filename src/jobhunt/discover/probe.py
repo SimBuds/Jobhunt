@@ -1,5 +1,5 @@
-"""Probe public ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters) to
-discover slugs for known companies."""
+"""Probe public ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters,
+Workable, Recruitee) to discover slugs for known companies."""
 
 from __future__ import annotations
 
@@ -41,10 +41,25 @@ def _count_smartrecruiters(data: Any) -> int | None:
     return len(content) if isinstance(content, list) else None
 
 
+def _count_workable(data: Any) -> int | None:
+    """Workable widget returns {"jobs": [...]} just like Greenhouse/Ashby."""
+    return _count_greenhouse_ashby(data)
+
+
+def _count_recruitee(data: Any) -> int | None:
+    """Recruitee returns {"offers": [...]}."""
+    if not isinstance(data, dict):
+        return None
+    offers = data.get("offers")
+    return len(offers) if isinstance(offers, list) else None
+
+
 _GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
 _ASHBY_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 _LEVER_URL = "https://api.lever.co/v0/postings/{slug}"
 _SMARTRECRUITERS_URL = "https://api.smartrecruiters.com/v1/companies/{slug}/postings"
+_WORKABLE_URL = "https://apply.workable.com/api/v1/widget/accounts/{slug}"
+_RECRUITEE_URL = "https://{slug}.recruitee.com/api/offers/"
 
 # Each entry: (url_template, query_params, response_counter).
 _ENDPOINTS: Mapping[str, tuple[str, Mapping[str, str], Callable[[Any], int | None]]] = {
@@ -52,7 +67,14 @@ _ENDPOINTS: Mapping[str, tuple[str, Mapping[str, str], Callable[[Any], int | Non
     "ashby": (_ASHBY_URL, {"includeCompensation": "false"}, _count_greenhouse_ashby),
     "lever": (_LEVER_URL, {"mode": "json", "limit": "1"}, _count_lever),
     "smartrecruiters": (_SMARTRECRUITERS_URL, {"limit": "1"}, _count_smartrecruiters),
+    "workable": (_WORKABLE_URL, {}, _count_workable),
+    "recruitee": (_RECRUITEE_URL, {"limit": "1"}, _count_recruitee),
 }
+
+# Soft TTL on cached misses. A 404 today doesn't mean a 404 forever — companies
+# regularly stand up new ATS boards. Misses older than this re-probe on the
+# next discovery run without forcing `--include-cached`.
+_MISS_TTL_DAYS = 90
 
 # Per-company budget. asyncio.wait_for cap protects the run from a hung host.
 _COMPANY_TIMEOUT_SECONDS = 15.0
@@ -136,10 +158,15 @@ def _company_rows(conn: sqlite3.Connection, limit: int) -> list[tuple[str, int]]
 def _cached_misses(
     conn: sqlite3.Connection, company: str
 ) -> set[tuple[str, str]]:
-    """(ats, slug) pairs previously probed for this company that did NOT hit."""
+    """(ats, slug) pairs previously probed for this company that did NOT hit
+    AND are still inside the TTL window. Misses older than _MISS_TTL_DAYS
+    re-probe automatically — companies stand up new ATS boards over time.
+    """
     rows = conn.execute(
-        "SELECT ats, slug FROM slug_probes WHERE company = ? AND status != 200",
-        (company,),
+        "SELECT ats, slug FROM slug_probes "
+        "WHERE company = ? AND status != 200 "
+        "AND probed_at >= datetime('now', ?)",
+        (company, f"-{_MISS_TTL_DAYS} days"),
     ).fetchall()
     return {(r[0], r[1]) for r in rows}
 
@@ -162,11 +189,15 @@ def _persist_outcomes(
     conn: sqlite3.Connection, outcomes: list[ProbeOutcome]
 ) -> None:
     with conn:
+        # Explicit CURRENT_TIMESTAMP on probed_at — INSERT OR REPLACE drops
+        # the prior row entirely, but the column DEFAULT only fires when the
+        # column is omitted from the insert list. Stamping explicitly keeps
+        # the TTL filter in `_cached_misses` honest across re-probes.
         conn.executemany(
             """
             INSERT OR REPLACE INTO slug_probes
-              (company, ats, slug, status, job_count)
-            VALUES (?, ?, ?, ?, ?)
+              (company, ats, slug, status, job_count, probed_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             [(o.company, o.ats, o.slug, o.status, o.job_count) for o in outcomes],
         )
@@ -244,6 +275,8 @@ async def discover(
         "ashby": set(cfg.ingest.ashby),
         "lever": set(cfg.ingest.lever),
         "smartrecruiters": set(cfg.ingest.smartrecruiters),
+        "workable": set(cfg.ingest.workable),
+        "recruitee": set(cfg.ingest.recruitee),
     }
     all_known: set[str] = set().union(*known.values())
 

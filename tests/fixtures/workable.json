@@ -1,0 +1,50 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "shortcode": "ABC123",
+      "title": "Senior Full-Stack Developer",
+      "company": "Example Co",
+      "location": {
+        "city": "Toronto",
+        "region": "Ontario",
+        "country": "Canada"
+      },
+      "telecommuting": false,
+      "description": "Build a React + Node app. Postgres, AWS.",
+      "url": "https://apply.workable.com/example/j/ABC123",
+      "application_url": "https://apply.workable.com/example/j/ABC123/apply",
+      "published_on": "2026-05-10T12:00:00Z"
+    },
+    {
+      "id": 102,
+      "shortcode": "DEF456",
+      "title": "Remote Platform Engineer",
+      "company": "Example Co",
+      "location": {
+        "city": "",
+        "region": "",
+        "country": "Canada"
+      },
+      "telecommuting": true,
+      "description": "Remote-Canada role.",
+      "url": "https://apply.workable.com/example/j/DEF456",
+      "published_on": "2026-05-11T12:00:00Z"
+    },
+    {
+      "id": 103,
+      "shortcode": "GHI789",
+      "title": "London Engineer",
+      "company": "Example Co",
+      "location": {
+        "city": "London",
+        "region": "",
+        "country": "United Kingdom"
+      },
+      "telecommuting": false,
+      "description": "On-site in UK.",
+      "url": "https://apply.workable.com/example/j/GHI789",
+      "published_on": "2026-05-12T12:00:00Z"
+    }
+  ]
+}

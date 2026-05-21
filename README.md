@@ -1,9 +1,12 @@
 # Job Hunt AI Buddy
 
 A local-first CLI for Casey's Toronto-area job hunt. Pulls jobs from public
-ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Job Bank
-Canada, generic RSS, Adzuna CA), scoped to GTA + 100 km and Remote-Canada
-postings. Fit-scores them against the parsed baseline resume using local
+ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable,
+Recruitee, Job Bank Canada, generic RSS, Adzuna CA), scoped to GTA +
+100 km and Remote-Canada postings. After each scan, the tool probes public
+ATS APIs for slugs of newly-seen companies and auto-appends hits to
+`config.toml`, so the next scan pulls deep JDs natively — slug curation is
+mostly automatic. Fit-scores them against the parsed baseline resume using local
 Ollama models, drafts a tailored resume and cover letter per role, answers
 free-form application form questions, and assists with form autofill in the
 browser. **You submit every application yourself.** The tool fills the
@@ -93,6 +96,7 @@ jobhunt convert-resume
 ```bash
 jobhunt scan                   # pull new jobs + score them (filters: 7-day freshness, no management titles)
 jobhunt scan --max-age-days 30 # widen the freshness window for a specific run (0 disables)
+jobhunt scan --no-discover     # skip the post-ingest slug auto-discovery step
 jobhunt list --min-score 70    # high-fit subset
 jobhunt apply --best           # pick which to apply to
 # Browser opens. You review, click Submit yourself.
@@ -231,7 +235,7 @@ this command (or notes that a prep doc already exists).
 --status                 drafted | applied | interviewing | offer | rejected
 --min-score N
 --source                 greenhouse | lever | ashby | smartrecruiters | workday |
-                         job_bank_ca | rss | adzuna_ca
+                         workable | recruitee | job_bank_ca | rss | adzuna_ca
 ```
 
 Always renders a weekly rollup footer (scanned / declined / per-status
@@ -239,11 +243,19 @@ counts). Rows for jobs you've already run `apply` on show a `cov=NN%` tag
 — the keyword-coverage % from the most recent `audit.json`. Drafted
 applications with `cov < 70%` are good candidates for a re-tailor.
 
-### Slug acquisition — `add`, `config seed`, `discover slugs`
+### Slug acquisition — automatic, with manual fallbacks
 
 Adzuna ships short JD snippets (~500 chars). Greenhouse, Lever, Ashby,
-SmartRecruiters, and Workday return full descriptions, but each employer
-needs a slug in `config.toml`. Three workflows fill that list:
+SmartRecruiters, Workday, Workable, and Recruitee return full descriptions,
+but each employer needs a slug in `config.toml`. **As of the May 2026
+auto-discovery work, `jobhunt scan` does this for you** — after ingest it
+probes the public APIs of Greenhouse / Ashby / Lever / SmartRecruiters /
+Workable / Recruitee for slugs of any new aggregator-only companies it just
+saw, and appends hits to `config.toml` (with a `.bak` snapshot). The next
+scan ingests those slugs natively. Toggle off with `jobhunt scan
+--no-discover` or `[ingest] auto_discover = false` in `config.toml`.
+
+Manual fallbacks remain for cold-start and one-offs:
 
 1. **`jobhunt add <URL>`** — the daily driver. Paste any recognized
    career-page or job-posting URL; the tool parses the ATS, probes once
@@ -257,8 +269,9 @@ needs a slug in `config.toml`. Three workflows fill that list:
 
    Recognized hosts: `boards.greenhouse.io`, `jobs.lever.co`,
    `jobs.ashbyhq.com`, `jobs.smartrecruiters.com`,
-   `*.wd*.myworkdayjobs.com`. iCIMS URLs are recognized but exit with
-   "coming soon" — no adapter yet.
+   `*.wd*.myworkdayjobs.com`, `apply.workable.com`, `*.workable.com`,
+   `*.recruitee.com`. iCIMS URLs are recognized but exit with "coming
+   soon" — no adapter yet.
 
 2. **`jobhunt config seed`** — cold start. Imports the live-verified
    seed list from `kb/seeds/gta-employers.toml`. Every entry is
@@ -270,10 +283,11 @@ needs a slug in `config.toml`. Three workflows fill that list:
    jobhunt config seed --apply     # additively merge into config.toml
    ```
 
-3. **`jobhunt discover slugs`** — maintenance. Harvests confirmed slugs
-   from URLs already in your jobs DB (offline, no HTTP), then probes
-   public Greenhouse / Lever / Ashby / SmartRecruiters APIs for company
-   names not yet covered.
+3. **`jobhunt discover slugs`** — maintenance. Same machinery `scan`
+   uses, but runnable on demand against the full jobs DB. Harvests
+   confirmed slugs from URLs already in your jobs DB (offline, no HTTP),
+   then probes public Greenhouse / Lever / Ashby / SmartRecruiters /
+   Workable / Recruitee APIs for company names not yet covered.
 
    ```bash
    jobhunt discover slugs                     # print suggestions (default --limit 100)
@@ -283,9 +297,12 @@ needs a slug in `config.toml`. Three workflows fill that list:
    ```
 
    Misses are cached in the `slug_probes` table so repeat runs only probe
-   new companies. Zero-job 200 responses are treated as misses.
-   Staffing-agency names (Astra North, Targeted Talent, etc.) are
-   filtered at the candidate stage and never hit the network.
+   new companies, with a soft 90-day TTL — older misses re-probe
+   automatically since companies stand up new ATS boards over time. Pass
+   `--include-cached` to force re-probing inside the TTL. Zero-job 200
+   responses are treated as misses. Staffing-agency names (Astra North,
+   Targeted Talent, etc.) are filtered at the candidate stage and never
+   hit the network.
 
 After `apply --url <some-careers-page>`, the tool prints a `jobhunt add`
 suggestion if the URL belongs to an ATS you haven't configured yet —
@@ -341,8 +358,13 @@ lever           = []   # board slugs, e.g. "benchsci"
 ashby           = []   # board slugs, e.g. "cohere"
 smartrecruiters = []   # company slugs, case-sensitive (e.g. "Bosch", "Visa")
 workday         = []   # "tenant:host:site" triples (see ingest/workday.py)
+workable        = []   # board slugs, e.g. "deliveroo"
+recruitee       = []   # board slugs (the `<slug>` in <slug>.recruitee.com)
 job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
 rss             = []   # generic employer career-page RSS/Atom URLs
+# auto_discover = true # default. After ingest, probe public ATS APIs for
+                       # slugs of new aggregator-only companies and append
+                       # hits to this file. --no-discover skips per-run.
 
 [ingest.adzuna]
 # Empty list = auto-derive from kb/profile/verified.json (skills + bullets).

@@ -103,6 +103,8 @@ src/jobhunt/
 │   ├── ashby.py
 │   ├── adzuna_ca.py
 │   ├── smartrecruiters.py     # SmartRecruiters public Posting API (no key needed)
+│   ├── workable.py            # Workable public widget API (no key needed)
+│   ├── recruitee.py           # Recruitee public offers API (no key needed)
 │   ├── job_bank_ca.py         # Government of Canada Job Bank RSS
 │   ├── rss_generic.py         # generic employer career RSS/Atom feeds
 │   └── manual.py              # --url: ad-hoc single-JD synth into a Job
@@ -260,13 +262,25 @@ the audit philosophy: regex + counters over existing DB rows, no network I/O.
 
 `discover slugs` reads distinct companies from the jobs DB (sorted by post
 count), normalizes each name via `discover.slug_candidates.candidates()` to up
-to 3 candidate slugs, then probes the Greenhouse and Ashby public APIs.
-Hits are printed; `--apply` appends them to `config.toml` (after writing a
-`.bak`). Misses persist to the `slug_probes` table and are skipped on
-subsequent runs unless `--include-cached`. Staffing-agency names are filtered
-out at the candidate stage — they never run public ATS boards. Per-host rate
-limit + per-company 15 s timeout + bounded concurrency keep wall time
-predictable; `--limit 100` is the default run cap.
+to 3 candidate slugs, then probes the Greenhouse / Ashby / Lever /
+SmartRecruiters / Workable / Recruitee public APIs. Hits are printed;
+`--apply` appends them to `config.toml` (after writing a `.bak`). Misses
+persist to the `slug_probes` table with a 90-day TTL — older misses
+re-probe automatically without `--include-cached`. Staffing-agency names
+are filtered out at the candidate stage — they never run public ATS
+boards. Per-host rate limit + per-company 15 s timeout + bounded
+concurrency keep wall time predictable; `--limit 100` is the default run
+cap.
+
+**Auto-discovery in `scan` (May 2026).** `cfg.ingest.auto_discover`
+(default true) runs the same `discover.probe.discover()` machinery at the
+end of every `scan` that inserted new rows. Hits are appended to
+`config.toml` via the shared `commands._config_write.write_config_atomically`
+helper so the next scan ingests those slugs natively for deep JDs. Toggle
+off per-run with `jobhunt scan --no-discover` or globally via
+`[ingest] auto_discover = false`. The seed file
+`kb/seeds/gta-employers.toml` is now a cold-start aid only — daily use
+self-bootstraps.
 
 `apply --url` is a user-initiated single-shot fetch. It synthesizes a
 `Job(source="manual", id="manual:<sha1-12>")`, upserts it into the DB so it
@@ -317,7 +331,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 
 ## Ingestion rules — non-negotiable
 
-1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Job Bank Canada RSS, generic RSS.
+1. **Public APIs only.** Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key), Workable widget API (`apply.workable.com/api/v1/widget/accounts/{slug}`, no key), Recruitee offers API (`{slug}.recruitee.com/api/offers/`, no key), Job Bank Canada RSS, generic RSS.
 2. **GTA scope.** Filter by GTA city allowlist (Toronto, Mississauga, Brampton, Hamilton, Oakville, Markham, Vaughan, Burlington, Oshawa, Richmond Hill, Pickering, Ajax, Whitby, Milton, North York, Scarborough, Etobicoke, plus the KW corridor — Waterloo / Kitchener / Cambridge / Guelph — and Barrie) **plus Remote-Canada** postings. Adzuna uses `where=Toronto&distance=100&country=ca`. Drop everything else. **May 2026:** weak Canada hints (`EST`, `Eastern Time`, comma-delimited `ON`) only accept when the same string has no non-Canada anchor (`US`, `EMEA`, etc.) — US-Eastern remote roles were sneaking through before the tightening.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if the user asks. Push back and explain.
 4. **Respect `robots.txt`** for any non-API HTTP fetch. The `--url` ad-hoc path checks via stdlib `urllib.robotparser` and accepts `--force-robots` for personal-use override only; this carve-out does **not** apply to `scan` ingest adapters. (this file historically called for `protego`; the project hasn't taken that dep yet — stdlib is the current implementation.)

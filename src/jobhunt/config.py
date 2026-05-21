@@ -61,9 +61,15 @@ class IngestConfig(BaseModel):
     # Each entry is "tenant:host:site" — e.g. "rbc:wd3:RBC_Careers". See
     # ingest/workday.py for how to find these values for a given employer.
     workday: list[str] = Field(default_factory=list)
+    workable: list[str] = Field(default_factory=list)
+    recruitee: list[str] = Field(default_factory=list)
     job_bank_ca: list[str] = Field(default_factory=list)
     rss: list[str] = Field(default_factory=list)
     adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
+    # After ingest, probe public ATS APIs for slugs of newly-seen companies
+    # and append hits to config.toml so the next scan pulls deep JDs natively.
+    # Toggle off if you want the legacy maintenance-only `discover slugs` flow.
+    auto_discover: bool = True
 
 
 class GatewayConfig(BaseModel):

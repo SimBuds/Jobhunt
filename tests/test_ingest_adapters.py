@@ -301,3 +301,95 @@ def test_workday_fixture_populates_posted_at() -> None:
     ]
     # All three fixture entries have parseable postedOn values.
     assert all(t is not None for t in parsed)
+
+
+# ---------------------------------------------------------------------------
+# workable adapter
+# ---------------------------------------------------------------------------
+
+
+def test_workable_fixture_filters_to_gta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.ingest import workable
+
+    raw = json.loads((FIXTURES / "workable.json").read_text())
+
+    async def fake_get_json(*args: Any, **kwargs: Any) -> Any:
+        return raw
+
+    monkeypatch.setattr(workable, "get_json", fake_get_json)
+    jobs = _drain(workable.fetch(client=None, limiter=None, slug="example"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    assert "Senior Full-Stack Developer" in titles
+    assert "Remote Platform Engineer" in titles
+    assert "London Engineer" not in titles
+    first = next(j for j in jobs if j.title == "Senior Full-Stack Developer")
+    assert first.id == "workable:example:ABC123"
+    assert first.source == "workable"
+    remote_job = next(j for j in jobs if j.title == "Remote Platform Engineer")
+    assert remote_job.remote_type == "remote"
+
+
+# ---------------------------------------------------------------------------
+# recruitee adapter
+# ---------------------------------------------------------------------------
+
+
+def test_recruitee_fixture_filters_to_gta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.ingest import recruitee
+
+    raw = json.loads((FIXTURES / "recruitee.json").read_text())
+
+    async def fake_get_json(*args: Any, **kwargs: Any) -> Any:
+        return raw
+
+    monkeypatch.setattr(recruitee, "get_json", fake_get_json)
+    jobs = _drain(recruitee.fetch(client=None, limiter=None, slug="example"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    assert "Senior Backend Engineer" in titles
+    assert "Remote Platform Engineer" in titles
+    assert "Berlin Engineer" not in titles
+    first = next(j for j in jobs if j.title == "Senior Backend Engineer")
+    assert first.id == "recruitee:example:201"
+    assert first.source == "recruitee"
+    remote_job = next(j for j in jobs if j.title == "Remote Platform Engineer")
+    assert remote_job.remote_type == "remote"
+
+
+# ---------------------------------------------------------------------------
+# url_extract — new ATS host recognisers
+# ---------------------------------------------------------------------------
+
+
+def test_url_extract_workable_apply_host() -> None:
+    from jobhunt.discover.url_extract import extract
+
+    out = extract("https://apply.workable.com/example-co/j/ABC123/")
+    assert out is not None
+    assert out.ats == "workable"
+    assert out.slug == "example-co"
+
+
+def test_url_extract_workable_subdomain_host() -> None:
+    from jobhunt.discover.url_extract import extract
+
+    out = extract("https://example-co.workable.com/jobs/123")
+    assert out is not None
+    assert out.ats == "workable"
+    assert out.slug == "example-co"
+
+
+def test_url_extract_recruitee_subdomain_host() -> None:
+    from jobhunt.discover.url_extract import extract
+
+    out = extract("https://example.recruitee.com/o/senior-backend-engineer")
+    assert out is not None
+    assert out.ats == "recruitee"
+    assert out.slug == "example"
+
+
+def test_url_extract_unknown_host_returns_none() -> None:
+    from jobhunt.discover.url_extract import extract
+
+    assert extract("https://example.com/jobs/123") is None

@@ -14,6 +14,9 @@ URL shapes handled:
 - SmartRecruiters: jobs.smartrecruiters.com/{slug}[/...]
                   careers.smartrecruiters.com/{slug}[/...]
 - Workday:        {tenant}.wd{N}.myworkdayjobs.com/[en-US/]{site}[/...]
+- Workable:       apply.workable.com/{slug}[/...]
+                  {slug}.workable.com[/...]
+- Recruitee:      {slug}.recruitee.com[/...]
 - iCIMS:          careers-{tenant}.icims.com/[...] (tenant only; iCIMS isn't a probe target yet)
 """
 
@@ -39,6 +42,9 @@ _WORKDAY_HOST_RE = re.compile(
     r"^(?P<tenant>[a-z0-9-]+)\.(?P<host>wd\d+)\.myworkdayjobs\.com$"
 )
 _ICIMS_HOST_RE = re.compile(r"^careers-(?P<tenant>[a-z0-9-]+)\.icims\.com$")
+_WORKABLE_APPLY_HOST = "apply.workable.com"
+_WORKABLE_SUBDOMAIN_RE = re.compile(r"^(?P<slug>[a-z0-9][a-z0-9-]{0,60})\.workable\.com$")
+_RECRUITEE_HOST_RE = re.compile(r"^(?P<slug>[a-z0-9][a-z0-9-]{0,60})\.recruitee\.com$")
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,60}$", re.IGNORECASE)
 
@@ -85,6 +91,23 @@ def extract(url: str) -> ExtractedSlug | None:
         if not _SLUG_RE.match(tenant):
             return None
         return ExtractedSlug("icims", tenant, None, None)
+
+    if host == _WORKABLE_APPLY_HOST:
+        return _first_segment("workable", segments)
+
+    m = _WORKABLE_SUBDOMAIN_RE.match(host)
+    if m:
+        slug = m.group("slug")
+        if not _SLUG_RE.match(slug):
+            return None
+        return ExtractedSlug("workable", slug, None, None)
+
+    m = _RECRUITEE_HOST_RE.match(host)
+    if m:
+        slug = m.group("slug")
+        if not _SLUG_RE.match(slug):
+            return None
+        return ExtractedSlug("recruitee", slug, None, None)
 
     return None
 

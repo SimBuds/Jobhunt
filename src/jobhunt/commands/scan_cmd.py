@@ -40,8 +40,10 @@ from jobhunt.ingest import (
     greenhouse,
     job_bank_ca,
     lever,
+    recruitee,
     rss_generic,
     smartrecruiters,
+    workable,
     workday,
 )
 from jobhunt.ingest._filter import is_management_title, is_within_age_window
@@ -75,6 +77,17 @@ def run(
             "infer a posted-at timestamp are treated as fresh."
         ),
     ),
+    no_discover: bool = typer.Option(
+        False,
+        "--no-discover",
+        help=(
+            "Skip the post-ingest slug auto-discovery step. By default, after "
+            "ingest, scan probes public ATS APIs for slugs of newly-seen "
+            "aggregator companies and appends hits to config.toml so the "
+            "next scan pulls deep JDs natively. Use this flag, or set "
+            "[ingest] auto_discover=false in config.toml, to opt out."
+        ),
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
@@ -91,6 +104,7 @@ def run(
             limit=limit,
             refresh=refresh,
             max_age_days=effective_max_age,
+            no_discover=no_discover,
         )
     )
 
@@ -103,6 +117,7 @@ async def _run(
     limit: int | None,
     refresh: bool = False,
     max_age_days: int = 7,
+    no_discover: bool = False,
 ) -> None:
     conn = connect(cfg.paths.db_path)
     try:
@@ -122,6 +137,9 @@ async def _run(
                     f"ingest: filtered {filtered['mgmt']} management-title + "
                     f"{filtered['stale']} stale (>{max_age_days}d) job(s)"
                 )
+
+            if cfg.ingest.auto_discover and not no_discover and inserted:
+                await _auto_discover(cfg, conn)
         else:
             typer.echo("ingest: skipped")
 
@@ -187,6 +205,81 @@ async def _run(
         typer.echo(f"score: {ok}/{len(rows)} scored")
     finally:
         conn.close()
+
+
+_AUTO_DISCOVER_ATSES = (
+    "greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee",
+)
+
+
+async def _auto_discover(cfg: Config, conn: sqlite3.Connection) -> None:
+    """Probe public ATS APIs for slugs of companies that landed in the jobs
+    table via the latest ingest and aren't yet wired up. Hits are appended to
+    config.toml so the next scan ingests those slugs natively for full JDs.
+
+    Bounded by `discover()`'s 100-company candidate cap and the per-host
+    rate limiter. Misses go into `slug_probes` with a 90-day TTL so they
+    re-probe automatically without `--include-cached`.
+
+    .bak snapshot is written by `write_config_atomically`. Inline comments in
+    config.toml are dropped — same caveat as `jobhunt add` and
+    `config seed --apply` (see AGENTS.md §Commands).
+    """
+    from jobhunt.commands._config_write import write_config_atomically
+    from jobhunt.discover.probe import discover
+    from jobhunt.http import DEFAULT_UA
+
+    typer.echo("discover: probing public ATS APIs for new slugs…")
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0),
+        headers={
+            "User-Agent": cfg.ingest.user_agent or DEFAULT_UA,
+            "Accept": "application/json",
+        },
+        follow_redirects=True,
+    ) as client:
+        try:
+            hits = await discover(
+                client,
+                cfg,
+                conn,
+                atses=list(_AUTO_DISCOVER_ATSES),
+                limit=100,
+                include_cached=False,
+            )
+        except Exception as e:  # noqa: BLE001 — never let discovery fail a scan
+            typer.echo(f"discover: skipped — {e}", err=True)
+            return
+
+    if not hits:
+        typer.echo("discover: no new slugs.")
+        return
+
+    additions: dict[str, list[str]] = {ats: [] for ats in _AUTO_DISCOVER_ATSES}
+    existing: dict[str, set[str]] = {
+        ats: set(getattr(cfg.ingest, ats)) for ats in _AUTO_DISCOVER_ATSES
+    }
+    for h in hits:
+        if h.ats not in additions or h.slug in existing[h.ats]:
+            continue
+        additions[h.ats].append(h.slug)
+        existing[h.ats].add(h.slug)
+
+    if not any(additions.values()):
+        typer.echo("discover: no new slugs (all hits already in config).")
+        return
+
+    for ats, new in additions.items():
+        if new:
+            setattr(cfg.ingest, ats, [*getattr(cfg.ingest, ats), *new])
+
+    write_config_atomically(cfg)
+    parts = ", ".join(f"+{len(v)} {k}" for k, v in additions.items() if v)
+    typer.echo(
+        f"discover: appended slugs to config.toml ({parts}). "
+        "Next scan will ingest them natively. "
+        "(Inline comments in config.toml were dropped; .bak snapshot saved.)"
+    )
 
 
 def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
@@ -274,6 +367,10 @@ async def _ingest_all(
             )
         for spec in cfg.ingest.workday:
             adapters.append(("workday", spec, workday.fetch(client, limiter, spec)))
+        for slug in cfg.ingest.workable:
+            adapters.append(("workable", slug, workable.fetch(client, limiter, slug)))
+        for slug in cfg.ingest.recruitee:
+            adapters.append(("recruitee", slug, recruitee.fetch(client, limiter, slug)))
         for url in cfg.ingest.job_bank_ca:
             adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url)))
         for url in cfg.ingest.rss:
@@ -415,7 +512,10 @@ def _dedup_key(job: Job) -> str:
     don't score the same posting twice. Uses already-stored external_id when the
     source is Greenhouse/Lever/Ashby/SmartRecruiters (unique per company posting),
     falls back to normalised (title, company) for aggregators like Adzuna/RSS."""
-    if job.source in {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}:
+    if job.source in {
+        "greenhouse", "lever", "ashby", "smartrecruiters", "workday",
+        "workable", "recruitee",
+    }:
         return job.id  # already source-specific unique
     title_norm = _DEDUP_RE.sub("", (job.title or "").lower())
     company_norm = _DEDUP_RE.sub("", (job.company or "").lower())
