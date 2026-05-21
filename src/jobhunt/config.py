@@ -53,7 +53,7 @@ class IngestConfig(BaseModel):
     # Drop postings older than N days at ingest. 0 disables. Per-run override
     # via `jobhunt scan --max-age-days N`. Adapters that don't populate
     # `posted_at` (Workday) pass the filter — treated as fresh.
-    max_age_days: int = 14
+    max_age_days: int = 7
     greenhouse: list[str] = Field(default_factory=list)
     lever: list[str] = Field(default_factory=list)
     ashby: list[str] = Field(default_factory=list)

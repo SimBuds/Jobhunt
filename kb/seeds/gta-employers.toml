@@ -11,8 +11,15 @@
 # Workday is intentionally absent: tenant:host:site triples are easier to
 # acquire by pasting the URL into `jobhunt add` than by curating here.
 
-greenhouse = ["konradgroup", "faire", "hootsuite", "ritual", "shakepay", "thinkific"]
+greenhouse = ["konradgroup", "faire", "hootsuite", "ritual", "shakepay", "thinkific", "tenstorrent", "coconutsoftware"]
 lever = ["benchsci"]
-ashby = ["harvey", "cohere", "mercor", "sentry", "klue"]
+ashby = [
+    # 2026-05-20: MaRS / AI-startup batch via scripts/seed_mars.py.
+    # Sort: existing entries first, then new (descending by job count at probe time).
+    "harvey", "cohere", "mercor", "sentry", "klue",
+    "openai", "elevenlabs", "decagon", "cursor", "lovable",
+    "perplexity", "writer", "exa", "modal", "vapi",
+    "langfuse", "browserbase", "lindy", "rerun",
+]
 smartrecruiters = []
 workday = []

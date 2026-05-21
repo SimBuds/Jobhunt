@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 import typer
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from jobhunt.commands._config_write import write_config_atomically
 from jobhunt.config import config_path, load_config
@@ -87,6 +98,177 @@ def seed(
 
     for ats, new in additions.items():
         setattr(cfg.ingest, ats, [*getattr(cfg.ingest, ats), *new])
+
+    write_config_atomically(cfg)
+    typer.echo(f"\nupdated {config_path()}. backup: {config_path()}.bak")
+    typer.echo("note: any inline comments in config.toml were not preserved on write.")
+
+
+# ATSes whose slugs are probe-verifiable. Workday doesn't expose a cheap
+# probe (CXS handshake isn't worth wiring), so we leave its tenants
+# alone — they're spec strings, not raw slugs anyway.
+_PROBEABLE_ATSES = ("greenhouse", "lever", "ashby", "smartrecruiters")
+
+
+async def _reprobe_async(
+    cfg,
+    atses: tuple[str, ...],
+    on_progress: Callable[[int, int, str, int], None] | None = None,
+) -> list:
+    """Probe every configured slug under `atses`. Returns list of
+    ProbeOutcome. Per-host rate-limit shared across the run.
+
+    `on_progress(done, total, current_slug, status)` is called once after each
+    probe — status is the int from `ProbeOutcome.status` (200 live, 404/0 stale).
+    """
+    from jobhunt.discover.probe import _probe_one
+    from jobhunt.http import RateLimiter
+
+    limiter = RateLimiter(rate_per_sec=cfg.ingest.rate_limit_per_sec)
+    pairs: list[tuple[str, str]] = []
+    for ats in atses:
+        for slug in getattr(cfg.ingest, ats):
+            pairs.append((ats, slug))
+
+    if not pairs:
+        return []
+
+    total = len(pairs)
+    outcomes: list = []
+    async with httpx.AsyncClient(
+        timeout=15.0, headers={"User-Agent": cfg.ingest.user_agent}
+    ) as client:
+        for done, (ats, slug) in enumerate(pairs, start=1):
+            outcome = await _probe_one(client, limiter, slug, ats, slug)
+            outcomes.append(outcome)
+            if on_progress is not None:
+                on_progress(done, total, f"{ats}/{slug}", outcome.status)
+    return outcomes
+
+
+@app.command("reprobe")
+def reprobe(
+    prune: bool = typer.Option(
+        False, "--prune",
+        help="Remove stale slugs from config.toml. Without --force, prompts before writing.",
+    ),
+    force: bool = typer.Option(
+        False, "--force",
+        help="With --prune, skip the confirmation prompt.",
+    ),
+) -> None:
+    """Re-probe every configured ATS slug and surface stale ones.
+
+    Walks `cfg.ingest.{greenhouse,lever,ashby,smartrecruiters}`, hits each
+    slug's public API, and groups the results. Stale = 404 / 0 / API
+    returns 0 postings. Workday is skipped (its CXS endpoint isn't a
+    cheap probe). Dry-run by default; `--prune` removes the stale ones
+    from config (creates a config.toml.bak first).
+    """
+    if force and not prune:
+        raise typer.BadParameter("--force only applies with --prune")
+
+    cfg = load_config()
+
+    # Quick pre-flight: count what we're about to probe so the user knows
+    # the rough wait. Per-host rate limit is 1 req/sec, so probes ≈ N seconds.
+    pre_total = sum(len(getattr(cfg.ingest, a)) for a in _PROBEABLE_ATSES)
+    if pre_total == 0:
+        typer.echo("no configured slugs to probe.")
+        return
+    typer.echo(
+        f"reprobing {pre_total} configured slug(s) "
+        f"across {', '.join(_PROBEABLE_ATSES)} "
+        f"(~1 req/sec per host; expect ~{pre_total}s)"
+    )
+
+    live = miss = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TextColumn(
+            "[green]{task.fields[live]} live "
+            "[red]{task.fields[stale]} stale"
+        ),
+        transient=False,
+    ) as progress:
+        task_id = progress.add_task(
+            "probing …", total=pre_total, live=0, stale=0
+        )
+
+        def _on_progress(done: int, total: int, current: str, status: int) -> None:
+            nonlocal live, miss
+            if status == 200:
+                live += 1
+            else:
+                miss += 1
+            label = current if len(current) <= 36 else current[:34] + "…"
+            progress.update(
+                task_id,
+                description=f"probing {label}",
+                completed=done,
+                total=total,
+                live=live,
+                stale=miss,
+            )
+
+        outcomes = asyncio.run(
+            _reprobe_async(cfg, _PROBEABLE_ATSES, on_progress=_on_progress)
+        )
+        progress.update(task_id, description="done")
+
+    if not outcomes:
+        typer.echo("no configured slugs to probe.")
+        return
+
+    by_ats: dict[str, list] = {}
+    for o in outcomes:
+        by_ats.setdefault(o.ats, []).append(o)
+
+    stale_by_ats: dict[str, list[str]] = {}
+    total_hits = 0
+    total_stale = 0
+    for ats in _PROBEABLE_ATSES:
+        results = by_ats.get(ats, [])
+        if not results:
+            continue
+        hits = [o for o in results if o.status == 200]
+        stale = [o for o in results if o.status != 200]
+        total_hits += len(hits)
+        total_stale += len(stale)
+        typer.echo(f"\n[{ats}] {len(hits)} live, {len(stale)} stale")
+        for o in hits:
+            typer.echo(f"  live  {o.slug:<30} {o.job_count or '?'} job(s)")
+        for o in stale:
+            reason = "404" if o.status == 404 else ("network/timeout" if o.status == 0 else f"status={o.status}")
+            typer.echo(f"  STALE {o.slug:<30} ({reason})")
+        if stale:
+            stale_by_ats[ats] = [o.slug for o in stale]
+
+    typer.echo(f"\nsummary: {total_hits} live, {total_stale} stale across {sum(len(v) for v in by_ats.values())} configured slugs.")
+
+    if not stale_by_ats:
+        typer.echo("nothing to prune.")
+        return
+
+    if not prune:
+        typer.echo("\nrun `jobhunt config reprobe --prune` to remove the stale entries above.")
+        return
+
+    if not force:
+        typer.echo("\nabout to remove the stale slugs listed above.")
+        if not typer.confirm("proceed?", default=False):
+            typer.echo("aborted.")
+            raise typer.Exit(code=1)
+
+    for ats, stale_slugs in stale_by_ats.items():
+        existing = list(getattr(cfg.ingest, ats))
+        kept = [s for s in existing if s not in stale_slugs]
+        setattr(cfg.ingest, ats, kept)
 
     write_config_atomically(cfg)
     typer.echo(f"\nupdated {config_path()}. backup: {config_path()}.bak")
