@@ -144,7 +144,8 @@ async def _run(
         )
         await warm_model(cfg, task="score")
         ok = 0
-        for row in rows:
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
             job = Job(
                 id=row["id"],
                 source=row["source"],
@@ -155,6 +156,10 @@ async def _run(
                 description=row["description"],
                 url=row["url"],
             )
+            # Pre-print so the user sees activity during the LLM call.
+            # Without this, a slow Ollama response (KV realloc, etc.) looks
+            # like the loop has frozen.
+            typer.echo(f"  [{i}/{total}] scoring {job.id}…")
             try:
                 result = await score_job(cfg, job)
             except JobHuntError as e:
