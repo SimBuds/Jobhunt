@@ -85,6 +85,39 @@ class PrepContext:
     cover_summary: str = ""
     research_blob: str = ""
     comp_section: str = ""  # rendered comp heads-up markdown (may be empty)
+    # Phase 13: drives interview-prep likely-questions bias. One of
+    # `internal_recruiter`, `hiring_manager`, `external_agency`, `unknown`
+    # (matches `db._VALID_RECRUITER_TYPES`). Defaults to `unknown` →
+    # balanced mix.
+    recruiter_type: str = "unknown"
+
+
+_RECRUITER_BIAS_BLURB: dict[str, str] = {
+    "internal_recruiter": (
+        "Recruiter type: INTERNAL_RECRUITER (company HR / talent acquisition).\n"
+        "Likely-questions mix: 60% behavioral (motivation, fit, past situations), "
+        "20% compensation / logistics (notice period, work auth, location), "
+        "20% role-confirmation (resume walkthrough, recent project)."
+    ),
+    "hiring_manager": (
+        "Recruiter type: HIRING_MANAGER (team lead / director who owns the seat).\n"
+        "Likely-questions mix: 70% deep technical + team-fit (architecture choices, "
+        "trade-offs you made, debugging stories, system design), "
+        "20% scope (autonomy, collaboration patterns, code review philosophy), "
+        "10% behavioral. Skip generic 'tell me about yourself' filler."
+    ),
+    "external_agency": (
+        "Recruiter type: EXTERNAL_AGENCY (third-party recruiter, e.g. Robert Half).\n"
+        "Likely-questions mix: 60% personal/soft-skills (communication style, "
+        "career goals, why now, salary expectations), 30% behavioral, "
+        "10% basic resume confirmation. Deep technical questions are rare at "
+        "this stage; technical fit gets re-evaluated by the hiring company."
+    ),
+    "unknown": (
+        "Recruiter type: UNKNOWN. Produce a balanced question mix across "
+        "technical, behavioral, motivation, and logistics."
+    ),
+}
 
 
 # --- LLM call -----------------------------------------------------------------
@@ -103,6 +136,10 @@ async def draft_prep_sections(
     verified_text = verified_path.read_text(encoding="utf-8")
 
     prompt = load_prompt(cfg.paths.kb_dir, "interview-prep")
+    recruiter_type = ctx.recruiter_type or "unknown"
+    recruiter_bias = _RECRUITER_BIAS_BLURB.get(
+        recruiter_type, _RECRUITER_BIAS_BLURB["unknown"]
+    )
     user = prompt.render_user(
         verified_facts=verified_text,
         stage=ctx.stage,
@@ -112,6 +149,8 @@ async def draft_prep_sections(
         audit_summary=ctx.audit_summary or "(no application yet)",
         cover_summary=ctx.cover_summary or "(no cover letter drafted)",
         research_blob=_truncate(ctx.research_blob, _RESEARCH_MAX_CHARS) or "(none)",
+        recruiter_type=recruiter_type,
+        recruiter_bias=recruiter_bias,
         revisions=revisions,
     )
 
@@ -351,6 +390,21 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
         "do not reuse phrasing from the prior attempt that triggered a "
         "violation. Anchors must trace to real items in verified_facts."
     )
+    # Targeted hint when at least one violation is `unverified number:` —
+    # the dominant cause is qwen pulling stats from the research blob
+    # (company pricing, metric strips) and dropping them into beats. Tell
+    # the model explicitly that those numbers don't count as Casey's facts.
+    if any("unverified number" in v.lower() for v in violations):
+        lines.append(
+            "IMPORTANT: numbers appearing in the `research_blob` section are "
+            "the EMPLOYER's stats (pricing, user counts, hero metrics). They "
+            "are NOT yours to cite in anchors, beats, or questions. Only "
+            "numbers that appear inside `verified_facts.work_history` "
+            "bullets (e.g. '14+ page Shopify storefront', '30% page load "
+            "reduction') are quotable. If you need to mention an employer "
+            "stat at all, name it as 'their N customers' or similar — "
+            "never as your own work product."
+        )
     return "\n".join(lines)
 
 

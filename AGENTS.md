@@ -147,8 +147,14 @@ jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor; prints `add` suggestion
 jobhunt add <URL>            # parse URL → write ATS slug to config.toml
-jobhunt answer "<question>"  # draft a tailored response to a form question
+jobhunt answer "<question>" [--recall]
+                             # draft a tailored response to a form question;
+                             # with --recall, treats the argument as a phrase
+                             # and lists past saved answers whose question
+                             # text contains it (case-insensitive).
 jobhunt interview-prep <id> [--stage screen|assessment|hm|onsite] [--research]
+                            [--refresh-research]
+                            [--recruiter-type internal_recruiter|hiring_manager|external_agency|unknown]
                              # hybrid prep doc: deterministic skeleton + LLM middle
 jobhunt list [--week N] [--verdict ship|revise|block] [--no-reply]
              [--older-than 14d|2w]
