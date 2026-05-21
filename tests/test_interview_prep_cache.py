@@ -232,7 +232,7 @@ def test_recruiter_bias_blurbs_are_distinct() -> None:
 def test_prep_context_recruiter_type_default_is_unknown() -> None:
     ctx = PrepContext(
         job_id="j", job_title="T", job_company="C",
-        job_description="", job_url="", stage="screen",
+        job_description="", job_url="", stage="agency",
     )
     assert ctx.recruiter_type == "unknown"
 
