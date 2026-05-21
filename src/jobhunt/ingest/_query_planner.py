@@ -88,6 +88,17 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
 
 _BASELINE_QUERIES = ["full stack developer"]
 
+# Phase 6 (reverted): a " Toronto" suffix was added to every derived query
+# under the theory that Adzuna's `where=Toronto&distance=100&country=ca`
+# location filter was leaking US-mirror postings. Live measurement showed
+# the opposite — the geo filter + downstream `is_gta_eligible` allowlist
+# were already correct, and the suffix forced Adzuna's full-text matcher
+# to AND on "Toronto" which dropped recall ~96% (643 → 25), notably
+# zeroing out "react developer" and "javascript developer" which are real
+# Toronto markets. The geo filter on the Adzuna call + the GTA allowlist
+# downstream is the correct layering; the planner returns un-suffixed
+# queries.
+
 
 def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 10) -> list[str]:
     """Walk verified.json skills + bullets, return up to `cap` Adzuna queries.

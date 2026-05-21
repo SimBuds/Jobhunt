@@ -16,7 +16,7 @@ from jobhunt.ingest.smartrecruiters import (
     _format_location,
     _parse_dt,
 )
-from jobhunt.ingest.workday import _location_text, _parse_tenant
+from jobhunt.ingest.workday import _location_text, _parse_posted_on, _parse_tenant
 from jobhunt.models import Job
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -252,3 +252,52 @@ def test_workday_fixture_filters_to_gta() -> None:
     assert "Senior Software Engineer, Digital Banking" in titles
     assert "Platform Engineer (Remote, Canada)" in titles
     assert "Backend Engineer" not in titles
+
+
+# Phase 5 — postedOn parser
+from datetime import datetime, timezone
+
+
+_NOW = datetime(2026, 5, 20, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def test_workday_parse_posted_today() -> None:
+    out = _parse_posted_on("Posted Today", now=_NOW)
+    assert out == _NOW
+
+
+def test_workday_parse_posted_yesterday() -> None:
+    out = _parse_posted_on("Posted Yesterday", now=_NOW)
+    assert out is not None
+    assert (_NOW - out).days == 1
+
+
+def test_workday_parse_posted_n_days_ago() -> None:
+    out = _parse_posted_on("Posted 3 Days Ago", now=_NOW)
+    assert out is not None
+    assert (_NOW - out).days == 3
+
+
+def test_workday_parse_posted_30_plus_days() -> None:
+    """'30+ Days Ago' parses as exactly 30 — best-effort floor that lets the
+    freshness filter still drop these as stale at max_age_days=14."""
+    out = _parse_posted_on("Posted 30+ Days Ago", now=_NOW)
+    assert out is not None
+    assert (_NOW - out).days == 30
+
+
+def test_workday_parse_posted_unparseable_returns_none() -> None:
+    assert _parse_posted_on(None) is None
+    assert _parse_posted_on("") is None
+    assert _parse_posted_on("Some weird format") is None
+
+
+def test_workday_fixture_populates_posted_at() -> None:
+    """Adapter integration check: walk the fixture's postedOn values, confirm
+    each parseable one yields a non-None timestamp."""
+    data = json.loads((FIXTURES / "workday.json").read_text())
+    parsed = [
+        _parse_posted_on(p.get("postedOn"), now=_NOW) for p in data["jobPostings"]
+    ]
+    # All three fixture entries have parseable postedOn values.
+    assert all(t is not None for t in parsed)

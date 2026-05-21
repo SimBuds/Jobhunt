@@ -14,7 +14,9 @@ Loblaw Digital, Thomson Reuters), most of which run on Workday.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -26,6 +28,12 @@ from jobhunt.models import Job
 
 _PAGE_LIMIT = 20
 
+# Workday's CXS response carries `postedOn` as prose ("Posted Today",
+# "Posted Yesterday", "Posted 3 Days Ago", "Posted 30+ Days Ago").
+# We parse it back to a timestamp so the freshness filter in scan_cmd
+# (`max_age_days`) applies to Workday postings.
+_DAYS_AGO_RE = re.compile(r"(\d+)\+?\s*days?\s*ago", re.IGNORECASE)
+
 
 def _parse_tenant(spec: str) -> tuple[str, str, str]:
     """Parse a 'tenant:host:site' config string. Example: 'rbc:wd3:RBC_Careers'."""
@@ -33,6 +41,27 @@ def _parse_tenant(spec: str) -> tuple[str, str, str]:
     if len(parts) != 3 or not all(parts):
         raise IngestError(f"invalid workday tenant spec {spec!r}; expected 'tenant:host:site'")
     return parts[0], parts[1], parts[2]
+
+
+def _parse_posted_on(value: str | None, *, now: datetime | None = None) -> datetime | None:
+    """Map Workday's prose `postedOn` to an approximate posted-at timestamp.
+
+    Returns None when value is falsy or unparseable — the adapter then leaves
+    `Job.posted_at` as None and the freshness filter will treat the row as
+    fresh (consistent with the pre-Phase-5 behavior for those rows).
+    """
+    if not value:
+        return None
+    now = now or datetime.now(timezone.utc)
+    v = value.strip().lower()
+    if "today" in v or "just posted" in v:
+        return now
+    if "yesterday" in v:
+        return now - timedelta(days=1)
+    m = _DAYS_AGO_RE.search(v)
+    if m:
+        return now - timedelta(days=int(m.group(1)))
+    return None
 
 
 def _location_text(item: dict[str, Any]) -> str | None:
@@ -71,6 +100,7 @@ async def fetch(
             if not ext_id:
                 continue
             posting_url = f"https://{tenant}.{host}.myworkdayjobs.com{ext_path}"
+            posted_at = _parse_posted_on(p.get("postedOn"))
             yield Job(
                 id=f"workday:{tenant}:{ext_id}",
                 source="workday",
@@ -81,6 +111,7 @@ async def fetch(
                 remote_type=classify_remote_type(location=location),
                 description=p.get("shortDescription"),
                 url=posting_url,
+                posted_at=posted_at,
                 raw_json=json.dumps(p),
             )
         if len(postings) < _PAGE_LIMIT:

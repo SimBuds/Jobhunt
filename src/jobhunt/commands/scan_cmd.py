@@ -71,8 +71,8 @@ def run(
         "--max-age-days",
         help=(
             "Drop postings older than N days at ingest. 0 disables. "
-            "Default: cfg.ingest.max_age_days (14). Adapters without "
-            "`posted_at` (Workday) are treated as fresh."
+            "Default: cfg.ingest.max_age_days (14). Adapters that can't "
+            "infer a posted-at timestamp are treated as fresh."
         ),
     ),
 ) -> None:

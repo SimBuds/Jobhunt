@@ -68,6 +68,12 @@ def migrate(conn: sqlite3.Connection, migrations_dir: Path) -> MigrationResult:
             raise MigrationError(f"migration {mig_id} failed: {e}") from e
         applied.append(mig_id)
 
+    # Post-migration backfills. These are idempotent — they only touch rows
+    # where the new column is NULL. Safe to run on every `db migrate`.
+    if "0007_decline_category" in applied:
+        from jobhunt.pipeline._decline_classify import backfill_existing
+        backfill_existing(conn)
+
     return MigrationResult(applied=applied, skipped=skipped)
 
 
@@ -198,7 +204,15 @@ def upsert_application(
 
 
 def set_decline_reason(conn: sqlite3.Connection, job_id: str, reason: str | None) -> None:
-    conn.execute("UPDATE jobs SET decline_reason = ? WHERE id = ?", (reason, job_id))
+    """Set both `decline_reason` (prose) and `decline_category` (enum) in
+    one shot. Classification runs deterministically against the prose; see
+    `pipeline._decline_classify` for the rubric."""
+    from jobhunt.pipeline._decline_classify import classify_decline_reason
+    category = classify_decline_reason(reason)
+    conn.execute(
+        "UPDATE jobs SET decline_reason = ?, decline_category = ? WHERE id = ?",
+        (reason, category, job_id),
+    )
 
 
 _VALID_OUTCOMES = frozenset({"offer", "rejected", "withdrawn", "ghosted"})

@@ -89,3 +89,15 @@ def test_cms_trigger_only_when_skills_cms_present() -> None:
     assert "cms developer" not in qs
     qs = derive_adzuna_queries({"skills_cms": ["Shopify"]})
     assert "cms developer" in qs
+
+
+def test_no_location_suffix_appended() -> None:
+    """Phase 6 reverted: queries must not carry a ' Toronto' suffix. Adzuna's
+    where=Toronto&distance=100&country=ca + downstream is_gta_eligible
+    allowlist handle location; forcing 'Toronto' into the `what` field
+    dropped real Toronto-market queries (react/javascript) to zero recall.
+    """
+    verified = json.loads(VERIFIED_PATH.read_text(encoding="utf-8"))
+    qs = derive_adzuna_queries(verified)
+    for q in qs:
+        assert not q.endswith(" Toronto"), f"unexpected Toronto suffix on {q!r}"
