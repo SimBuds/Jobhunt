@@ -57,15 +57,14 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q5_0"
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_CONTEXT_LENGTH=16384"
 Environment="OLLAMA_KEEP_ALIVE=10m"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ```
 
-Context length is the server's responsibility — the gateway does NOT send `num_ctx`. Pair only with the per-call `keep_alive=-1` the gateway uses.
+Pair only with the per-call `keep_alive=-1` the gateway uses.
 Rationale and tuning notes live in [AGENTS.md](AGENTS.md) §Hardware context.
 
 ## First run
