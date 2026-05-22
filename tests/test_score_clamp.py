@@ -221,6 +221,69 @@ async def test_score_job_still_clamps_when_denominator_sufficient(
     assert result.score == 64
 
 
+# --- Junior-title override on Senior-band declines (2026-05-22) ---
+
+
+@pytest.mark.asyncio
+async def test_score_job_nullifies_senior_band_decline_for_junior_title(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the title explicitly says Junior/Intermediate/Mid/Associate, a
+    Senior-band decline reason emitted by qwen3.5:9b must be nullified —
+    the title is the canonical band signal."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 60,
+            "matched_must_haves": ["React"],
+            "gaps": [".NET"],
+            "decline_reason": "Senior-band title; candidate YoE under typical floor",
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    job = Job(
+        id="test:jr",
+        source="test",
+        external_id="jr",
+        title="Junior Full Stack Developer (.NET / Cloud)",
+        description="React + .NET. Junior role.",
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.decline_reason is None, result.decline_reason
+
+
+@pytest.mark.asyncio
+async def test_score_job_keeps_senior_band_decline_for_senior_title(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The override is title-gated: a Senior-titled posting with a Senior-
+    band decline reason must keep the decline."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 0,
+            "matched_must_haves": [],
+            "gaps": [],
+            "decline_reason": "Senior-band title; candidate YoE under typical floor",
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    job = Job(
+        id="test:sr",
+        source="test",
+        external_id="sr",
+        title="Senior Software Engineer",
+        description="React + Node.",
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.decline_reason is not None
+    assert "senior-band" in result.decline_reason.lower()
+
+
 # --- Familiar-only-fit cap (May 2026, Phase 10.2) ---
 
 

@@ -53,11 +53,18 @@ _SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
 # Supports two formats:
 #   "Title | Employer\tDates"  (tab-separated — original)
 #   "Title | Employer  Dates"  (trailing date after employer, space-separated)
-# Dates anchored to a 4-digit year so the employer name is captured greedily first.
+# Dates anchored to a 4-digit year. The optional month-name prefix is gated to
+# real month abbreviations so the employer/dates split doesn't get fooled by
+# a city name preceding the year (e.g. "Multiple Venues, Toronto 2015 – 2024"
+# must split before "2015", not before "Toronto").
+_MONTH_RE = (
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec|"
+    r"January|February|March|April|June|July|August|September|October|November|December)"
+)
 _ROLE_LINE_RE = re.compile(
     r"^(?P<title>.+?)\s*\|\s*(?P<employer>.+?)\s*"
-    r"(?:\t\s*|\s{2,}|\s+(?=(?:[A-Z][a-z]+\s+)?\d{4}))"
-    r"(?P<dates>(?:[A-Z][a-z]+\s+)?\d{4}.*)$"
+    rf"(?:\t\s*|\s{{2,}}|\s+(?={_MONTH_RE}\s+\d{{4}})|\s+(?=\d{{4}}))"
+    rf"(?P<dates>(?:{_MONTH_RE}\s+)?\d{{4}}.*)$"
 )
 
 
