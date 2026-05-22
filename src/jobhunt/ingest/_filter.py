@@ -88,11 +88,8 @@ def is_gta_eligible(location: str | None) -> bool:
 # "managerial" within a longer non-management word.
 #
 # DOES NOT match Senior / Lead / Staff / Principal / Architect — those are
-# legitimate IC titles per `kb/prompts/score.md`. The recent ship/100%
-# Search Atlas conversion came from a Senior-band role.
-#
-# Keep in sync with `pipeline.score._is_bogus_senior_decline`'s
-# `hard_title_triggers` tuple — if you edit one, edit the other.
+# handled separately by `is_senior_title`, which is YoE-gated at ingest in
+# scan_cmd (drops them when `applicant.years_experience < 4`).
 _MANAGEMENT_TITLE_RE = re.compile(
     r"\b(?:manager|director|head\s+of|vp|vice\s+president|"
     r"engineering\s+manager|people\s+manager|chief\s+\w+\s+officer)\b",
@@ -105,6 +102,58 @@ def is_management_title(title: str | None) -> bool:
     if not title:
         return False
     return bool(_MANAGEMENT_TITLE_RE.search(title))
+
+
+# Research / ML-science / data-platform title regex. Opt-in via
+# `[ingest] drop_research_titles = true` for profiles where these roles are
+# never a fit (frontend / CMS / full-stack devs). Drops at ingest so the
+# scorer doesn't burn budget on roles it will deterministically decline.
+#
+# Matches: Applied Scientist, ML/AI Scientist, Machine Learning Engineer,
+# Research Engineer/Scientist, Data Scientist, Data Engineer, Data Platform,
+# Quant / Quantitative Researcher.
+#
+# DOES NOT match plain "Engineer" or "Software Engineer" — only when paired
+# with a research/ML/data-platform qualifier.
+_RESEARCH_TITLE_RE = re.compile(
+    r"\b(?:"
+    r"applied\s+(?:ai/?ml\s+)?scientist"
+    r"|(?:ml|ai|machine\s+learning)\s+(?:scientist|engineer|researcher)"
+    r"|research\s+(?:scientist|engineer)"
+    r"|data\s+(?:scientist|engineer)"
+    r"|data\s+platform"
+    r"|quant(?:itative)?\s+(?:researcher|analyst|developer|engineer)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_research_title(title: str | None) -> bool:
+    """True when the title is an ML/research/data-platform role.
+
+    Opt-in filter — only enable for profiles where these roles are never a
+    fit. See `[ingest] drop_research_titles` in `config.toml`.
+    """
+    if not title:
+        return False
+    return bool(_RESEARCH_TITLE_RE.search(title))
+
+
+# Senior-band title regex. Drives an opt-in ingest drop in
+# `scan_cmd._ingest_all`: when `applicant.include_senior_roles` is False,
+# these titles are filtered out before scoring. The user opts in/out via
+# the setup wizard — no YoE inference is applied.
+_SENIOR_TITLE_RE = re.compile(
+    r"\b(?:senior|sr\.?|lead|staff|principal|architect)\b",
+    re.IGNORECASE,
+)
+
+
+def is_senior_title(title: str | None) -> bool:
+    """True when the title sits in the Senior+ band."""
+    if not title:
+        return False
+    return bool(_SENIOR_TITLE_RE.search(title))
 
 
 def is_within_age_window(

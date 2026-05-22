@@ -11,15 +11,14 @@
 # Workday is intentionally absent: tenant:host:site triples are easier to
 # acquire by pasting the URL into `jobhunt add` than by curating here.
 
-greenhouse = ["konradgroup", "faire", "hootsuite", "ritual", "shakepay", "thinkific", "tenstorrent", "coconutsoftware"]
+# 2026-05-22: aggressive prune. Casey has <3 YoE — most GTA Greenhouse
+# universe (Staff IC / ML / data platform at well-funded US tech) won't
+# pass YoE screens. Kept only agencies / SaaS shops with historical
+# frontend/CMS fit. AI-startup Ashby batch dropped — those shops post
+# Senior+/Staff overwhelmingly. Re-add selectively (run through
+# scripts/verify_seeds.py first) as Casey identifies live targets.
+greenhouse = ["konradgroup", "appnovation"]
 lever = ["benchsci"]
-ashby = [
-    # 2026-05-20: MaRS / AI-startup batch via scripts/seed_mars.py.
-    # Sort: existing entries first, then new (descending by job count at probe time).
-    "harvey", "cohere", "mercor", "sentry", "klue",
-    "openai", "elevenlabs", "decagon", "cursor", "lovable",
-    "perplexity", "writer", "exa", "modal", "vapi",
-    "langfuse", "browserbase", "lindy", "rerun",
-]
+ashby = []
 smartrecruiters = []
 workday = []

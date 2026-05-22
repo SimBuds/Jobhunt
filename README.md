@@ -69,10 +69,32 @@ Rationale and tuning notes live in [AGENTS.md](AGENTS.md) §Hardware context.
 
 ## First run
 
+Drop your baseline resume at `./Resume.docx`, then:
+
+```bash
+jobhunt setup
+```
+
+The wizard walks you through every first-run step in order:
+
+1. Initialize the SQLite DB and run migrations.
+2. Confirm `Resume.docx` is in place.
+3. Parse it into `kb/profile/verified.json` + the markdown sidecars.
+4. Prompt for applicant defaults — `years_experience`,
+   `include_senior_roles`, salary, work arrangements, employment types.
+5. Print the resolved config via `config show`.
+6. Preview the curated GTA-employer seed list and offer to apply it.
+
+Re-run `jobhunt setup` any time to update applicant defaults — each step
+detects existing state and offers keep/redo. No destructive defaults.
+
+If you'd rather do it by hand, the equivalent manual sequence is:
+
 ```bash
 jobhunt config show            # writes a default config and prints it
 jobhunt db init                # creates SQLite schema at data/jobhunt.db
 jobhunt convert-resume         # generates kb/profile/* from Resume.docx
+# hand-edit ~/.config/jobhunt/config.toml to fill [applicant] fields
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
 
@@ -87,7 +109,7 @@ parsed resume):
 
 ```bash
 jobhunt db reset               # prompts for 'yes', then re-inits schema
-jobhunt convert-resume
+jobhunt setup
 ```
 
 ## Daily flow
@@ -119,10 +141,11 @@ warning categories seen across the batch.
 
 ## Commands
 
-Nine user-facing commands. Run `<command> --help` for full flags.
+Ten user-facing commands. Run `<command> --help` for full flags.
 
 | Command | Purpose |
 |---|---|
+| `setup` | Guided first-run wizard (DB init, resume parse, applicant defaults, seed import) |
 | `convert-resume` | Parse `Resume.docx` → `kb/profile/` |
 | `scan` | Ingest GTA jobs + score against profile |
 | `apply` | Tailor resume + cover letter; autofill the form |
@@ -348,35 +371,93 @@ catches by hand.
 
 ## Configuration
 
-`~/.config/jobhunt/config.toml`:
+`~/.config/jobhunt/config.toml` (abridged — full schema in
+[src/jobhunt/config.py](src/jobhunt/config.py); run `jobhunt config show`
+for your live values):
 
 ```toml
+[paths]
+data_dir       = "/home/you/Apps/jobhunt/data"
+db_path        = "/home/you/Apps/jobhunt/data/jobhunt.db"
+migrations_dir = "/home/you/Apps/jobhunt/migrations"
+kb_dir         = "/home/you/Apps/jobhunt/kb"
+
 [ingest]
-greenhouse      = []   # board slugs, e.g. "faire"
-lever           = []   # board slugs, e.g. "benchsci"
-ashby           = []   # board slugs, e.g. "cohere"
-smartrecruiters = []   # company slugs, case-sensitive (e.g. "Bosch", "Visa")
-workday         = []   # "tenant:host:site" triples (see ingest/workday.py)
-workable        = []   # board slugs, e.g. "deliveroo"
-recruitee       = []   # board slugs (the `<slug>` in <slug>.recruitee.com)
-job_bank_ca     = []   # full RSS URLs from jobbank.gc.ca search results
-rss             = []   # generic employer career-page RSS/Atom URLs
-# auto_discover = true # default. After ingest, probe public ATS APIs for
-                       # slugs of new aggregator-only companies and append
-                       # hits to this file. --no-discover skips per-run.
+user_agent           = "jobhunt/0.1 (+personal-use; you@example.com)"
+rate_limit_per_sec   = 1.0
+cache_ttl_hours      = 6
+max_age_days         = 7      # drop postings older than N days; 0 disables
+greenhouse           = []     # board slugs, e.g. "faire"
+lever                = []     # board slugs, e.g. "benchsci"
+ashby                = []     # board slugs, e.g. "cohere"
+smartrecruiters      = []     # case-sensitive company slugs (e.g. "Bosch")
+workday              = []     # "tenant:host:site" triples (ingest/workday.py)
+workable             = []     # board slugs, e.g. "deliveroo"
+recruitee            = []     # board slugs (the `<slug>` in <slug>.recruitee.com)
+job_bank_ca          = []     # full RSS URLs from jobbank.gc.ca search results
+rss                  = []     # generic employer career-page RSS/Atom URLs
+auto_discover        = true   # post-ingest probe new companies + append hits.
+                              # Disable for narrow profiles where the GTA
+                              # Greenhouse universe (Staff IC / ML / data
+                              # platform at well-funded US tech) is mostly
+                              # off-target — Adzuna's verified-skill-derived
+                              # queries already cover the productive surface.
+                              # `--no-discover` skips per-run.
+drop_research_titles = false  # opt-in: drop ML scientist / research
+                              # engineer / data platform / quant titles at
+                              # ingest. Enable for frontend / CMS /
+                              # full-stack profiles where these roles never
+                              # fit. See `ingest._filter.is_research_title`.
 
 [ingest.adzuna]
 # Empty list = auto-derive from kb/profile/verified.json (skills + bullets).
 # Populate to override with a verbatim list.
-queries = []
+queries          = []
+pages            = 3
+results_per_page = 50
 
-[applicant]
-phone = "(416) 555-0123"
-salary_expectation_cad = "50k–90k"
+[gateway]
+base_url = "http://localhost:11434/v1"
+api_key  = "ollama"
+
+[gateway.tasks]
+score  = "qwen-custom:latest"
+tailor = "qwen-custom:latest"
+cover  = "qwen-custom:latest"
+embed  = "nomic-embed-text"
 
 [pipeline]
-min_score = 55              # apply / list default floor
-answer_max_words = 200      # `answer` default word cap
+score_concurrency     = 2
+tailor_max_words      = 700
+cover_max_words       = 280
+cover_retry_attempts  = 3
+tailor_retry_attempts = 3
+answer_max_words      = 200  # `answer` default word cap
+min_score             = 55   # apply / list default floor
+
+[browser]
+headed        = true
+user_data_dir = "/home/you/Apps/jobhunt/data/browser-profile"
+
+[applicant]
+full_name              = "Your Name"
+email                  = "you@example.com"
+phone                  = ""
+linkedin_url           = "https://www.linkedin.com/in/you"
+github_url             = "https://github.com/you"
+portfolio_url          = "https://you.com"
+city                   = "Toronto"
+region                 = "Ontario"
+country                = "Canada"
+work_auth_canada       = true
+requires_visa_sponsorship = false
+salary_expectation_cad = "50,000 - 90,000 CAD"
+years_experience       = 3       # YoE; drives score prompt auto-decline rules
+include_senior_roles   = true    # set false to drop Senior/Sr/Lead/Staff/
+                                 # Principal/Architect titles at ingest
+pronouns               = "he"
+work_arrangements      = ["onsite", "hybrid", "remote"]
+employment_types       = ["full_time", "contract"]
 ```
 
 See [Slug acquisition](#slug-acquisition--add-config-seed-discover-slugs)
