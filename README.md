@@ -34,8 +34,9 @@ cloud LLM calls in the runtime path.
 ## Install
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/SimBuds/Jobhunt
 cd jobhunt
+
 uv sync
 source .venv/bin/activate        # puts `jobhunt` on PATH; or prefix commands with `uv run`
 playwright install chromium
@@ -47,7 +48,7 @@ ollama pull nomic-embed-text     # embeddings (reserved for future use)
 Default model in config is `qwen-custom:latest` — a Modelfile-derived
 `qwen3.5:9b` baking in personal prompt context. If you haven't built the
 custom variant, set all `[gateway.tasks]` slots to `qwen3.5:9b` in
-`~/.config/jobhunt/config.toml`. See [AGENTS.md](AGENTS.md) §Hardware
+`~/.config/jobhunt/config.toml`. See [AGENTS.md](AGENTS.md) Hardware
 context for the full rationale.
 
 ### Ollama systemd settings
@@ -65,7 +66,7 @@ Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ```
 
 Pair only with the per-call `keep_alive=-1` the gateway uses.
-Rationale and tuning notes live in [AGENTS.md](AGENTS.md) §Hardware context.
+Rationale and tuning notes live in [AGENTS.md](AGENTS.md) Hardware context.
 
 ## First run
 
@@ -509,7 +510,7 @@ cite each other and stay in sync via the cross-tool `AGENTS.md` convention.
 Honesty enforcement is structural (verified-snapshot constraint,
 schema-bounded output, post-decode invariants, score clamp, cover and
 tailor validators + retry, resume↔cover alignment check). See
-[AGENTS.md](AGENTS.md) §LLM call rules and §Post-generation audit rules
+[AGENTS.md](AGENTS.md) LLM call rules and Post-generation audit rules
 for the full mechanism.
 
 ## License

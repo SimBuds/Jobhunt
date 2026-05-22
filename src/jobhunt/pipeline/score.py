@@ -8,6 +8,7 @@ from pathlib import Path
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
+from jobhunt.ingest._filter import is_explicit_junior_title
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
 
@@ -86,6 +87,18 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         score = _clamp_by_coverage(raw_score, coverage_pct)
 
     decline_reason = result.get("decline_reason")
+
+    # Junior-title override (2026-05-22): qwen3.5:9b sometimes emits the
+    # YoE-aware "Senior-band title" decline when the JD body uses senior-
+    # coded language, even though the posting's title literally says Junior
+    # / Intermediate / Mid / Associate / Developer I. Title is the canonical
+    # band signal — nullify the decline so these roles stay scoreable.
+    if (
+        decline_reason
+        and "senior-band" in decline_reason.lower()
+        and is_explicit_junior_title(job.title)
+    ):
+        decline_reason = None
 
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
     # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...

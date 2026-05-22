@@ -156,6 +156,27 @@ def is_senior_title(title: str | None) -> bool:
     return bool(_SENIOR_TITLE_RE.search(title))
 
 
+# Explicit junior / mid-band markers. Used by the score pipeline to override
+# a "Senior-band" decline reason when the title literally says Junior, since
+# qwen3.5:9b has been observed reading senior-coded JD body language and
+# declining a Junior-titled posting on that basis (e.g. "Junior Full Stack
+# Developer (.NET / Cloud)" got the Senior-band decline reason). Title is
+# the canonical band signal; body inference loses.
+_JUNIOR_TITLE_RE = re.compile(
+    r"\b(?:junior|jr\.?|intermediate|mid(?:-?level)?|associate|"
+    r"developer\s+i{1,2}\b|engineer\s+i{1,2}\b|"
+    r"entry[-\s]?level|new\s+grad|graduate)\b",
+    re.IGNORECASE,
+)
+
+
+def is_explicit_junior_title(title: str | None) -> bool:
+    """True when the title carries an explicit Junior/Intermediate/Mid marker."""
+    if not title:
+        return False
+    return bool(_JUNIOR_TITLE_RE.search(title))
+
+
 def is_within_age_window(
     posted_at: datetime | None,
     max_age_days: int,
