@@ -30,7 +30,7 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 - Default model: `qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` that bakes in the user's personal prompt stack (persona, formatting, knowledge). The gateway always sends a system message, which overrides the Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into scoring/tailoring/cover outputs. Bare `qwen3.5:9b` is the documented fallback if the custom variant isn't built — same base weights, same VRAM footprint, same quirks. All three task slots (score, tailor, cover) run the same hot model under whatever context length the Ollama server is configured for (`OLLAMA_CONTEXT_LENGTH`, currently 16384 — the gateway does not override per-call) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default
+  Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default; preferred over q8_0 to leave headroom alongside Q4_K_M weights on a 10 GB card
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
   Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context — sole source of truth; gateway does not pass num_ctx
@@ -367,7 +367,7 @@ top-level commands that touch scoring/listing/applying must call it too.
    per-call value is what Ollama uses while a request is in flight, so the
    model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
    before the scoring loop so the first real call doesn't pay cold-load on
-   top of the 180 s gateway timeout.
+   top of the 240 s gateway timeout.
 4. **Truncate inputs** to fit the Ollama server's context length
    (`OLLAMA_CONTEXT_LENGTH`, currently 16384). The gateway does NOT send
    `num_ctx` — the server env is the sole source of truth. The score/tailor

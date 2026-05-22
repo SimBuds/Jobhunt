@@ -55,7 +55,9 @@ _SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
 #   "Title | Employer  Dates"  (trailing date after employer, space-separated)
 # Dates anchored to a 4-digit year so the employer name is captured greedily first.
 _ROLE_LINE_RE = re.compile(
-    r"^(?P<title>.+?)\s*\|\s*(?P<employer>.+?)\s*(?:\t\s*|\s{2,}|\s+(?=\d{4}))(?P<dates>\d{4}.*)$"
+    r"^(?P<title>.+?)\s*\|\s*(?P<employer>.+?)\s*"
+    r"(?:\t\s*|\s{2,}|\s+(?=(?:[A-Z][a-z]+\s+)?\d{4}))"
+    r"(?P<dates>(?:[A-Z][a-z]+\s+)?\d{4}.*)$"
 )
 
 
@@ -153,12 +155,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         label, items = m.group(1).strip(), m.group(2).strip()
         for bucket in skill_buckets:
             if label.lower() == bucket.lower():
-                # AI line uses prose with semicolons + commas; keep it intact rather
-                # than splitting on commas. All other categories are clean comma lists.
-                if bucket == "AI & Tooling":
-                    skill_buckets[bucket].append(items)
-                else:
-                    skill_buckets[bucket].extend(_split_skills(items))
+                skill_buckets[bucket].extend(_split_skills(items))
                 break
 
     work_history: list[Role] = []

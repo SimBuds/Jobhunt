@@ -18,7 +18,7 @@ async def complete_json(
     user: str,
     schema: dict[str, Any],
     temperature: float = 0.0,
-    timeout_s: float = 180.0,
+    timeout_s: float = 240.0,
     keep_alive: str | int = -1,
 ) -> dict[str, Any]:
     """Send a chat completion to Ollama and return the parsed JSON object.
