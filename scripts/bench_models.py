@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Model benchmark script. Manual use only — not in CI.
 
-Runs the score and tailor prompts over a fixed JD against each candidate model
-and reports: latency, schema-validity rate, and whether the tailored output
-passes _enforce_no_fabrication.
+Compares candidate models head-to-head across the three task slots that
+matter (score / tailor / cover) plus a deterministic audit pass on the
+tailored output. Reports per-model latency, schema validity, fabrication
+clean-rate, cover-validator clean-rate, and final audit verdict
+distribution.
 
 Usage (from repo root):
     uv run python scripts/bench_models.py
 
 Ensure all candidate models are already pulled with `ollama pull <model>`.
-The script is read-only with respect to the database — it writes no rows.
+Read-only with respect to the database — writes no rows. With
+`OLLAMA_MAX_LOADED_MODELS=1` (the project default), each model swap incurs
+a cold load; the script runs all tasks for one model before moving on so
+the load cost amortizes across score+tailor+cover.
 """
 
 from __future__ import annotations
@@ -18,35 +23,31 @@ import asyncio
 import json
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
-# Ensure src/ is on the path when run directly.
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from jobhunt.config import Config, GatewayConfig, PathsConfig
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
+from jobhunt.pipeline.audit import audit
+from jobhunt.pipeline.cover import CoverLetter, write_cover
+from jobhunt.pipeline.cover_validate import validate_cover
 from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
 from jobhunt.pipeline.tailor import _enforce_no_fabrication, _parse
 
 REPO_ROOT = Path(__file__).parent.parent
 
 # --- candidate models ---------------------------------------------------------
-# Tuples of (label, task, model_id). Default is qwen3.5:9b (see PLAN.md).
-# Uncomment alternatives to A/B before committing a default change.
-SCORE_MODELS: list[tuple[str, str]] = [
-    ("qwen3.5:9b (default)", "qwen3.5:9b"),
-    # ("gemma4:e4b", "gemma4:e4b"),
-    # ("granite4.1:8b", "granite4.1:8b"),
-    # ("nemotron-3-nano:4b", "nemotron-3-nano:4b"),
+# All three run all three task slots. The label is what gets printed; the
+# model_id is what Ollama sees.
+CANDIDATES: list[tuple[str, str]] = [
+    ("qwen-custom", "qwen-custom:latest"),
+    ("granite-seo", "granite-seo:latest"),
+    ("llama-seo", "llama-seo:latest"),
 ]
-TAILOR_MODELS: list[tuple[str, str]] = [
-    ("qwen3.5:9b (default)", "qwen3.5:9b"),
-    # ("gemma4:e4b", "gemma4:e4b"),
-    # ("granite4.1:8b", "granite4.1:8b"),
-    # ("nemotron-3-nano:4b", "nemotron-3-nano:4b"),
-]
-RUNS_PER_MODEL = 3
+RUNS_PER_MODEL = 2  # score+tailor+cover × N × 3 models — 2 keeps wall time sane
 
 # --- fixture JD ---------------------------------------------------------------
 FIXTURE_JD = """
@@ -79,68 +80,49 @@ FIXTURE_JOB = Job(
 )
 
 
-def _make_cfg(model: str, task: str) -> tuple[Config, str]:
+@dataclass
+class ModelMetrics:
+    label: str
+    score_latencies: list[float] = field(default_factory=list)
+    score_schema_ok: int = 0
+    tailor_latencies: list[float] = field(default_factory=list)
+    tailor_fab_clean: int = 0
+    cover_latencies: list[float] = field(default_factory=list)
+    cover_validator_clean: int = 0
+    cover_violation_counts: list[int] = field(default_factory=list)
+    audit_verdicts: list[str] = field(default_factory=list)
+    audit_coverage_pcts: list[float] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+
+def _make_cfg(model: str) -> Config:
+    """Build a Config that routes ALL task slots to `model`."""
     tasks = {
-        "score": model if task == "score" else "qwen3.5:9b",
-        "tailor": model if task == "tailor" else "qwen3.5:9b",
-        "cover": "qwen3.5:9b",
-        "qa": "qwen3.5:9b",
+        "score": model,
+        "tailor": model,
+        "cover": model,
+        "qa": model,
         "embed": "nomic-embed-text",
     }
-    cfg = Config(
+    return Config(
         paths=PathsConfig(kb_dir=REPO_ROOT / "kb"),
         gateway=GatewayConfig(tasks=tasks),
     )
-    return cfg, model
 
 
-async def bench_score(model: str, base_url: str) -> dict[str, object]:
-    kb_dir = REPO_ROOT / "kb"
-    verified = (kb_dir / "profile" / "verified.json").read_text(encoding="utf-8")
-    policy_path = kb_dir / "policies" / "tailoring-rules.md"
-    policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
-    prompt = load_prompt(kb_dir, "score")
-    user = prompt.render_user(
-        verified_facts=verified,
-        policy=truncate(policy, MAX_POLICY_CHARS),
-        title=FIXTURE_JOB.title or "",
-        company=FIXTURE_JOB.company or "",
-        location=FIXTURE_JOB.location or "",
-        description=truncate(FIXTURE_JOB.description or "", MAX_DESC_CHARS),
-    )
-    latencies: list[float] = []
-    schema_valid = 0
-    for _ in range(RUNS_PER_MODEL):
-        t0 = time.monotonic()
-        try:
-            raw = await complete_json(
-                base_url=base_url,
-                model=model,
-                system=prompt.system,
-                user=user,
-                schema=prompt.schema,
-                temperature=0.0,
-            )
-            latencies.append(time.monotonic() - t0)
-            if isinstance(raw.get("score"), int):
-                schema_valid += 1
-        except Exception as e:
-            print(f"    error: {e}")
-            latencies.append(time.monotonic() - t0)
-    return {
-        "avg_latency_s": round(sum(latencies) / len(latencies), 1),
-        "schema_valid_pct": round(100 * schema_valid / RUNS_PER_MODEL),
-    }
-
-
-async def bench_tailor(model: str, base_url: str) -> dict[str, object]:
-    kb_dir = REPO_ROOT / "kb"
+async def _bench_one_run(
+    model: str, cfg: Config, m: ModelMetrics, kb_dir: Path
+) -> None:
+    """Run score → tailor → cover → audit once. Mutates `m`."""
     verified_text = (kb_dir / "profile" / "verified.json").read_text(encoding="utf-8")
     verified = json.loads(verified_text)
     policy_path = kb_dir / "policies" / "tailoring-rules.md"
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
-    prompt = load_prompt(kb_dir, "tailor")
-    user = prompt.render_user(
+    base_url = cfg.gateway.base_url
+
+    # --- SCORE
+    sp = load_prompt(kb_dir, "score")
+    score_user = sp.render_user(
         verified_facts=verified_text,
         policy=truncate(policy, MAX_POLICY_CHARS),
         title=FIXTURE_JOB.title or "",
@@ -148,59 +130,155 @@ async def bench_tailor(model: str, base_url: str) -> dict[str, object]:
         location=FIXTURE_JOB.location or "",
         description=truncate(FIXTURE_JOB.description or "", MAX_DESC_CHARS),
     )
-    latencies: list[float] = []
-    fabrication_clean = 0
-    for _ in range(RUNS_PER_MODEL):
-        t0 = time.monotonic()
+    t0 = time.monotonic()
+    score_raw: dict | None = None
+    try:
+        score_raw = await complete_json(
+            base_url=base_url, model=model, system=sp.system, user=score_user,
+            schema=sp.schema, temperature=0.0,
+        )
+        m.score_latencies.append(time.monotonic() - t0)
+        if isinstance(score_raw.get("score"), int):
+            m.score_schema_ok += 1
+    except Exception as e:
+        m.score_latencies.append(time.monotonic() - t0)
+        m.errors.append(f"score: {type(e).__name__}: {e}")
+
+    # --- TAILOR
+    tp = load_prompt(kb_dir, "tailor")
+    tailor_user = tp.render_user(
+        verified_facts=verified_text,
+        policy=truncate(policy, MAX_POLICY_CHARS),
+        title=FIXTURE_JOB.title or "",
+        company=FIXTURE_JOB.company or "",
+        location=FIXTURE_JOB.location or "",
+        description=truncate(FIXTURE_JOB.description or "", MAX_DESC_CHARS),
+    )
+    t0 = time.monotonic()
+    tailored = None
+    try:
+        traw = await complete_json(
+            base_url=base_url, model=model, system=tp.system, user=tailor_user,
+            schema=tp.schema, temperature=0.3,
+        )
+        m.tailor_latencies.append(time.monotonic() - t0)
+        tailored = _parse(traw, model)
+        _enforce_no_fabrication(tailored, verified)
+        m.tailor_fab_clean += 1
+    except Exception as e:
+        if not m.tailor_latencies or m.tailor_latencies[-1] != (time.monotonic() - t0):
+            m.tailor_latencies.append(time.monotonic() - t0)
+        m.errors.append(f"tailor: {type(e).__name__}: {str(e)[:120]}")
+
+    # --- COVER
+    t0 = time.monotonic()
+    cover: CoverLetter | None = None
+    try:
+        cover = await write_cover(cfg, FIXTURE_JOB)
+        m.cover_latencies.append(time.monotonic() - t0)
+        violations = validate_cover(
+            cover, verified=verified, company=FIXTURE_JOB.company,
+            max_words=cfg.pipeline.cover_max_words,
+        )
+        m.cover_violation_counts.append(len(violations))
+        if not violations:
+            m.cover_validator_clean += 1
+    except Exception as e:
+        m.cover_latencies.append(time.monotonic() - t0)
+        m.errors.append(f"cover: {type(e).__name__}: {str(e)[:120]}")
+
+    # --- AUDIT (only if both tailor and cover succeeded)
+    if tailored is not None and cover is not None:
         try:
-            raw = await complete_json(
-                base_url=base_url,
-                model=model,
-                system=prompt.system,
-                user=user,
-                schema=prompt.schema,
-                temperature=0.3,
+            result = audit(
+                tailored=tailored, cover=cover, score=None, verified=verified,
+                company=FIXTURE_JOB.company,
+                cover_max_words=cfg.pipeline.cover_max_words,
+                job_description=FIXTURE_JOB.description,
+                job_title=FIXTURE_JOB.title,
             )
-            latencies.append(time.monotonic() - t0)
-            tailored = _parse(raw, model)
-            _enforce_no_fabrication(tailored, verified)
-            fabrication_clean += 1
+            m.audit_verdicts.append(result.verdict)
+            if result.keyword_coverage_pct is not None:
+                m.audit_coverage_pcts.append(result.keyword_coverage_pct)
         except Exception as e:
-            latencies.append(time.monotonic() - t0)
-            print(f"    fabrication/schema error: {e}")
-    return {
-        "avg_latency_s": round(sum(latencies) / len(latencies), 1),
-        "fabrication_clean_pct": round(100 * fabrication_clean / RUNS_PER_MODEL),
-    }
+            m.errors.append(f"audit: {type(e).__name__}: {e}")
+
+
+def _avg(xs: list[float]) -> float:
+    return round(sum(xs) / len(xs), 1) if xs else 0.0
+
+
+def _pct(num: int, denom: int) -> str:
+    return f"{round(100 * num / denom)}%" if denom else "n/a"
+
+
+def _verdict_summary(verdicts: list[str]) -> str:
+    if not verdicts:
+        return "n/a"
+    from collections import Counter
+    c = Counter(verdicts)
+    return f"ship={c.get('ship', 0)} rev={c.get('revise', 0)} blk={c.get('block', 0)}"
+
+
+def _print_table(metrics: list[ModelMetrics]) -> None:
+    print(f"\n{'=' * 92}")
+    print(f"HEAD-TO-HEAD  ({RUNS_PER_MODEL} runs/model on fixed fixture JD)")
+    print(f"{'=' * 92}\n")
+
+    rows = [
+        ("Model",        [m.label for m in metrics]),
+        ("Score lat",    [f"{_avg(m.score_latencies)}s" for m in metrics]),
+        ("Score JSON",   [_pct(m.score_schema_ok, RUNS_PER_MODEL) for m in metrics]),
+        ("Tailor lat",   [f"{_avg(m.tailor_latencies)}s" for m in metrics]),
+        ("Tailor clean", [_pct(m.tailor_fab_clean, RUNS_PER_MODEL) for m in metrics]),
+        ("Cover lat",    [f"{_avg(m.cover_latencies)}s" for m in metrics]),
+        ("Cover clean",  [_pct(m.cover_validator_clean, RUNS_PER_MODEL) for m in metrics]),
+        ("Cover violations (avg)",
+            [f"{round(sum(m.cover_violation_counts) / len(m.cover_violation_counts), 1)}"
+             if m.cover_violation_counts else "n/a" for m in metrics]),
+        ("Audit verdicts", [_verdict_summary(m.audit_verdicts) for m in metrics]),
+        ("Keyword cov (avg)",
+            [f"{_avg(m.audit_coverage_pcts)}%" if m.audit_coverage_pcts else "n/a"
+             for m in metrics]),
+        ("Errors",       [str(len(m.errors)) for m in metrics]),
+    ]
+    label_w = max(len(r[0]) for r in rows)
+    col_w = 22
+    for label, vals in rows:
+        print(f"{label:<{label_w}}  " + "".join(f"{v:<{col_w}}" for v in vals))
+
+    print()
+    for m in metrics:
+        if m.errors:
+            print(f"\n--- {m.label} errors ---")
+            for e in m.errors:
+                print(f"  {e}")
 
 
 async def main() -> None:
-    base_url = "http://localhost:11434/v1"
+    kb_dir = REPO_ROOT / "kb"
+    if not (kb_dir / "profile" / "verified.json").is_file():
+        print("error: kb/profile/verified.json missing — run `jobhunt convert-resume` first.")
+        return
 
-    print(f"\n{'=' * 60}")
-    print(f"SCORING MODELS  ({RUNS_PER_MODEL} runs each)")
-    print(f"{'=' * 60}")
-    print(f"{'Model':<35} {'Avg latency':>12} {'Schema valid':>13}")
-    print("-" * 62)
-    for label, model in SCORE_MODELS:
-        r = await bench_score(model, base_url)
-        print(f"{label:<35} {str(r['avg_latency_s']) + 's':>12} {str(r['schema_valid_pct']) + '%':>13}")
+    metrics: list[ModelMetrics] = []
+    for label, model in CANDIDATES:
+        print(f"\n>>> {label} ({model})")
+        cfg = _make_cfg(model)
+        m = ModelMetrics(label=label)
+        for i in range(RUNS_PER_MODEL):
+            print(f"    run {i + 1}/{RUNS_PER_MODEL}…", flush=True)
+            await _bench_one_run(model, cfg, m, kb_dir)
+        metrics.append(m)
 
-    print(f"\n{'=' * 60}")
-    print(f"TAILOR MODELS  ({RUNS_PER_MODEL} runs each)")
-    print(f"{'=' * 60}")
-    print(f"{'Model':<35} {'Avg latency':>12} {'No fabrication':>15}")
-    print("-" * 64)
-    for label, model in TAILOR_MODELS:
-        r = await bench_tailor(model, base_url)
-        print(
-            f"{label:<35} {str(r['avg_latency_s']) + 's':>12} "
-            f"{str(r['fabrication_clean_pct']) + '%':>15}"
-        )
-
+    _print_table(metrics)
     print(
-        "\nTo A/B new models, uncomment entries in SCORE_MODELS / TAILOR_MODELS "
-        "and run again after `ollama pull <model>`."
+        "\nNotes:\n"
+        "  - All three task slots routed to the candidate model.\n"
+        "  - 'clean' = passed validator on the first try (no retries here — the\n"
+        "    bench measures raw model behavior, not the retry loop's recovery).\n"
+        "  - With OLLAMA_MAX_LOADED_MODELS=1, each candidate pays one cold load;\n"
+        "    score+tailor+cover for that model then run hot.\n"
     )
 
 
