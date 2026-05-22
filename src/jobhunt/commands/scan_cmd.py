@@ -174,10 +174,6 @@ async def _run(
                 description=row["description"],
                 url=row["url"],
             )
-            # Pre-print so the user sees activity during the LLM call.
-            # Without this, a slow Ollama response (KV realloc, etc.) looks
-            # like the loop has frozen.
-            typer.echo(f"  [{i}/{total}] scoring {job.id}…")
             try:
                 result = await score_job(cfg, job)
             except JobHuntError as e:
@@ -201,7 +197,7 @@ async def _run(
                 if result.decline_reason
                 else f"score={result.score}"
             )
-            typer.echo(f"  + {job.id} [{tag}] {job.title or ''}")
+            typer.echo(f"  [{i}/{total}] {job.id} [{tag}] {job.title or ''}")
         typer.echo(f"score: {ok}/{len(rows)} scored")
     finally:
         conn.close()

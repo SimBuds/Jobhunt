@@ -1,7 +1,7 @@
 """Pre-warm an Ollama-resident model.
 
 Shared by `scan` and `apply`. The first real call to a cold model pays the
-load cost on top of the 180s gateway timeout. We also send a prompt large
+load cost on top of the 240s gateway timeout. We also send a prompt large
 enough that Ollama's KV cache lands in the right size band — a tiny 2-token
 "ok" warmup forces a KV-cache realloc on the first real prompt, which on
 q5_0 quantized cache + flash attention can take 90-120 seconds (observed:
