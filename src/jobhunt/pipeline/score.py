@@ -46,9 +46,12 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
 
     prompt = load_prompt(cfg.paths.kb_dir, "score")
+    yoe = cfg.applicant.years_experience
+    yoe_str = str(yoe) if yoe is not None else "unspecified"
     user = prompt.render_user(
         verified_facts=verified,
         policy=truncate(policy, MAX_POLICY_CHARS),
+        years_experience=yoe_str,
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
@@ -83,8 +86,6 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         score = _clamp_by_coverage(raw_score, coverage_pct)
 
     decline_reason = result.get("decline_reason")
-    if _is_bogus_senior_decline(decline_reason, job.title or ""):
-        decline_reason = None
 
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
     # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...
@@ -146,43 +147,6 @@ def _coerce_phrase_list(raw: object) -> list[str]:
         if s:
             out.append(s)
     return out
-
-
-def _is_bogus_senior_decline(decline_reason: str | None, title: str) -> bool:
-    """True when the LLM declined solely on seniority wording without a real trigger.
-
-    The score prompt (May 2026) is explicit that Senior/Lead/Staff/Principal/Architect
-    titles alone are NOT decline triggers — only people-management responsibilities
-    in the JD body, or year-thresholds, justify a decline. qwen3.5:9b routinely
-    manufactures "Title implies Lead seniority" or "Staff seniority mismatch"
-    declines. This guard nullifies a decline when the *only* signal is a
-    seniority keyword and the title doesn't actually carry that word AND the
-    reason doesn't cite a real trigger (manage / mentor / head of / direct reports).
-    """
-    if not decline_reason:
-        return False
-    r = decline_reason.lower()
-    seniority_tokens = (
-        "senior", "sr.", "seniority", "lead", "staff", "principal", "architect"
-    )
-    if not any(k in r for k in seniority_tokens):
-        return False
-    # If the reason cites a real people-management trigger, trust it.
-    management_tokens = (
-        "manage", "mentor", "direct report", "headcount", "performance review",
-        "head of", "people leader"
-    )
-    if any(k in r for k in management_tokens):
-        return False
-    # Otherwise check the title. If the title genuinely contains a
-    # people-management word (Manager/Director/Head of), keep the decline.
-    # Plain Lead/Staff/Principal/Architect/Senior in the title is NOT a trigger
-    # by itself — the prompt explicitly allows IC roles with those titles.
-    t = (title or "").lower()
-    hard_title_triggers = ("manager", "director", "head of", "vp ", "vice president")
-    if any(k in t for k in hard_title_triggers):
-        return False
-    return True
 
 
 def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:

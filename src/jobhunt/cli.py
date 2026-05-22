@@ -18,6 +18,7 @@ from jobhunt.commands import (
     interview_prep_cmd,
     list_cmd,
     scan_cmd,
+    setup_cmd,
 )
 from jobhunt.errors import JobHuntError
 
@@ -26,6 +27,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+app.command("setup", help=setup_cmd.app.info.help)(setup_cmd.run)
 app.command("convert-resume", help=convert_resume_cmd.app.info.help)(convert_resume_cmd.run)
 app.command("scan", help=scan_cmd.app.info.help)(scan_cmd.run)
 app.command("apply", help=apply_cmd.app.info.help)(apply_cmd.run)

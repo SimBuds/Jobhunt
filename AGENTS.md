@@ -138,10 +138,16 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **nine** commands. `db` and `config` are hidden internals
+User-facing surface is **ten** commands. `db` and `config` are hidden internals
 (except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
+jobhunt setup                # guided first-run wizard: db init + convert-resume +
+                             # applicant defaults (years_experience,
+                             # include_senior_roles, salary, work arrangements,
+                             # employment types) + config seed import. Safe to
+                             # re-run for updating applicant defaults — each
+                             # step detects existing state.
 jobhunt convert-resume       # parse baseline .docx → kb/profile/
 jobhunt scan                 # ingest GTA jobs + score
 jobhunt apply <job-id>       # tailor + cover + autofill (you submit)
@@ -339,9 +345,11 @@ top-level commands that touch scoring/listing/applying must call it too.
 6. **User-Agent:** identifies the tool and provides a contact, e.g. `jobhunt/0.1 (+personal-use; your-email@example.com)`. Set via `config.toml` under `[ingest] user_agent`.
 7. **Cache** raw responses to `data/cache/` with a TTL; don't re-hit APIs needlessly during dev.
 8. **Adzuna queries auto-derive from `verified.json`** when `cfg.ingest.adzuna.queries` is empty. `ingest._query_planner.derive_adzuna_queries` walks `skills_core` / `skills_cms` / `skills_familiar` plus work-history bullets and emits up to 10 role-suffixed queries (capped to keep budget at ~30 API calls/scan with `pages=3`). Umbrella triggers (`cms developer`, `ai engineer`, `seo specialist`) fire on bucket-presence / bullet-token signals. Populated `queries` list bypasses the planner entirely. Adding new skill buckets to verified.json requires extending `_SKILL_QUERIES` or `_CATEGORY_TRIGGERS` to surface them.
-9. **Pre-score chokepoint filters** at `commands.scan_cmd._ingest_all`'s drain loop (applied after dedupe, before `upsert_job`):
-   - **Management-title drop** via `ingest._filter.is_management_title` — regex matches Manager / Director / Head of / VP / Vice President / Chief X Officer. **Does NOT** match Senior / Lead / Staff / Principal / Architect — those are IC titles per `kb/prompts/score.md`. Keep `_MANAGEMENT_TITLE_RE` in sync with `pipeline.score._is_bogus_senior_decline`'s `hard_title_triggers` tuple.
-   - **Freshness window** via `ingest._filter.is_within_age_window` — `cfg.ingest.max_age_days` (default 7) caps how stale a `posted_at` can be. CLI override via `jobhunt scan --max-age-days N`; 0 disables. As of Phase 5 the Workday adapter parses `postedOn` prose ("Posted 3 Days Ago" / "Yesterday" / "Today" / "30+ Days Ago") into a timestamp so Workday rows now respect the window; any future adapter that still can't infer a posted-at passes through. Both filters report drop counts in the per-scan summary.
+9. **Pre-score chokepoint filters** at `commands.scan_cmd._ingest_all`'s drain loop (applied after dedupe, before `upsert_job`). All filters are pure and adapter-agnostic; each reports its drop count in the per-scan summary:
+   - **Management-title drop** via `ingest._filter.is_management_title` — regex matches Manager / Director / Head of / VP / Vice President / Chief X Officer. **Does NOT** match Senior / Lead / Staff / Principal / Architect — those are handled separately by `is_senior_title` below.
+   - **Research/ML-title drop** via `ingest._filter.is_research_title`, opt-in via `cfg.ingest.drop_research_titles` (default False). Matches Applied / ML / AI / Research / Quant scientist|engineer|researcher + Data scientist|engineer|platform. Enable for frontend / CMS / full-stack profiles where these roles are never a fit.
+   - **Senior-title drop** via `ingest._filter.is_senior_title`, gated by `cfg.applicant.include_senior_roles` (default True). When False, drops Senior / Sr. / Lead / Staff / Principal / Architect titles. Captured via the `jobhunt setup` wizard as a yes/no preference — no YoE inference is applied at ingest. Independent of `applicant.years_experience` (which feeds the score prompt, not the ingest filter).
+   - **Freshness window** via `ingest._filter.is_within_age_window` — `cfg.ingest.max_age_days` (default 7) caps how stale a `posted_at` can be. CLI override via `jobhunt scan --max-age-days N`; 0 disables. As of Phase 5 the Workday adapter parses `postedOn` prose ("Posted 3 Days Ago" / "Yesterday" / "Today" / "30+ Days Ago") into a timestamp so Workday rows now respect the window; any future adapter that still can't infer a posted-at passes through.
 
 ## Browser automation rules — non-negotiable
 
@@ -420,16 +428,29 @@ top-level commands that touch scoring/listing/applying must call it too.
    (OpenAI↔Anthropic↔Bedrock↔Vertex AI↔Ollama), LLM orchestration
    (LangChain↔LlamaIndex↔Haystack↔DSPy).
 
-   **Auto-decline triggers (May 2026, intentionally narrow):** Senior /
-   Lead / Staff / Principal / Architect titles are **not** declines on
-   their own — IC roles at those titles are valid. Auto-decline only fires
-   when the JD body explicitly names people-management responsibilities
-   (mentoring 4+ direct reports, owning headcount, performance reviews),
-   when the title is hard people-management (Manager/Director/Head of/VP),
-   or when years required ≥ 7 with no transferable bridge. The 4+ hard-gap
-   threshold requires at least one **Tier-1 ask** (phrasing like
-   "required", "5+ years of", "strong production experience with") —
-   vague "nice-to-haves" do not trigger.
+   **Auto-decline triggers (recalibrated 2026-05-22, YoE-aware):** The
+   score prompt receives `cfg.applicant.years_experience` from the user
+   message and drives decisions from that single value:
+   - **Years required > YoE + 3** with no transferable bridge declines.
+     At 3 YoE, "7+ years required" declines; "5+ years" is borderline
+     (score 55–70). At 5 YoE, "9+ years" declines; "7+ years" is
+     borderline. Replaces the prior blanket 7+ rule.
+   - **Senior-band titles** (Senior / Sr. / Lead / Staff / Principal /
+     Architect) decline when YoE < 4. When YoE ≥ 4, treat them as IC
+     roles and score in the 60–85 band; auto-decline only when the JD
+     body names hard people-management responsibilities (mentoring 4+
+     direct reports, owning headcount, performance reviews).
+   - **Hard people-management titles** (Manager / Director / Head of /
+     VP) always decline, regardless of YoE.
+   - **4+ hard gaps** with at least one **Tier-1 ask** ("required", "5+
+     years of", "strong production experience with") still declines.
+     Vague "nice-to-haves" do not trigger.
+
+   The deterministic `_is_bogus_senior_decline` guard that previously
+   nullified Senior/Lead/Staff declines was removed (2026-05-22) — it
+   was protecting the *prior* "Senior is fine" calibration and is no
+   longer correct. The score prompt now emits these declines
+   legitimately, so no override is needed.
 
    **`pipeline.min_score` defaults to 55** (lowered from 65 in May 2026).
    The 55-59 band is the "stretch, tailor required" zone where a strong

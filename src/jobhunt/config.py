@@ -70,6 +70,11 @@ class IngestConfig(BaseModel):
     # and append hits to config.toml so the next scan pulls deep JDs natively.
     # Toggle off if you want the legacy maintenance-only `discover slugs` flow.
     auto_discover: bool = True
+    # Profile-specific filter: drop ML scientist / research engineer / data
+    # platform / quant titles at ingest. Off by default — only enable for
+    # profiles (e.g. frontend / CMS / full-stack) where these roles are never
+    # a fit. See `ingest._filter.is_research_title`.
+    drop_research_titles: bool = False
 
 
 class GatewayConfig(BaseModel):
@@ -134,6 +139,17 @@ class ApplicantProfile(BaseModel):
     work_auth_canada: bool = True
     requires_visa_sponsorship: bool = False
     salary_expectation_cad: str = ""
+    # Years of professional dev experience. Threaded into the score prompt so
+    # auto-decline rules track the candidate's actual band (years required >
+    # YoE + 3 declines). None disables YoE-aware scoring; run `jobhunt setup`
+    # to populate.
+    years_experience: int | None = None
+    # Include Senior / Sr. / Lead / Staff / Principal / Architect titles in
+    # scan results. Defaults True (legacy behavior); set False to drop them
+    # at ingest. Independent of years_experience — some candidates with
+    # <4 YoE still want to see Senior postings (loosely-titled startups),
+    # and some senior candidates explicitly don't want Staff+ roles.
+    include_senior_roles: bool = True
     pronouns: str = ""
     work_arrangements: list[Literal["onsite", "hybrid", "remote"]] = Field(
         default_factory=lambda: ["onsite", "hybrid", "remote"]
@@ -158,9 +174,15 @@ class Config(BaseModel):
 
 
 def _to_toml_dict(obj: Any) -> dict[str, Any]:
-    """Coerce values into TOML-serializable types (paths -> str)."""
+    """Coerce values into TOML-serializable types.
+
+    Paths become strings, and None-valued keys are dropped — TOML has no
+    null literal, and Pydantic will re-populate optional fields from their
+    declared defaults on the next load."""
     out: dict[str, Any] = {}
     for k, v in obj.items():
+        if v is None:
+            continue
         if isinstance(v, dict):
             out[k] = _to_toml_dict(v)
         elif isinstance(v, Path):

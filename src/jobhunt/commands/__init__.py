@@ -12,6 +12,7 @@ from jobhunt.commands import (
     discover_cmd,
     list_cmd,
     scan_cmd,
+    setup_cmd,
 )
 from jobhunt.config import Config
 
@@ -44,4 +45,5 @@ __all__ = [
     "ensure_profile",
     "list_cmd",
     "scan_cmd",
+    "setup_cmd",
 ]

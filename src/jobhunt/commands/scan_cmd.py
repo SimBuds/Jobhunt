@@ -46,7 +46,12 @@ from jobhunt.ingest import (
     workable,
     workday,
 )
-from jobhunt.ingest._filter import is_management_title, is_within_age_window
+from jobhunt.ingest._filter import (
+    is_management_title,
+    is_research_title,
+    is_senior_title,
+    is_within_age_window,
+)
 from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
 from jobhunt.secrets import load_secrets
@@ -132,11 +137,16 @@ async def _run(
             )
             _print_ingest_summary(per_source)
             typer.echo(f"ingest: {inserted} new job(s) inserted")
-            if filtered["mgmt"] or filtered["stale"]:
-                typer.echo(
-                    f"ingest: filtered {filtered['mgmt']} management-title + "
-                    f"{filtered['stale']} stale (>{max_age_days}d) job(s)"
-                )
+            if any(filtered.values()):
+                parts = [
+                    f"{filtered['mgmt']} management-title",
+                    f"{filtered['stale']} stale (>{max_age_days}d)",
+                ]
+                if filtered.get("research"):
+                    parts.append(f"{filtered['research']} research/ML-title")
+                if filtered.get("senior"):
+                    parts.append(f"{filtered['senior']} senior-title (YoE)")
+                typer.echo(f"ingest: filtered {' + '.join(parts)} job(s)")
 
             if cfg.ingest.auto_discover and not no_discover and inserted:
                 await _auto_discover(cfg, conn)
@@ -467,18 +477,28 @@ async def _ingest_all(
             closer_task = asyncio.create_task(closer())
 
             inserted = 0
-            filtered = {"mgmt": 0, "stale": 0}
+            filtered = {"mgmt": 0, "stale": 0, "research": 0, "senior": 0}
+            drop_research = cfg.ingest.drop_research_titles
+            drop_senior = not cfg.applicant.include_senior_roles
             seen_dedup: set[str] = set()
             while True:
                 item = await queue.get()
                 if item is None:
                     break
-                # Pre-score filters at the drain chokepoint: management
-                # title (drops Manager/Director/Head of/VP/etc — Senior /
-                # Lead / Staff / Principal pass through as IC) + freshness
-                # window. Both filters are pure and adapter-agnostic.
+                # Pre-score filters at the drain chokepoint. All pure and
+                # adapter-agnostic:
+                #  - management title (Manager/Director/Head of/VP/etc)
+                #  - optional research/ML title (drop_research_titles)
+                #  - optional senior title (when include_senior_roles=False)
+                #  - freshness window
                 if is_management_title(item.title):
                     filtered["mgmt"] += 1
+                    continue
+                if drop_research and is_research_title(item.title):
+                    filtered["research"] += 1
+                    continue
+                if drop_senior and is_senior_title(item.title):
+                    filtered["senior"] += 1
                     continue
                 if not is_within_age_window(item.posted_at, max_age_days):
                     filtered["stale"] += 1
