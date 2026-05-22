@@ -123,7 +123,11 @@ def _clean_payload() -> dict[str, Any]:
         "likely_questions": [
             {
                 "question": "Walk me through your background.",
-                "beat": "Contractor doing Shopify migrations and AI tooling at Atelier Dacko.",
+                "beats": [
+                    "Contractor doing Shopify migrations at Atelier Dacko.",
+                    "AI tooling work with Ollama on the local LLM workflow.",
+                    "Adjacent: HubSpot HubL theme work at the AI Agency.",
+                ],
             }
         ],
         "questions_to_ask": [
@@ -132,10 +136,10 @@ def _clean_payload() -> dict[str, Any]:
         "honest_gaps": [
             {
                 "gap": "Webflow",
-                "reframe": (
-                    "I haven't shipped Webflow, but I work daily in "
-                    "Shopify Liquid and HubSpot HubL."
-                ),
+                "reframes": [
+                    "I haven't shipped Webflow specifically.",
+                    "Closest verified bridge: I work daily in Shopify Liquid and HubSpot HubL.",
+                ],
             }
         ],
     }
@@ -235,11 +239,23 @@ def test_validator_passes_clean_sections() -> None:
         role_decode=["Build content automation."],
         strongest_anchors=["Built a 14+ page Shopify storefront for Atelier Dacko."],
         likely_questions=[
-            LikelyQuestion("Walk me through your work?", "Atelier Dacko Shopify migration.")
+            LikelyQuestion(
+                "Walk me through your work?",
+                [
+                    "Atelier Dacko Shopify migration — 14+ pages, ring builder app.",
+                    "Ollama local-LLM tooling sits alongside the CMS work.",
+                ],
+            )
         ],
         questions_to_ask=["What is the CMS breakdown?"],
         honest_gaps=[
-            HonestGap("Webflow", "I work in Shopify Liquid and HubSpot HubL.")
+            HonestGap(
+                "Webflow",
+                [
+                    "I have not shipped Webflow in production.",
+                    "Closest verified bridge: Shopify Liquid and HubSpot HubL templates daily.",
+                ],
+            )
         ],
     )
     assert validate_prep_sections(sections, verified=VERIFIED) == []
@@ -274,7 +290,10 @@ def test_validator_catches_unverified_number() -> None:
         role_decode=[],
         strongest_anchors=[],
         likely_questions=[
-            LikelyQuestion("What result should you mention?", "Cut load time by 87%.")
+            LikelyQuestion(
+                "What result should you mention?",
+                ["Cut load time by 87%."],
+            )
         ],
         questions_to_ask=[],
         honest_gaps=[],
@@ -302,7 +321,7 @@ def test_validator_allows_configured_salary_numbers() -> None:
         likely_questions=[
             LikelyQuestion(
                 "What are your salary expectations?",
-                "My configured range is 50,000 - 90,000 CAD.",
+                ["My configured range is 50,000 - 90,000 CAD."],
             )
         ],
         questions_to_ask=[],
@@ -323,7 +342,7 @@ def test_validator_catches_education_recap() -> None:
         likely_questions=[
             LikelyQuestion(
                 "How do you stay current?",
-                "I apply my coursework in Machine Learning.",
+                ["I apply my coursework in Machine Learning."],
             )
         ],
         questions_to_ask=[],
@@ -340,7 +359,7 @@ def test_validator_catches_unverified_immediate_start() -> None:
         likely_questions=[
             LikelyQuestion(
                 "When can you start?",
-                "I can start immediately with full work authorization.",
+                ["I can start immediately with full work authorization."],
             )
         ],
         questions_to_ask=[],
@@ -357,7 +376,7 @@ def test_validator_catches_unverified_two_week_notice() -> None:
         likely_questions=[
             LikelyQuestion(
                 "What is your notice period?",
-                "I can start within two weeks depending on the offer.",
+                ["I can start within two weeks depending on the offer."],
             )
         ],
         questions_to_ask=[],
@@ -371,7 +390,21 @@ def test_validator_catches_blank_likely_question_beat() -> None:
     sections = PrepDocSections(
         role_decode=[],
         strongest_anchors=[],
-        likely_questions=[LikelyQuestion("How do you handle QA?", "")],
+        likely_questions=[LikelyQuestion("How do you handle QA?", [])],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(sections, verified=VERIFIED)
+    assert any("missing an answer beat" in s.lower() for s in v)
+
+
+def test_validator_catches_empty_string_beats_list() -> None:
+    """List with only whitespace strings is still missing — defense against the
+    coercion path that drops empties but a hand-built section that doesn't."""
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[LikelyQuestion("How do you handle QA?", ["   ", ""])],
         questions_to_ask=[],
         honest_gaps=[],
     )
@@ -385,7 +418,7 @@ def test_validator_catches_blank_honest_gap_reframe() -> None:
         strongest_anchors=[],
         likely_questions=[],
         questions_to_ask=[],
-        honest_gaps=[HonestGap("I haven't shipped Webflow.", "")],
+        honest_gaps=[HonestGap("I haven't shipped Webflow.", [])],
     )
     v = validate_prep_sections(sections, verified=VERIFIED)
     assert any("missing a reframe" in s.lower() for s in v)
@@ -400,7 +433,7 @@ def test_validator_catches_gap_reframe_without_verified_trace() -> None:
         honest_gaps=[
             HonestGap(
                 "I have not shipped Webflow specifically.",
-                "Closest verified bridge: I can learn the workflow quickly.",
+                ["Closest verified bridge: I can learn the workflow quickly."],
             )
         ],
     )
@@ -417,10 +450,12 @@ def test_validator_catches_gap_reframe_that_mirrors_unverified_jd_phrase() -> No
         honest_gaps=[
             HonestGap(
                 "I have not shipped a dedicated SEO automation product.",
-                (
-                    "Closest verified bridge: I built automated content upload "
-                    "systems across Shopify and WordPress."
-                ),
+                [
+                    (
+                        "Closest verified bridge: I built automated content upload "
+                        "systems across Shopify and WordPress."
+                    ),
+                ],
             )
         ],
     )
@@ -442,7 +477,7 @@ def test_validator_catches_likely_beat_that_mirrors_unverified_jd_phrase() -> No
         likely_questions=[
             LikelyQuestion(
                 "How do you handle QA?",
-                "I use GitHub Actions to ensure zero errors on client sites.",
+                ["I use GitHub Actions to ensure zero errors on client sites."],
             )
         ],
         questions_to_ask=[],
@@ -456,6 +491,58 @@ def test_validator_catches_likely_beat_that_mirrors_unverified_jd_phrase() -> No
     assert any("casey claim mirrors unverified jd phrase" in s.lower() for s in v)
 
 
+def test_validator_passes_title_phrase_as_context() -> None:
+    """A beat that references a JD title as third-party context (the role
+    Casey would report to / coordinate with) must NOT fire the casey-claim
+    mirror check. "Director of Search" is not something Casey claims to
+    be — it's the interviewer's org structure."""
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "Who would you collaborate with?",
+                [
+                    "Day-to-day I'd coordinate with the Director of Search on roadmap priorities.",
+                    "Closest verified context: I shipped Shopify Liquid templates daily at Atelier Dacko.",
+                ],
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        job_description="Report directly to the Director of Search.",
+    )
+    assert not any("director of search" in s.lower() for s in v), v
+
+
+def test_validator_catches_title_phrase_with_ownership_claim() -> None:
+    """If the bullet does claim the title with an ownership marker, the
+    mirror check still fires. Casey applying for an IC role can't claim
+    Director-of-Search experience absent that fact in verified."""
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "Walk me through your background.",
+                ["I led search engineering as the Director of Search at a startup."],
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[],
+    )
+    v = validate_prep_sections(
+        sections,
+        verified=VERIFIED,
+        job_description="Hiring a Director of Search.",
+    )
+    assert any("director of search" in s.lower() for s in v), v
+
+
 def test_validator_catches_gap_reframe_with_scripts_api_jd_phrase() -> None:
     sections = PrepDocSections(
         role_decode=[],
@@ -465,10 +552,12 @@ def test_validator_catches_gap_reframe_with_scripts_api_jd_phrase() -> None:
         honest_gaps=[
             HonestGap(
                 "I have not used n8n.",
-                (
-                    "Closest verified bridge: I developed scripts and API "
-                    "integrations that keep pipelines running smoothly."
-                ),
+                [
+                    (
+                        "Closest verified bridge: I developed scripts and API "
+                        "integrations that keep pipelines running smoothly."
+                    ),
+                ],
             )
         ],
     )
@@ -497,6 +586,38 @@ def test_blocking_violations_include_unusable_or_unsafe_output() -> None:
     assert not has_blocking_prep_violations(["banned phrase: 'spearheaded'"])
 
 
+def test_patch_prep_sections_rewrites_ai_generated_content_pipeline() -> None:
+    """Live-run repro from manual:89f772b92cf1: qwen kept dropping the JD
+    phrase 'AI-generated content pipeline' into beats and gap reframes,
+    blocking the artifact after 3 attempts. The patch tier converts it to
+    Casey's verified surface (Ollama + Shopify/HubSpot)."""
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "What's your AI experience?",
+                ["I built an AI-generated content pipeline for client sites."],
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "I have not shipped a dedicated SEO automation product.",
+                ["Closest verified bridge: my AI-generated content pipeline work."],
+            )
+        ],
+    )
+    patched = _patch_prep_sections(sections, cfg=Config())
+    assert patched is not None
+    blob = "\n".join(
+        [b for q in patched.likely_questions for b in q.beats]
+        + [r for g in patched.honest_gaps for r in g.reframes]
+    ).lower()
+    assert "ai-generated content pipeline" not in blob
+    assert "ollama" in blob
+
+
 def test_patch_prep_sections_rewrites_observed_bad_gap_patterns() -> None:
     sections = PrepDocSections(
         role_decode=[],
@@ -506,26 +627,26 @@ def test_patch_prep_sections_rewrites_observed_bad_gap_patterns() -> None:
         likely_questions=[
             LikelyQuestion(
                 "When can you start?",
-                "I can start immediately with full work authorization.",
+                ["I can start immediately with full work authorization."],
             ),
             LikelyQuestion(
                 "How do you stay current?",
-                "I apply my coursework in Machine Learning.",
+                ["I apply my coursework in Machine Learning."],
             ),
         ],
         questions_to_ask=[],
         honest_gaps=[
             HonestGap(
                 "I have not shipped a full automation product.",
-                "Closest verified bridge: I have worked on full automation.",
+                ["Closest verified bridge: I have worked on full automation."],
             )
         ],
     )
     patched = _patch_prep_sections(sections, cfg=Config())
     assert patched is not None
     out = "\n".join(
-        [q.beat for q in patched.likely_questions]
-        + [g.reframe for g in patched.honest_gaps]
+        [b for q in patched.likely_questions for b in q.beats]
+        + [r for g in patched.honest_gaps for r in g.reframes]
     ).lower()
     assert "start immediately" not in out
     assert "coursework" not in out
@@ -541,9 +662,9 @@ def test_render_markdown_has_all_sections() -> None:
     sections = PrepDocSections(
         role_decode=["First bullet"],
         strongest_anchors=["Atelier Dacko anchor"],
-        likely_questions=[LikelyQuestion("Q?", "B.")],
+        likely_questions=[LikelyQuestion("Q?", ["B1.", "B2."])],
         questions_to_ask=["Ask?"],
-        honest_gaps=[HonestGap("G", "R")],
+        honest_gaps=[HonestGap("G", ["R1.", "R2."])],
         model="qwen-custom:latest",
     )
     ctx = _ctx()
@@ -580,26 +701,90 @@ def test_render_markdown_skips_comp_when_empty() -> None:
     assert "## Comp heads-up" not in out
 
 
+def test_render_markdown_beats_become_nested_bullets() -> None:
+    """Each Likely question renders its bolded question followed by one
+    `- bullet` line per beat. Reframes render as `  - bullet` nested under
+    the gap. This is the user-visible payoff of the May 2026 bullet bump."""
+    sections = PrepDocSections(
+        role_decode=[],
+        strongest_anchors=[],
+        likely_questions=[
+            LikelyQuestion(
+                "Walk me through your background.",
+                [
+                    "Atelier Dacko Shopify storefront — 14+ pages.",
+                    "Ollama local-LLM tooling on the side.",
+                    "Adjacent: HubSpot HubL theme work at the AI Agency.",
+                ],
+            )
+        ],
+        questions_to_ask=[],
+        honest_gaps=[
+            HonestGap(
+                "Webflow",
+                [
+                    "I have not shipped Webflow in production.",
+                    "Closest verified bridge: Shopify Liquid daily at Atelier Dacko.",
+                ],
+            )
+        ],
+    )
+    out = render_prep_markdown(sections, ctx=_ctx())
+    assert "**Walk me through your background.**" in out
+    assert "- Atelier Dacko Shopify storefront — 14+ pages." in out
+    assert "- Ollama local-LLM tooling on the side." in out
+    # Reframes are nested (two-space indent) under the gap bullet.
+    assert "- **Webflow**" in out
+    assert "  - I have not shipped Webflow in production." in out
+    assert "  - Closest verified bridge: Shopify Liquid daily at Atelier Dacko." in out
+
+
 def test_coerce_likely_question_accepts_schema_shape() -> None:
+    q = _coerce_likely_question({"question": "Q?", "beats": ["B1.", "B2.", "B3."]})
+    assert q.question == "Q?"
+    assert q.beats == ["B1.", "B2.", "B3."]
+
+
+def test_coerce_likely_question_back_compat_single_beat_string() -> None:
+    """Older payloads (and qwen drift) emit `beat` as a single string. Wrap
+    it as a one-element list so existing data still decodes cleanly."""
     q = _coerce_likely_question({"question": "Q?", "beat": "B."})
-    assert q.question == "Q?" and q.beat == "B."
+    assert q.question == "Q?"
+    assert q.beats == ["B."]
 
 
 def test_coerce_likely_question_accepts_answer_alias() -> None:
     q = _coerce_likely_question({"question": "Q?", "answer": "A."})
-    assert q.beat == "A."
+    assert q.beats == ["A."]
 
 
 def test_coerce_likely_question_accepts_plain_string() -> None:
     q = _coerce_likely_question("Walk me through your background.")
     assert q.question == "Walk me through your background."
-    assert q.beat == ""
+    assert q.beats == []
+
+
+def test_coerce_likely_question_drops_empty_bullets() -> None:
+    q = _coerce_likely_question({"question": "Q?", "beats": ["B1.", "", "  ", "B2."]})
+    assert q.beats == ["B1.", "B2."]
 
 
 def test_coerce_honest_gap_accepts_aliases() -> None:
     g = _coerce_honest_gap({"gap_description": "Webflow", "response": "I do HubL."})
     assert g.gap == "Webflow"
-    assert g.reframe == "I do HubL."
+    assert g.reframes == ["I do HubL."]
+
+
+def test_coerce_honest_gap_back_compat_single_reframe_string() -> None:
+    g = _coerce_honest_gap({"gap": "Webflow", "reframe": "I do HubL."})
+    assert g.reframes == ["I do HubL."]
+
+
+def test_coerce_honest_gap_accepts_list_shape() -> None:
+    g = _coerce_honest_gap(
+        {"gap": "Webflow", "reframes": ["No prod ship.", "Closest bridge: HubL."]}
+    )
+    assert g.reframes == ["No prod ship.", "Closest bridge: HubL."]
 
 
 def test_skeleton_offline_returns_placeholders() -> None:

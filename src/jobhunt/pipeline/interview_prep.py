@@ -52,13 +52,18 @@ _RESEARCH_MAX_CHARS = 6000
 @dataclass
 class LikelyQuestion:
     question: str
-    beat: str
+    # 3-5 talking-point bullets the user can riff on during the call. Each
+    # bullet is a stand-alone string (≤ 25 words) — see the prompt's
+    # length-guidance section. Empty list is rejected by the validator.
+    beats: list[str]
 
 
 @dataclass
 class HonestGap:
     gap: str
-    reframe: str
+    # 2-4 reframe bullets. Bullet 1 acknowledges the gap honestly; later
+    # bullets cite verified adjacent bridges. Empty list is rejected.
+    reframes: list[str]
 
 
 @dataclass
@@ -216,43 +221,66 @@ def _decode_sections(raw: dict[str, Any], *, model: str) -> PrepDocSections:
 
 
 def _coerce_likely_question(q: Any) -> LikelyQuestion:
-    """Tolerant constructor. Accepts a dict with `question`+`beat` (the
-    schema'd form), a dict with `answer`/`response`/`how_to_answer` for the
-    beat (qwen drift), or a plain string (treated as the question with an
-    empty beat — better than crashing)."""
+    """Tolerant constructor. Accepts:
+    - the schema'd form `{question, beats: [str, ...]}` (current);
+    - a legacy `{question, beat: str}` (older payloads / qwen drift) —
+      single string wrapped as `[beat]`;
+    - alternate keys (`answer`/`response`/`how_to_answer`) for the legacy
+      single-string slot;
+    - a plain string (treated as the question with empty `beats=[]`).
+    Drops empty bullets; preserves order.
+    """
     if isinstance(q, str):
-        return LikelyQuestion(question=q, beat="")
+        return LikelyQuestion(question=q, beats=[])
     if not isinstance(q, dict):
         raise ValueError(f"likely_question must be dict or str, got {type(q).__name__}")
     question = q.get("question") or q.get("q") or ""
-    beat = (
-        q.get("beat")
+    beats = _normalize_bullet_list(
+        q.get("beats")
+        or q.get("beat")
         or q.get("answer")
         or q.get("response")
         or q.get("how_to_answer")
-        or ""
+        or []
     )
-    return LikelyQuestion(question=str(question), beat=str(beat))
+    return LikelyQuestion(question=str(question), beats=beats)
 
 
 def _coerce_honest_gap(g: Any) -> HonestGap:
     """Same tolerance as `_coerce_likely_question` for the `honest_gaps`
-    list. Accepts `{gap, reframe}` (schema), `{gap_description, response}`
-    (qwen drift), or a plain string (treated as the gap with an empty
-    reframe)."""
+    list. Accepts the schema'd `{gap, reframes: [str, ...]}`, the legacy
+    single-string `{gap, reframe}` / `{gap_description, response}` (qwen
+    drift), or a plain string (treated as the gap with empty
+    `reframes=[]`)."""
     if isinstance(g, str):
-        return HonestGap(gap=g, reframe="")
+        return HonestGap(gap=g, reframes=[])
     if not isinstance(g, dict):
         raise ValueError(f"honest_gap must be dict or str, got {type(g).__name__}")
     gap = g.get("gap") or g.get("gap_description") or g.get("weakness") or ""
-    reframe = (
-        g.get("reframe")
+    reframes = _normalize_bullet_list(
+        g.get("reframes")
+        or g.get("reframe")
         or g.get("response")
         or g.get("how_to_reframe")
         or g.get("framing")
-        or ""
+        or []
     )
-    return HonestGap(gap=str(gap), reframe=str(reframe))
+    return HonestGap(gap=str(gap), reframes=reframes)
+
+
+def _normalize_bullet_list(raw: Any) -> list[str]:
+    """Coerce a bullet-list payload into a clean ``list[str]``.
+
+    Accepts a list (filter to non-empty strings), a single string (wrap
+    as one-element list), or anything else (return empty list — the
+    validator will flag the missing bullets).
+    """
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if isinstance(item, str) and item.strip()]
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        return [stripped] if stripped else []
+    return []
 
 
 # --- validation ---------------------------------------------------------------
@@ -277,13 +305,13 @@ def validate_prep_sections(
     for i, q in enumerate(sections.likely_questions, start=1):
         if not q.question.strip():
             violations.append(f"likely question {i} is blank")
-        if not q.beat.strip():
+        if not q.beats or not any(b.strip() for b in q.beats):
             violations.append(f"likely question {i} is missing an answer beat")
 
     for i, gap in enumerate(sections.honest_gaps, start=1):
         if not gap.gap.strip():
             violations.append(f"honest gap {i} is blank")
-        if not gap.reframe.strip():
+        if not gap.reframes or not any(r.strip() for r in gap.reframes):
             violations.append(f"honest gap {i} is missing a reframe")
 
     # Banned phrases (substring tier).
@@ -329,20 +357,37 @@ def validate_prep_sections(
     verified_blob = _verified_skill_blob(verified)
     verified_blob_lower = verified_blob.lower()
     jd_only_phrases = _jd_only_claim_phrases(job_description, verified_blob)
-    casey_claim_lower = _casey_claim_text(sections).lower()
-    for phrase in jd_only_phrases:
-        if phrase in casey_claim_lower:
-            violations.append(f"casey claim mirrors unverified JD phrase: {phrase!r}")
+    claim_bullets = _casey_claim_bullets(sections)
+    reported: set[str] = set()
+    for bullet in claim_bullets:
+        bullet_lower = bullet.lower()
+        for phrase in jd_only_phrases:
+            if phrase in reported:
+                continue
+            if _bullet_claims_phrase(bullet_lower, phrase):
+                violations.append(
+                    f"casey claim mirrors unverified JD phrase: {phrase!r}"
+                )
+                reported.add(phrase)
 
     for i, gap in enumerate(sections.honest_gaps, start=1):
-        reframe_lower = gap.reframe.lower()
-        if gap.reframe.strip() and not _has_verified_trace(gap.reframe, verified_blob_lower):
+        # Verified-trace check: at least ONE reframe bullet must trace to
+        # verified facts. A bullet 1 that's pure acknowledgement
+        # ("I have not shipped X") legitimately has no trace; bullet 2+
+        # is where the bridge lives.
+        non_empty = [r for r in gap.reframes if r.strip()]
+        if non_empty and not any(
+            _has_verified_trace(r, verified_blob_lower) for r in non_empty
+        ):
             violations.append(f"honest gap {i} reframe lacks verified trace")
-        for phrase in jd_only_phrases:
-            if phrase in reframe_lower:
-                violations.append(
-                    f"honest gap {i} reframe mirrors unverified JD phrase: {phrase!r}"
-                )
+        for bullet in non_empty:
+            bullet_lower = bullet.lower()
+            for phrase in jd_only_phrases:
+                if phrase in bullet_lower:
+                    violations.append(
+                        f"honest gap {i} reframe mirrors unverified JD phrase: {phrase!r}"
+                    )
+                    break  # one report per bullet is enough
 
     for tech in _FABRICATION_WATCHLIST:
         token = tech.strip(", ")
@@ -415,11 +460,11 @@ def _concat_freeform(sections: PrepDocSections) -> str:
     parts.extend(sections.strongest_anchors)
     for q in sections.likely_questions:
         parts.append(q.question)
-        parts.append(q.beat)
+        parts.extend(q.beats)
     parts.extend(sections.questions_to_ask)
     for g in sections.honest_gaps:
         parts.append(g.gap)
-        parts.append(g.reframe)
+        parts.extend(g.reframes)
     return "\n".join(parts)
 
 
@@ -427,9 +472,9 @@ def _casey_claim_text(sections: PrepDocSections) -> str:
     parts: list[str] = []
     parts.extend(sections.strongest_anchors)
     for q in sections.likely_questions:
-        parts.append(q.beat)
+        parts.extend(q.beats)
     for g in sections.honest_gaps:
-        parts.append(g.reframe)
+        parts.extend(g.reframes)
     return "\n".join(parts)
 
 
@@ -544,6 +589,31 @@ def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSe
             "automated content upload systems",
             "CMS implementation and scripting workflows",
         )
+        # JD-mirror: "AI-generated content pipeline" — verbatim borrow that
+        # qwen latches onto for any AI-flavored content role. Replace with
+        # a narrower phrasing that names Casey's actual verified surface
+        # (Ollama local LLM + Shopify/HubSpot CMS) so the artifact still
+        # speaks to the JD without claiming a product Casey hasn't shipped.
+        out = _replace_case_insensitive(
+            out,
+            "ai-generated content pipeline",
+            "Ollama local-LLM tooling alongside Shopify and HubSpot CMS work",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "ai generated content pipeline",
+            "Ollama local-LLM tooling alongside Shopify and HubSpot CMS work",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "full content automation",
+            "CMS content workflows",
+        )
+        out = _replace_case_insensitive(
+            out,
+            "content and fulfillment teams",
+            "the content team and adjacent stakeholders",
+        )
         out = _replace_case_insensitive(
             out,
             "automated systems",
@@ -579,11 +649,17 @@ def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSe
         return out
 
     likely = [
-        LikelyQuestion(question=q.question, beat=patch_claim(q.beat))
+        LikelyQuestion(
+            question=q.question,
+            beats=[patch_claim(b) for b in q.beats],
+        )
         for q in sections.likely_questions
     ]
     gaps = [
-        HonestGap(gap=g.gap, reframe=patch_claim(g.reframe))
+        HonestGap(
+            gap=g.gap,
+            reframes=[patch_claim(r) for r in g.reframes],
+        )
         for g in sections.honest_gaps
     ]
     anchors = [
@@ -667,14 +743,19 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
         )
     if any("missing an answer beat" in v.lower() for v in violations):
         lines.append(
-            "Every likely_questions item must include a non-empty beat: 1-2 "
-            "sentences naming how Casey should answer using verified facts."
+            "Every likely_questions item must include a non-empty `beats` "
+            "list of 3-5 short talking-point bullets (≤ 25 words each). "
+            "Bullet 1 leads with a real project name; bullets 2-N add "
+            "specifics from verified_facts. Do NOT collapse the beats into "
+            "a single sentence."
         )
     if any("missing a reframe" in v.lower() for v in violations):
         lines.append(
-            "Every honest_gaps item must include a non-empty reframe: one "
-            "non-defensive sentence connecting the gap to adjacent verified "
-            "experience."
+            "Every honest_gaps item must include a non-empty `reframes` "
+            "list of 2-4 short bullets (≤ 25 words each). Bullet 1 "
+            "acknowledges the gap honestly; bullet 2+ names a verified "
+            "adjacent bridge with project/tech specifics. Do NOT emit "
+            "a single sentence."
         )
     if any("education recap" in v.lower() for v in violations):
         lines.append(
@@ -736,6 +817,63 @@ def _jd_only_claim_phrases(job_description: str, verified_blob: str) -> list[str
         for phrase in _CLAIM_JD_PHRASES
         if phrase in jd_lower and phrase not in verified_lower
     ]
+
+
+# Title-style phrases identify someone Casey would WORK WITH, not someone
+# Casey IS. A beat that says "you'd coordinate with the Director of Search"
+# is legitimate context; a beat that says "I led search as Director of
+# Search" is a fabrication. Distinguish them by requiring a strict
+# ownership pattern (as the / my role as / I am/was/served/held) in the
+# 40-char window before the title before firing the mirror check.
+_TITLE_PHRASE_RE = re.compile(
+    r"\b(?:director|head|vp|vice\s+president|chief|cto|cmo|ceo|cpo|svp)\s+of\b",
+    re.IGNORECASE,
+)
+# Patterns that signal Casey claims the title that follows the window.
+_TITLE_OWNERSHIP_RES = (
+    # `as the` / `as a` / `as` right before the title.
+    re.compile(r"\bas(?:\s+(?:the|a|an))?\s*$", re.IGNORECASE),
+    # `my role as` ... title.
+    re.compile(r"\bmy\s+role\s+as\b", re.IGNORECASE),
+    # `I am/was/served/hold/held` somewhere in the recent window.
+    re.compile(r"\bi\s+(?:am|was|served|hold|held)\b", re.IGNORECASE),
+)
+
+
+def _is_title_phrase(phrase: str) -> bool:
+    return bool(_TITLE_PHRASE_RE.search(phrase))
+
+
+def _bullet_claims_phrase(bullet_lower: str, phrase: str) -> bool:
+    """True when `bullet_lower` makes a Casey-owned claim of `phrase`.
+
+    For activity-style JD phrases (e.g. "automated content upload systems"),
+    any appearance in a Casey-claim section is treated as a fabrication.
+    For title-style phrases (e.g. "Director of Search"), require an
+    explicit ownership pattern in the 40-char window before the phrase —
+    context references like "you'd report to the Director of Search"
+    don't fire.
+    """
+    if phrase not in bullet_lower:
+        return False
+    if not _is_title_phrase(phrase):
+        return True
+    idx = bullet_lower.find(phrase)
+    window = bullet_lower[max(0, idx - 40):idx]
+    return any(rx.search(window) for rx in _TITLE_OWNERSHIP_RES)
+
+
+def _casey_claim_bullets(sections: PrepDocSections) -> list[str]:
+    """Flat list of every Casey-owned bullet. Each item gets the
+    per-bullet mirror check — bullet-scoped windowing is what lets the
+    title-phrase ownership marker live in the same string."""
+    out: list[str] = []
+    out.extend(sections.strongest_anchors)
+    for q in sections.likely_questions:
+        out.extend(q.beats)
+    for g in sections.honest_gaps:
+        out.extend(g.reframes)
+    return out
 
 
 def _substantive_tokens(text: str) -> list[str]:
@@ -843,7 +981,8 @@ def render_prep_markdown(
     for q in sections.likely_questions:
         parts.append(f"**{q.question}**")
         parts.append("")
-        parts.append(q.beat)
+        for bullet in q.beats:
+            parts.append(f"- {bullet}")
         parts.append("")
 
     parts.append("## Questions to ask back")
@@ -855,7 +994,9 @@ def render_prep_markdown(
     parts.append("## Honest gaps (don't hide — reframe)")
     parts.append("")
     for g in sections.honest_gaps:
-        parts.append(f"- **{g.gap}** — {g.reframe}")
+        parts.append(f"- **{g.gap}**")
+        for bullet in g.reframes:
+            parts.append(f"  - {bullet}")
     parts.append("")
 
     parts.append("## Pre-call checklist")
@@ -900,14 +1041,14 @@ def render_skeleton_offline(ctx: PrepContext) -> str:
         likely_questions=[
             LikelyQuestion(
                 question="_TODO_",
-                beat="Run without `--no-llm` to draft questions and beats.",
+                beats=["Run without `--no-llm` to draft questions and beats."],
             )
         ],
         questions_to_ask=["_TODO_ questions to ask back_"],
         honest_gaps=[
             HonestGap(
                 gap="_TODO_",
-                reframe="Run without `--no-llm` to draft honest gap reframes.",
+                reframes=["Run without `--no-llm` to draft honest gap reframes."],
             )
         ],
         model="",

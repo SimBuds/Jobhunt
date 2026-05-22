@@ -19,17 +19,21 @@ schema:
         minLength: 1
     likely_questions:
       type: array
-      description: 4-8 questions the interviewer is likely to ask at this stage, each paired with a 1-2 sentence "how to answer" beat using verified facts only.
+      description: 4-8 questions the interviewer is likely to ask at this stage, each paired with a 3-5 bullet list of talking points (beats) using verified facts only. Each bullet stands alone — Casey should be able to speak for 15-30 seconds from any single bullet.
       items:
         type: object
-        required: [question, beat]
+        required: [question, beats]
         properties:
           question:
             type: string
             minLength: 1
-          beat:
-            type: string
-            minLength: 1
+          beats:
+            type: array
+            minItems: 3
+            maxItems: 5
+            items:
+              type: string
+              minLength: 1
     questions_to_ask:
       type: array
       description: 4-6 specific questions Casey should ask the interviewer back. Avoid generic "what's the culture like" questions; favour ones that surface real role information.
@@ -38,17 +42,21 @@ schema:
         minLength: 1
     honest_gaps:
       type: array
-      description: 2-4 honest gaps between Casey's verified profile and the JD, each paired with a non-defensive reframe that leans on adjacent verified strengths.
+      description: 2-4 honest gaps between Casey's verified profile and the JD, each paired with a 2-4 bullet reframe list that leans on adjacent verified strengths.
       items:
         type: object
-        required: [gap, reframe]
+        required: [gap, reframes]
         properties:
           gap:
             type: string
             minLength: 1
-          reframe:
-            type: string
-            minLength: 1
+          reframes:
+            type: array
+            minItems: 2
+            maxItems: 4
+            items:
+              type: string
+              minLength: 1
 ---
 
 ## SYSTEM
@@ -61,16 +69,17 @@ Casey's voice: direct, concrete, no buzzwords, names real projects.
 
 Hard rules:
 
-1. **Verified-only anchors.** Every claim in `strongest_anchors`, every "beat"
-   under `likely_questions`, and every reframe under `honest_gaps` must trace
-   to a real fact in `verified_facts` JSON. No invented projects, metrics,
-   employers, dates, or technologies. The deterministic validator rejects
-   unverified tech claims and unverified numbers.
+1. **Verified-only anchors.** Every claim in `strongest_anchors`, every
+   bullet inside `likely_questions[].beats`, and every bullet inside
+   `honest_gaps[].reframes` must trace to a real fact in `verified_facts`
+   JSON. No invented projects, metrics, employers, dates, or technologies.
+   The deterministic validator rejects unverified tech claims and
+   unverified numbers in any bullet.
 
    Do not emit bare strings inside `likely_questions` or `honest_gaps`.
-   Every likely question must be an object with non-empty `question` and
-   `beat` fields. Every honest gap must be an object with non-empty `gap`
-   and `reframe` fields.
+   Every likely question must be an object with a non-empty `question`
+   and a non-empty `beats` array. Every honest gap must be an object with
+   a non-empty `gap` and a non-empty `reframes` array.
 
 2. **Stage-aware emphasis.** The `stage` variable shifts what to prioritise:
    - `agency` (third-party recruiter, ~30 min): culture-fit + logistics +
@@ -104,18 +113,19 @@ Hard rules:
    production. The closest verified bridge is [project], where I did
    [specific verified adjacent work]." Be honest, not self-flagellating.
 
-   Reframes must NOT claim Casey has already done the JD's exact unverified
-   work. For example, if the JD says "automated content upload systems" or
-   "AI-generated content pipeline", do not write "I have built automated
-   content upload systems" unless that phrase exists in verified_facts. Use
-   narrower verified bridges such as Shopify Liquid templates, HubSpot HubL
-   modules, GitHub Actions linting, bulk JSON migrations, API integrations,
-   or Ollama/local-LLM workflow only when those facts appear in verified_facts.
-   This same restriction applies to `likely_questions` beats and
-   `strongest_anchors`: do not write "zero errors", "replace manual uploads",
-   "scripts and API integrations", "pipelines running smoothly", or
-   "automated systems" as Casey-owned claims unless verified_facts contains
-   that exact work.
+   Reframe bullets must NOT claim Casey has already done the JD's exact
+   unverified work. For example, if the JD says "automated content upload
+   systems" or "AI-generated content pipeline", do not write "I have
+   built automated content upload systems" in any reframe bullet unless
+   that phrase exists in verified_facts. Use narrower verified bridges
+   such as Shopify Liquid templates, HubSpot HubL modules, GitHub Actions
+   linting, bulk JSON migrations, API integrations, or Ollama/local-LLM
+   workflow only when those facts appear in verified_facts. This same
+   restriction applies to every bullet inside `likely_questions[].beats`
+   and to `strongest_anchors`: do not write "zero errors", "replace
+   manual uploads", "scripts and API integrations", "pipelines running
+   smoothly", or "automated systems" as Casey-owned claims unless
+   verified_facts contains that exact work.
 
 6. **Banned phrases.** Same set as `cover.md` and `answer.md`. The
    deterministic validator auto-rejects these — using them wastes a retry:
@@ -180,13 +190,22 @@ Cover-letter draft (anchors already chosen): {cover_summary}
 - `role_decode`: 3-6 bullets, 12-30 words each.
 - `strongest_anchors`: 4-8 bullets, each a single sentence anchored on a
   real project + verified fact. Lead with the strongest match for THIS JD.
-- `likely_questions`: 4-8 entries. Beats are 1-2 sentences, naming the real
-  project to use.
+- `likely_questions`: 4-8 entries. Each entry's `beats` field is a list of
+  **3-5 talking-point bullets**, each ≤ 25 words. Bullets are stand-alone
+  talking points — Casey reads one bullet and has enough to speak for 15-30
+  seconds. Bullet 1 leads with the real project name (e.g. "Atelier Dacko
+  Shopify storefront — 14+ pages, 200+ SKUs"). Bullets 2-N add specifics
+  drawn from `verified_facts` (tools used, real numbers, follow-up framing,
+  adjacent project the question might pivot to). Each bullet must
+  independently stand up to the honesty validator — no shared verb
+  fragments split across bullets.
 - `questions_to_ask`: 4-6 entries. Specific, not generic.
-- `honest_gaps`: 2-4 entries. Reframe must lean on a real adjacent strength.
-  Prefer this structure: `gap`: "I have not shipped X specifically.";
-  `reframe`: "Closest verified bridge: [real project], where I [verified
-  adjacent work]."
+- `honest_gaps`: 2-4 entries. `reframes` is a list of **2-4 bullets**, each
+  ≤ 25 words. Bullet 1 acknowledges the gap honestly ("I have not shipped
+  X in production"). Bullet 2+ names the closest verified bridge with
+  project/tech specifics ("Closest verified bridge: [real project], where
+  I [verified adjacent work]"). Every bullet must lean on a real adjacent
+  strength — no generic confidence statements.
 {revisions}
 
 # Output format
