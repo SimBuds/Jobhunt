@@ -93,6 +93,12 @@ async def post_json(
             raise IngestError(f"{r.status_code} {url} (tenant auth-walled — skipping)")
         if r.status_code == 404:
             raise IngestError(f"404 {url}")
+        if r.status_code == 422:
+            # Workday tenants occasionally reject the empty-facet body or a
+            # paginated offset that walks past their dataset. Surface as an
+            # IngestError so _safe_stream marks the slug failed instead of
+            # killing the whole scan via an uncaught HTTPStatusError.
+            raise IngestError(f"422 {url} (body rejected — skipping)")
         r.raise_for_status()
         return r.json()
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")

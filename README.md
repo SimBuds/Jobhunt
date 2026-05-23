@@ -140,6 +140,46 @@ After a batch `apply --top N` or `apply --best` run, the tool prints a
 one-line summary: how many drafted / revised / blocked, plus the top
 warning categories seen across the batch.
 
+## Maintenance
+
+The pipeline is self-bootstrapping (auto-discovery on every scan), but a
+small amount of recurring hygiene keeps the slug list, cert intel, and
+follow-up queue honest.
+
+### Daily
+
+```bash
+jobhunt scan                       # pulls new jobs, scores them, auto-discovers new slugs
+jobhunt list --min-score 70        # high-fit subset
+jobhunt apply --best                # tailor + draft for the day's picks
+# …submit in browser, then:
+jobhunt apply --set-status applied <job-id>
+```
+
+If the scan summary shows `! <slug>: 404 …`, note the slug but don't
+panic — transient 404s happen. The weekly `config reprobe --prune` pass
+is the right place to act on it.
+
+### Weekly
+
+```bash
+jobhunt list --week 0                          # current-week pipeline rollup
+jobhunt list --no-reply --older-than 14d      # applications without a recruiter reply — nudge candidates
+jobhunt config reprobe --prune                 # re-probe every configured slug; prune dead ones (404s, dropped boards)
+jobhunt analyze response-rate --by score       # interview rate per score band — feedback on `pipeline.min_score`
+jobhunt analyze certs --trend --min-score 55   # cert intel + per-cert verdict
+jobhunt analyze employers --hiring-velocity    # surfaces configured-but-silent slugs as reprobe candidates
+jobhunt analyze validators                     # which cover-letter validators fired most — prune over-broad rules
+```
+
+`config reprobe --prune` is the safety valve for the 404s the scan
+summary keeps surfacing — it confirms each dead slug with a fresh probe
+before removing it, so transient outages don't drop real boards. Run
+`config reprobe` (no `--prune`) first if you want a preview.
+
+After ~20 applications, run `jobhunt config calibrate` to see the
+interview rate per score band and tune `[pipeline] min_score`.
+
 ## Commands
 
 Ten user-facing commands. Run `<command> --help` for full flags.
@@ -326,6 +366,29 @@ Manual fallbacks remain for cold-start and one-offs:
    responses are treated as misses. Staffing-agency names (Astra North,
    Targeted Talent, etc.) are filtered at the candidate stage and never
    hit the network.
+
+**Google dorking for Workday boards.** Workday slugs don't surface in
+Greenhouse/Lever/Ashby probes, and the auto-discovery pass can't infer
+them. Use Google search operators to uncover active Workday career pages
+in the GTA, then feed the URLs straight to `add`:
+
+```text
+site:myworkdayjobs.com "Toronto" "Software Engineer"
+```
+
+Grab the URLs Google returns (e.g.
+`https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers`) and pipe them into
+the CLI:
+
+```bash
+jobhunt add https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers
+```
+
+Vary the role keyword (`"Frontend"`, `"Full Stack"`, `"Web Developer"`)
+or city (`"Mississauga"`, `"Remote Canada"`) to surface more boards.
+Same trick works for the other ATS hosts — substitute
+`site:boards.greenhouse.io`, `site:jobs.lever.co`, `site:jobs.ashbyhq.com`,
+`site:apply.workable.com`, etc.
 
 After `apply --url <some-careers-page>`, the tool prints a `jobhunt add`
 suggestion if the URL belongs to an ATS you haven't configured yet —
