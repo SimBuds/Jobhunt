@@ -35,7 +35,7 @@ async def test_next_llm_phase_starts_before_current_io_completes(
 
     rec = _Recorder()
 
-    async def fake_llm_phase(cfg: Any, job: Any, *, verified: Any) -> Any:
+    async def fake_llm_phase(cfg: Any, job: Any, *, verified: Any, echo: Any = None) -> Any:
         rec.note(f"llm-start:{job.id}")
         await asyncio.sleep(0.05)
         rec.note(f"llm-end:{job.id}")
@@ -113,7 +113,7 @@ async def test_continue_prompt_no_stops_loop(
 
     rec = _Recorder()
 
-    async def fake_llm_phase(cfg: Any, job: Any, *, verified: Any) -> Any:
+    async def fake_llm_phase(cfg: Any, job: Any, *, verified: Any, echo: Any = None) -> Any:
         rec.note(f"llm-start:{job.id}")
         try:
             await asyncio.sleep(0.5)
