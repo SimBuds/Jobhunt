@@ -607,18 +607,32 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
     if not rows:
         return
 
+    # Job 0's LLM runs alone (no concurrent IO) — print live.
+    # Prefetched LLM phases for job 1+ buffer their output to avoid
+    # interleaving with the previous job's IO-phase prompts.
+    next_buf: list[tuple[str, bool]] | None = None
     next_llm: asyncio.Task[_LLMPhaseResult | None] = asyncio.create_task(
         _apply_llm_phase(cfg, _row_to_job(rows[0]), verified=verified)
     )
     for i, row in enumerate(rows):
         job = _row_to_job(row)
         phase = await next_llm
+        # Flush the prefetched LLM phase's buffered output (if any) now
+        # that it's this job's turn to be in the foreground.
+        if next_buf is not None:
+            for msg, err in next_buf:
+                typer.echo(msg, err=err)
+            next_buf = None
         # Kick off the *next* job's LLM phase BEFORE the current IO phase,
         # so the LLM is already running while the user reads/submits.
         if i + 1 < len(rows):
             next_job = _row_to_job(rows[i + 1])
+            buf: list[tuple[str, bool]] = []
+            def _buf_echo(msg: str = "", *, err: bool = False, _b: list[tuple[str, bool]] = buf) -> None:
+                _b.append((msg, err))
+            next_buf = buf
             next_llm = asyncio.create_task(
-                _apply_llm_phase(cfg, next_job, verified=verified)
+                _apply_llm_phase(cfg, next_job, verified=verified, echo=_buf_echo)
             )
 
         if phase is None:
@@ -685,8 +699,16 @@ class _LLMPhaseResult:
     early_exit: bool
 
 
+def _default_echo(msg: str = "", *, err: bool = False) -> None:
+    typer.echo(msg, err=err)
+
+
 async def _apply_llm_phase(
-    cfg: Config, job: Job, *, verified: dict[str, object]
+    cfg: Config,
+    job: Job,
+    *,
+    verified: dict[str, object],
+    echo: "callable[..., None]" = _default_echo,
 ) -> _LLMPhaseResult | None:
     """LLM-bound work for one job: tailor + cover + audit + write artifacts.
 
@@ -697,21 +719,21 @@ async def _apply_llm_phase(
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    typer.echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
-    typer.echo("    … tailoring resume (LLM, ~30–60s)")
+    echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
+    echo("    … tailoring resume (LLM, ~30–60s)")
     try:
         tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
             cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
         )
     except JobHuntError as e:
-        typer.echo(f"    ! tailor failed: {e}", err=True)
+        echo(f"    ! tailor failed: {e}", err=True)
         return None
     if tailor_attempts > 1:
         n = len(tailor_violations)
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
-        typer.echo(f"    tailor: {tailor_attempts} attempts ({tag})")
+        echo(f"    tailor: {tailor_attempts} attempts ({tag})")
 
-    typer.echo("    … writing cover letter (LLM, ~30s)")
+    echo("    … writing cover letter (LLM, ~30s)")
     try:
         cover, cover_violations, cover_attempts = await write_cover_with_retry(
             cfg, job,
@@ -720,12 +742,12 @@ async def _apply_llm_phase(
             max_attempts=cfg.pipeline.cover_retry_attempts,
         )
     except JobHuntError as e:
-        typer.echo(f"    ! cover letter failed: {e}", err=True)
+        echo(f"    ! cover letter failed: {e}", err=True)
         return None
     if cover_attempts > 1:
         n = len(cover_violations)
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
-        typer.echo(f"    cover: {cover_attempts} attempts ({tag})")
+        echo(f"    cover: {cover_attempts} attempts ({tag})")
 
     score_result = _load_score(cfg, job.id)
     try:
@@ -735,7 +757,7 @@ async def _apply_llm_phase(
             job_description=job.description, job_title=job.title,
         )
     except PipelineError as e:
-        typer.echo(f"    ! audit failed: {e}", err=True)
+        echo(f"    ! audit failed: {e}", err=True)
         return None
 
     audit_path = write_audit(out_dir, audit_result)
@@ -747,7 +769,7 @@ async def _apply_llm_phase(
         ),
         encoding="utf-8",
     )
-    typer.echo(
+    echo(
         f"    audit: verdict={audit_result.verdict} "
         f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
         f"missing={len(audit_result.missing_must_haves)} "
@@ -759,8 +781,8 @@ async def _apply_llm_phase(
     early_exit = audit_result.verdict == "block"
     if early_exit:
         for flag in audit_result.fabrication_flags:
-            typer.echo(f"    BLOCK: {flag}", err=True)
-        typer.echo(f"    + {audit_path.name} (see for details)")
+            echo(f"    BLOCK: {flag}", err=True)
+        echo(f"    + {audit_path.name} (see for details)")
 
     return _LLMPhaseResult(
         out_dir=out_dir,
