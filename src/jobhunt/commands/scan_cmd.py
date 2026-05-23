@@ -455,13 +455,26 @@ async def _ingest_all(
 
         with progress:
             overall = progress.add_task("ingest", total=len(adapters))
-            task_ids: list[TaskID] = []
+            # One progress row per source (not per slug) — collapses dozens of
+            # rows into ~5. Per-source state tracks slugs done/total + job count
+            # so the row description shows live aggregate progress.
+            source_totals: dict[str, int] = {}
+            for source, _label, _fetch in adapters:
+                source_totals[source] = source_totals.get(source, 0) + 1
+            source_state: dict[str, dict[str, int | TaskID]] = {}
+            for source, total in source_totals.items():
+                tid = progress.add_task(
+                    f"  {source} — 0/{total} slugs, 0 jobs",
+                    total=total,
+                    start=True,
+                )
+                source_state[source] = {"done": 0, "jobs": 0, "errors": 0,
+                                        "total": total, "tid": tid}
             streams: list[AsyncIterator[Job]] = []
             for source, label, fetch in adapters:
-                tid = progress.add_task(f"  {source}/{label}", total=None, start=True)
-                task_ids.append(tid)
                 streams.append(
-                    _safe_stream(source, label, fetch, progress, tid, overall, results)
+                    _safe_stream(source, label, fetch, progress, source_state,
+                                 overall, results)
                 )
 
             async def drain(stream: AsyncIterator[Job]) -> None:
@@ -538,39 +551,46 @@ def _dedup_key(job: Job) -> str:
     return f"{title_norm}:{company_norm}"
 
 
+def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID],
+                        source: str) -> None:
+    done = int(st["done"])
+    total = int(st["total"])
+    jobs = int(st["jobs"])
+    errs = int(st["errors"])
+    desc = f"  {source} — {done}/{total} slugs, {jobs} job(s)"
+    if errs:
+        desc += f", {errs} failed"
+    progress.update(st["tid"], description=desc, completed=done, total=total)
+
+
 async def _safe_stream(
     source: str,
     label: str,
     stream: AsyncIterator[Job],
     progress: Progress,
-    task_id: TaskID,
+    source_state: dict[str, dict[str, int | TaskID]],
     overall_id: TaskID,
     results: dict[tuple[str, str], tuple[int, str | None]],
 ) -> AsyncIterator[Job]:
     """Wrap an adapter so a failure on one source doesn't kill the whole scan,
-    while updating the rich progress display with live job counts."""
+    while updating an aggregate per-source progress row with live job counts."""
     n = 0
+    st = source_state[source]
     try:
         async for job in stream:
             n += 1
-            progress.update(task_id, description=f"  {source}/{label} — {n}")
+            st["jobs"] = int(st["jobs"]) + 1
+            _refresh_source_row(progress, st, source)
             yield job
     except IngestError as e:
-        progress.update(
-            task_id,
-            description=f"  {source}/{label} — error: {e}",
-            completed=1,
-            total=1,
-        )
+        st["errors"] = int(st["errors"]) + 1
+        st["done"] = int(st["done"]) + 1
+        _refresh_source_row(progress, st, source)
         progress.advance(overall_id)
         results[(source, label)] = (n, str(e))
         return
-    progress.update(
-        task_id,
-        description=f"  {source}/{label} — {n} job(s)",
-        completed=1,
-        total=1,
-    )
+    st["done"] = int(st["done"]) + 1
+    _refresh_source_row(progress, st, source)
     progress.advance(overall_id)
     results[(source, label)] = (n, None)
 
