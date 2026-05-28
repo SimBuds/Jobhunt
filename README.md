@@ -45,11 +45,12 @@ ollama pull qwen3.5:9b           # base model — all LLM tasks
 ollama pull nomic-embed-text     # embeddings (reserved for future use)
 ```
 
-Default model in config is `qwen-custom:latest` — a Modelfile-derived
-`qwen3.5:9b` baking in personal prompt context. If you haven't built the
-custom variant, set all `[gateway.tasks]` slots to `qwen3.5:9b` in
-`~/.config/jobhunt/config.toml`. See [AGENTS.md](AGENTS.md) Hardware
-context for the full rationale.
+Default model in config is base `qwen3.5:9b`. The gateway supplies its own task
+prompt and its own options — notably `num_ctx=16384` and `presence_penalty=0` —
+so behavior is defined in-repo and no custom Modelfile is needed. The
+`num_ctx=16384` is essential: these prompts exceed Ollama's 4096 default, and
+without it they truncate and the model returns prose instead of JSON. See
+[AGENTS.md](AGENTS.md) Hardware context for the full rationale.
 
 ### Ollama systemd settings
 
@@ -390,6 +391,13 @@ Same trick works for the other ATS hosts — substitute
 `site:boards.greenhouse.io`, `site:jobs.lever.co`, `site:jobs.ashbyhq.com`,
 `site:apply.workable.com`, etc.
 
+Once a Workday tenant is configured, large enterprise/banking boards
+(TD, BMO, NVIDIA, Capital One — thousands of global postings) are scanned
+with GTA-targeted `searchText` queries so Toronto/Remote-Canada roles
+aren't buried past the first scanned page; smaller Canada-centric boards
+keep the plain first-100 walk. No extra config — the adapter picks the
+strategy by board size.
+
 After `apply --url <some-careers-page>`, the tool prints a `jobhunt add`
 suggestion if the URL belongs to an ATS you haven't configured yet —
 slug acquisition as a byproduct of normal use.
@@ -485,9 +493,9 @@ base_url = "http://localhost:11434/v1"
 api_key  = "ollama"
 
 [gateway.tasks]
-score  = "qwen-custom:latest"
-tailor = "qwen-custom:latest"
-cover  = "qwen-custom:latest"
+score  = "qwen3.5:9b"
+tailor = "qwen3.5:9b"
+cover  = "qwen3.5:9b"
 embed  = "nomic-embed-text"
 
 [pipeline]
