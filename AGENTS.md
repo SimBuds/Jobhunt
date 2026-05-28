@@ -628,7 +628,14 @@ After `tailor_resume` + `write_cover`, `pipeline.audit.audit()` runs before
 to it without explicit discussion.
 
 1. **Keyword coverage** — JD must-haves (from the score result) must appear in
-   the tailored resume at ≥70 % (2026 ATS guideline). Verdict `revise` if below.
+   the tailored resume at ≥70 % (2026 ATS guideline). Verdict `revise` if below
+   the soft `MIN_KEYWORD_COVERAGE_PCT` threshold; verdict `block` if below the
+   hard `HARD_COVERAGE_FLOOR_PCT` floor (default 50). Sub-50% coverage means the
+   keyword screen will toss the resume before any human sees it, so the apply
+   loop skips the job rather than silently shipping noise. Added 2026-05-27
+   after the OCR/Tesseract case (manual:db425a17, score=72 but audit=0%) and the
+   ElectronJS/WebSocket case (manual:4bcf846a, 43%) both rendered as `revise`
+   and got submitted.
    When `scores.reasons` is empty (qwen3.5:9b often ships empty arrays despite
    the schema requiring them), `audit._extract_must_haves_from_jd` runs as a
    deterministic fallback — intersect verified skills with `job_title ∪
@@ -704,6 +711,21 @@ to it without explicit discussion.
      tech token + `concepts`. Legitimate uses ("The migration taught me
      concepts that…") pass because they don't open with the watch-listed
      verb phrase.
+   - **Overreach patterns (2026-05-27).** New `_OVERREACH_PATTERNS` tuple
+     catches *framing-level* capability claims that aren't single tech
+     tokens, so they slipped past `_FABRICATION_WATCHLIST`: `live data
+     streams`, `real-time streaming/processing`, `websockets`,
+     `event-driven architecture`, `streaming pipelines`, `distributed
+     systems`, `high-throughput`. Same suppression structure as the
+     fabrication watchlist — match in body, suppress if the phrase
+     appears in `_verified_skill_blob`, suppress if every occurrence is
+     in a `_NEGATION_PRECEDES_RE` context. Surface text:
+     `unverified capability claim: '<label>'` (rule_id
+     `unverified_capability` for `analyze validators`). Added after cover
+     `manual:4bcf846a` opened with "...applications in TypeScript,
+     Node.js, and Express that handle live data streams and complex user
+     workflows" — Casey has zero stream/real-time work verified, but the
+     existing watchlist only caught named libs, not capability framing.
    - **Digit-cluster boundary fix (Phase 9).** `_DIGIT_CLUSTER_RE` now
      excludes `_` on both sides of the cluster so underscore-joined tech
      tokens like `q5_0` (KV-cache quantization name, verified in

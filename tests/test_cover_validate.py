@@ -128,6 +128,82 @@ def test_claimed_tech_still_fires_fabrication(verified: dict) -> None:
     assert any("kafka" in v.lower() for v in violations)
 
 
+# --- overreach (framing-level capability claims) ---
+
+def test_overreach_live_data_streams_flagged(verified: dict) -> None:
+    """Mirrors cover #manual:4bcf846a — 'live data streams' isn't in any
+    verified bullet (Shopify/HubSpot CMS work), so the framing claim is an
+    unverified capability overreach."""
+    cover = _good_cover()
+    cover.body[0] = (
+        "I applied to Acme Corp after reading the role. I have two years "
+        "of experience building applications in TypeScript and Node.js that "
+        "handle live data streams and complex user workflows."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("unverified capability claim" in v and "live data streams" in v for v in violations)
+
+
+def test_overreach_websockets_flagged(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[2] = (
+        "I have built websockets-based dashboards for AI agency clients to "
+        "surface model output to non-technical users in real time."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("unverified capability claim" in v and "websockets" in v for v in violations)
+
+
+def test_overreach_clean_cover_passes(verified: dict) -> None:
+    """The fixture cover has no overreach phrases — it should not surface a
+    capability-claim violation."""
+    cover = _good_cover()
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("unverified capability claim" in v for v in violations)
+
+
+def test_overreach_negated_does_not_fire(verified: dict) -> None:
+    """A cover that explicitly disclaims the capability ('I haven't worked
+    with websockets') should NOT fire the overreach check, mirroring the
+    fabrication-watchlist negation suppression."""
+    cover = _good_cover()
+    cover.body[2] = (
+        "Although I haven't used websockets in production, my background in "
+        "API integration and async Node.js work is a close adjacency I can "
+        "ramp on quickly."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("unverified capability claim" in v for v in violations)
+
+
+def test_overreach_suppressed_if_verified(verified: dict) -> None:
+    """If a future verified.json mentions the capability (e.g. Casey adds a
+    real-time streaming project), the overreach check must NOT fire."""
+    verified_with_streams = dict(verified)
+    verified_with_streams["summary"] = (
+        verified.get("summary", "")
+        + " Built live data streams for an analytics dashboard."
+    )
+    cover = _good_cover()
+    cover.body[0] = (
+        "I applied to Acme Corp after reading the role. My recent work on "
+        "live data streams for an analytics dashboard maps onto the JD."
+    )
+    violations = validate_cover(
+        cover, verified=verified_with_streams, company="Acme Corp", max_words=280
+    )
+    assert not any("unverified capability claim" in v for v in violations)
+
+
+def test_overreach_categorized_for_analyze(verified: dict) -> None:
+    """The new violation message must categorize to a stable rule_id so
+    `analyze validators` can aggregate it across a window."""
+    from jobhunt.pipeline.cover_validate import categorize_violation
+
+    rid = categorize_violation("unverified capability claim: 'live data streams'")
+    assert rid == "unverified_capability"
+
+
 def test_company_with_separator_matched_partially(verified: dict) -> None:
     cover = _good_cover(company="PheedLoop")
     violations = validate_cover(

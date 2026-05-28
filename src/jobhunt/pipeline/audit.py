@@ -39,8 +39,13 @@ from jobhunt.pipeline.tailor import TailoredResume, _enforce_no_fabrication
 # to land canonical tech names; broadening there would create false positives.
 _SHORT_JD_THRESHOLD = 800
 
-# Coverage threshold (Scale.jobs 2026 ATS guidance: aim 70-80%).
+# Coverage threshold (Scale.jobs 2026 ATS guidance: aim 70-80%). Soft line —
+# below this triggers `revise`; the user can still ship.
 MIN_KEYWORD_COVERAGE_PCT = 70
+
+# Hard floor — below this the keyword screen will toss the resume before any
+# human sees it, so we escalate to `block` and apply_cmd skips the job.
+HARD_COVERAGE_FLOOR_PCT = 50
 
 
 @dataclass
@@ -286,6 +291,8 @@ def audit(
     alignment = _alignment_flags(tailored, cover)
 
     if fabrication_flags:
+        verdict = "block"
+    elif coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT:
         verdict = "block"
     elif (
         cover_violations

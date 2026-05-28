@@ -97,6 +97,27 @@ _SIGNOFF_TAIL_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Framing-level overreach: capability claims (architectural/data-shape phrases)
+# that aren't single tech tokens, so they slip past `_FABRICATION_WATCHLIST`.
+# Added 2026-05-27 after cover #manual:4bcf846a opened with "...applications in
+# TypeScript, Node.js, and Express that handle live data streams and complex
+# user workflows" — Casey has zero live-stream/real-time/WebSocket work in
+# verified.json. Each pattern is matched against the cover body; the violation
+# is suppressed if the matched phrase already appears in the verified-skill blob
+# (so legitimate work passes once added to verified.json) or in a negation
+# context (`_NEGATION_PRECEDES_RE`, mirrors the fabrication watchlist).
+# Keep this list scoped to recurring overreach categories — don't pile on tech
+# tokens here; those belong in `_FABRICATION_WATCHLIST`.
+_OVERREACH_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\blive[- ](?:data )?streams?\b", "live data streams"),
+    (r"\breal[- ]time (?:data )?(?:stream(?:ing)?|processing|pipelines?)\b", "real-time streaming/processing"),
+    (r"\bwebsockets?\b", "websockets"),
+    (r"\bevent[- ]driven (?:architectures?|systems?|designs?|pipelines?)\b", "event-driven architecture"),
+    (r"\bstreaming pipelines?\b", "streaming pipelines"),
+    (r"\bdistributed systems?\b", "distributed systems"),
+    (r"\bhigh[- ]throughput\b", "high-throughput claim"),
+)
+
 # Phrases that indicate the candidate is disclaiming a tech, not claiming it.
 # Used to suppress fabrication false-positives like "rather than Scala" or
 # "however, I don't have Kubernetes experience". May 2026 additions: "but i
@@ -428,6 +449,28 @@ def validate_cover(
             continue
         violations.append(f"unverified tech claim: {token!r}")
 
+    # Overreach: framing-level capability claims (live data streams, real-time
+    # streaming, websockets, etc.) absent from verified.json. Mirrors the
+    # fabrication-watchlist structure: word-boundary match in body, suppress
+    # if verified_blob already contains the phrase, suppress if every occurrence
+    # is in a negation context.
+    for pattern_str, label in _OVERREACH_PATTERNS:
+        pattern = re.compile(pattern_str, re.IGNORECASE)
+        matches = list(pattern.finditer(body))
+        if not matches:
+            continue
+        if pattern.search(verified_blob):
+            continue
+        all_negated = True
+        for m in matches:
+            window = body_lower[max(0, m.start() - 40) : m.start()]
+            if not _NEGATION_PRECEDES_RE.search(window):
+                all_negated = False
+                break
+        if all_negated:
+            continue
+        violations.append(f"unverified capability claim: {label!r}")
+
     return violations
 
 
@@ -445,6 +488,7 @@ _VIOLATION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("form-letter opener:", "banned_opener"),
     ("unverified number:", "unverified_number"),
     ("unverified tech claim:", "unverified_tech"),
+    ("unverified capability claim:", "unverified_capability"),
     ("body is", "word_count_over"),
     ("expected 3-4 paragraphs", "paragraph_count"),
     ("lead paragraph does not name company", "company_missing"),
