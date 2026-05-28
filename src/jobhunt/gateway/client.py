@@ -9,6 +9,34 @@ import httpx
 
 from jobhunt.errors import GatewayError
 
+# Options the app pins on every structured call so behavior is defined in-repo
+# and identical regardless of which model is configured. Two parts:
+#
+#   num_ctx: the score/tailor prompts run ~6k+ tokens. Ollama's default context
+#   is 4096 and OLLAMA_CONTEXT_LENGTH is NOT reliably set on this box, so without
+#   an explicit num_ctx the prompt is silently truncated to 4096 — the schema
+#   instruction falls off the end and the model emits prose instead of JSON.
+#   (qwen-custom only worked because it baked num_ctx 16384.) Pinning it here is
+#   what lets jobhunt run bare qwen3.5:9b. Keep aligned with MAX_DESC_CHARS /
+#   MAX_POLICY_CHARS in pipeline.score.
+#
+#   sampler params: qwen3.5:9b ships `presence_penalty 1.5` — Qwen's
+#   recommendation for *thinking/chat* mode, where it breaks reasoning-loop
+#   repetition. We run `think=false` emitting schema-constrained JSON, where that
+#   penalty is misapplied (it discourages the repeated tokens structured output
+#   needs: JSON field names, the verbatim JD keywords the tailor must echo), so
+#   we drop it to 0 and otherwise keep Qwen's recommended nucleus sampling.
+#
+# Override any of these per call via the `options` kwarg; the `temperature`
+# kwarg always wins.
+_DEFAULT_OPTIONS: dict[str, Any] = {
+    "num_ctx": 16384,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 0.0,
+}
+
 
 async def complete_json(
     *,
@@ -20,16 +48,21 @@ async def complete_json(
     temperature: float = 0.0,
     timeout_s: float = 240.0,
     keep_alive: str | int = -1,
+    options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send a chat completion to Ollama and return the parsed JSON object.
 
     `base_url` may end with `/v1` (OpenAI-compatible) or be a bare host. We hit the
     native /api/chat endpoint either way for the format-as-schema feature.
 
-    Context length is governed by the Ollama server (`OLLAMA_CONTEXT_LENGTH`),
-    not by this client — keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in
-    `pipeline.score` aligned with whatever the server is configured for so the
-    JD and policy aren't truncated for the score/tailor/cover slots.
+    Options are app-owned: `_DEFAULT_OPTIONS` is sent on every call so
+    structured-task behavior is defined in-repo, not by the model's Modelfile or
+    by server env. This includes `num_ctx=16384` (the prompts exceed Ollama's
+    4096 default; without it they truncate and the model emits prose) and
+    `presence_penalty=0` (qwen's chat/thinking default fights structured JSON).
+    Keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned with the
+    pinned `num_ctx`. Pass `options=` to override per call; the `temperature`
+    kwarg always wins.
 
     `keep_alive` defaults to `-1` (load forever) so the hot model stays resident
     across scan/apply runs without paying a 5-15 s reload. This matches the
@@ -50,7 +83,9 @@ async def complete_json(
         "format": schema,
         "think": False,
         "keep_alive": keep_alive,
-        "options": {"temperature": temperature},
+        # Per-call `options` override the app defaults; the explicit
+        # `temperature` kwarg always wins over either.
+        "options": {**_DEFAULT_OPTIONS, **(options or {}), "temperature": temperature},
     }
     async def _post(p: dict[str, Any]) -> str:
         try:

@@ -105,3 +105,58 @@ async def test_payload_includes_keep_alive(monkeypatch: pytest.MonkeyPatch) -> N
         schema={"type": "object"},
     )
     assert captured.get("keep_alive") == -1
+
+
+def _capture_handler(captured: dict):
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        captured.update(_json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": '{"ok": true}'}})
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_payload_pins_default_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app owns its options — every call ships num_ctx=16384 (prompts exceed
+    Ollama's 4096 default and would otherwise truncate to prose) plus
+    presence_penalty=0 and the Qwen nucleus set, so structured output doesn't
+    depend on the model's Modelfile or on server env."""
+    captured: dict = {}
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **kw: _client(_capture_handler(captured)))
+    await complete_json(
+        base_url="http://localhost:11434",
+        model="qwen3.5:9b",
+        system="s",
+        user="u",
+        schema={"type": "object"},
+    )
+    opts = captured.get("options") or {}
+    assert opts.get("num_ctx") == 16384
+    assert opts.get("presence_penalty") == 0
+    assert opts.get("top_p") == 0.95
+    assert opts.get("top_k") == 20
+    assert opts.get("min_p") == 0
+    assert opts.get("temperature") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_payload_options_override_and_temperature_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-call options override the defaults; the temperature kwarg beats both."""
+    captured: dict = {}
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **kw: _client(_capture_handler(captured)))
+    await complete_json(
+        base_url="http://localhost:11434",
+        model="qwen3.5:9b",
+        system="s",
+        user="u",
+        schema={"type": "object"},
+        temperature=0.7,
+        options={"presence_penalty": 0.3, "temperature": 0.1},
+    )
+    opts = captured.get("options") or {}
+    assert opts.get("presence_penalty") == 0.3  # per-call override beat default
+    assert opts.get("temperature") == 0.7  # kwarg beat the value inside options

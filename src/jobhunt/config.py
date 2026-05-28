@@ -82,16 +82,19 @@ class GatewayConfig(BaseModel):
     api_key: str = "ollama"
     tasks: dict[str, str] = Field(
         default_factory=lambda: {
-            # qwen-custom:latest — Modelfile-derived qwen3.5:9b with a baked
-            # prompt stack (personality, formatting, safety, memory, knowledge).
-            # Single hot model across score/tailor/cover slots; no reload churn.
-            # Baked SYSTEM prompt is overridden per-call by task prompts in
-            # kb/prompts/. Quality backed by deterministic post-processing layers
-            # (score clamp, cover validator + retry, audit) — no LLM QA pass.
-            "score": "qwen-custom:latest",
-            "tailor": "qwen-custom:latest",
-            "cover": "qwen-custom:latest",
-            "answer": "qwen-custom:latest",
+            # Base qwen3.5:9b. The gateway sends its own task prompt (overriding
+            # any Modelfile SYSTEM) and its own options (gateway _DEFAULT_OPTIONS),
+            # so behavior is fully defined in-repo — no custom Modelfile needed.
+            # The critical app-owned option is num_ctx=16384: these prompts run
+            # ~6k+ tokens and Ollama's 4096 default would truncate them into prose
+            # (qwen-custom only worked by baking num_ctx). Single hot model across
+            # all slots; no intra-scan reload churn. Quality backed by
+            # deterministic post-processing (score clamp, cover validator + retry,
+            # audit). (qwen-custom remains Casey's general chat model in ~/ai.)
+            "score": "qwen3.5:9b",
+            "tailor": "qwen3.5:9b",
+            "cover": "qwen3.5:9b",
+            "answer": "qwen3.5:9b",
             "embed": "nomic-embed-text",
         }
     )

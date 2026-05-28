@@ -9,6 +9,12 @@ with a small JSON body. Tenants are configured explicitly per company in
 `config.toml` — we never crawl to discover them. Targets the Toronto employer
 base (RBC, TD, BMO, CIBC, Scotia, Manulife, Sun Life, Telus, Bell, Rogers,
 Loblaw Digital, Thomson Reuters), most of which run on Workday.
+
+Scan strategy is adaptive (see `_scan`): small boards get a blank first-100
+walk, but large global boards (NVIDIA, Live Nation, Capital One) bury their
+handful of GTA roles past the first 100 unsorted postings, so they instead
+issue a union of GTA-targeted `searchText` queries. `is_gta_eligible` does the
+precise filtering in both branches.
 """
 
 from __future__ import annotations
@@ -29,6 +35,19 @@ from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
 from jobhunt.models import Job
 
 _PAGE_LIMIT = 20
+
+# Boards at or under this many total postings keep the blank first-100 scan —
+# their GTA roles surface early (Canada-centric tenants: TD, BMO, Moneris).
+# Larger global boards bury GTA roles past offset 100, so they switch to the
+# GTA search-term union below. See `_scan`.
+_BLANK_SCAN_MAX = 200
+
+# GTA-targeted CXS `searchText` queries for large boards — unioned, deduped, then
+# narrowed by `is_gta_eligible`. "Ontario" empirically returns a superset of
+# "Toronto", and "Remote, Canada" adds remote roles. "Canada" is deliberately
+# excluded: on some tenants it matched every posting (boilerplate), making it a
+# useless discriminator.
+_GTA_SEARCH_TERMS: tuple[str, ...] = ("Toronto", "Ontario", "Remote, Canada")
 
 # Per-tenant wall-clock budget. Workday tenants have no server-side GTA filter
 # and giants like RBC/TD paginate through hundreds of global postings before
@@ -130,6 +149,15 @@ def _location_text(item: dict[str, Any]) -> str | None:
     return loc if isinstance(loc, str) else None
 
 
+def _body(search_text: str, offset: int) -> dict[str, Any]:
+    return {
+        "appliedFacets": {},
+        "limit": _PAGE_LIMIT,
+        "offset": offset,
+        "searchText": search_text,
+    }
+
+
 async def fetch(
     client: httpx.AsyncClient, limiter: RateLimiter, spec: str, *, max_pages: int = 5
 ) -> AsyncIterator[Job]:
@@ -139,7 +167,7 @@ async def fetch(
 
     try:
         async with asyncio.timeout(_TENANT_BUDGET_SECONDS):
-            async for job in _paginate(client, limiter, url, base, tenant, host, max_pages):
+            async for job in _scan(client, limiter, url, base, tenant, host, max_pages):
                 yield job
     except TimeoutError as e:
         raise IngestError(
@@ -147,7 +175,7 @@ async def fetch(
         ) from e
 
 
-async def _paginate(
+async def _scan(
     client: httpx.AsyncClient,
     limiter: RateLimiter,
     url: str,
@@ -156,44 +184,105 @@ async def _paginate(
     host: str,
     max_pages: int,
 ) -> AsyncIterator[Job]:
+    """Adaptive scan: a blank first-100 walk for small boards, or a union of
+    GTA-targeted searchText queries for large ones.
+
+    A single `seen` set spans the whole tenant run so a posting surfaced under
+    multiple search terms (e.g. both "Toronto" and "Ontario") yields once.
+    """
+    seen: set[str] = set()
+
+    # One probe page reports the board size and doubles as page 0 of a blank scan.
+    first = await post_json(client, url, limiter, json_body=_body("", 0))
+    if not isinstance(first, dict):
+        return
+    total = first.get("total") or 0
+
+    if total <= _BLANK_SCAN_MAX:
+        async for job in _walk(
+            client, limiter, url, base, tenant, host, "", max_pages, seen, first_page=first
+        ):
+            yield job
+        return
+
+    for term in _GTA_SEARCH_TERMS:
+        async for job in _walk(client, limiter, url, base, tenant, host, term, max_pages, seen):
+            yield job
+
+
+async def _walk(
+    client: httpx.AsyncClient,
+    limiter: RateLimiter,
+    url: str,
+    base: str,
+    tenant: str,
+    host: str,
+    search_text: str,
+    max_pages: int,
+    seen: set[str],
+    *,
+    first_page: dict[str, Any] | None = None,
+) -> AsyncIterator[Job]:
+    """Paginate one searchText query, emitting deduped GTA-eligible jobs."""
     for page in range(max_pages):
-        body = {
-            "appliedFacets": {},
-            "limit": _PAGE_LIMIT,
-            "offset": page * _PAGE_LIMIT,
-            "searchText": "",
-        }
-        data = await post_json(client, url, limiter, json_body=body)
+        if page == 0 and first_page is not None:
+            data: Any = first_page
+        else:
+            data = await post_json(
+                client, url, limiter, json_body=_body(search_text, page * _PAGE_LIMIT)
+            )
         if not isinstance(data, dict):
             return
         postings = data.get("jobPostings") or []
         if not postings:
             return
         for p in postings:
-            location = _location_text(p)
-            if not is_gta_eligible(location):
-                continue
-            ext_path = p.get("externalPath") or ""
-            ext_id = ext_path.rsplit("/", 1)[-1] or p.get("bulletFields", [""])[0]
-            if not ext_id:
-                continue
-            posting_url = f"https://{tenant}.{host}.myworkdayjobs.com{ext_path}"
-            posted_at = _parse_posted_on(p.get("postedOn"))
-            description = p.get("shortDescription")
-            if not description or not str(description).strip():
-                description = await _fetch_description(client, limiter, base, ext_path)
-            yield Job(
-                id=f"workday:{tenant}:{ext_id}",
-                source="workday",
-                external_id=ext_id,
-                company=tenant,
-                title=p.get("title"),
-                location=location,
-                remote_type=classify_remote_type(location=location),
-                description=description,
-                url=posting_url,
-                posted_at=posted_at,
-                raw_json=json.dumps(p),
-            )
+            job = await _emit(client, limiter, base, tenant, host, p, seen)
+            if job is not None:
+                yield job
         if len(postings) < _PAGE_LIMIT:
             return
+
+
+async def _emit(
+    client: httpx.AsyncClient,
+    limiter: RateLimiter,
+    base: str,
+    tenant: str,
+    host: str,
+    posting: dict[str, Any],
+    seen: set[str],
+) -> Job | None:
+    """Turn one CXS posting into a Job, or None if non-GTA or already seen.
+
+    Dedup is keyed on externalPath so the same posting reached under different
+    search terms is emitted only once.
+    """
+    location = _location_text(posting)
+    if not is_gta_eligible(location):
+        return None
+    ext_path = posting.get("externalPath") or ""
+    ext_id = ext_path.rsplit("/", 1)[-1] or posting.get("bulletFields", [""])[0]
+    if not ext_id:
+        return None
+    dedup_key = ext_path or ext_id
+    if dedup_key in seen:
+        return None
+    seen.add(dedup_key)
+    posting_url = f"https://{tenant}.{host}.myworkdayjobs.com{ext_path}"
+    description = posting.get("shortDescription")
+    if not description or not str(description).strip():
+        description = await _fetch_description(client, limiter, base, ext_path)
+    return Job(
+        id=f"workday:{tenant}:{ext_id}",
+        source="workday",
+        external_id=ext_id,
+        company=tenant,
+        title=posting.get("title"),
+        location=location,
+        remote_type=classify_remote_type(location=location),
+        description=description,
+        url=posting_url,
+        posted_at=_parse_posted_on(posting.get("postedOn")),
+        raw_json=json.dumps(posting),
+    )

@@ -177,7 +177,7 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and the active model lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: `qwen-custom:latest` — a Modelfile-derived `qwen3.5:9b` that bakes in the user's personal prompt stack (persona, formatting, knowledge). The gateway always sends a system message, which overrides the Modelfile SYSTEM for structured tasks, so the persona doesn't bleed into scoring/tailoring/cover outputs. Bare `qwen3.5:9b` is the documented fallback if the custom variant isn't built — same base weights, same VRAM footprint, same quirks. All three task slots (score, tailor, cover) run the same hot model under whatever context length the Ollama server is configured for (`OLLAMA_CONTEXT_LENGTH`, currently 16384 — the gateway does not override per-call) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. `qwen-custom:latest` remains Casey's general chat model (`~/ai/`) but is no longer the jobhunt default. **The load-bearing app-owned option is `num_ctx=16384`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is *not* set on this box — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. qwen-custom historically masked this by baking `num_ctx 16384`; pinning it in the gateway is what makes bare `qwen3.5:9b` work (verified 2026-05-28: bare qwen + `num_ctx=16384` returns valid JSON byte-for-byte equal to qwen-custom). All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=16384` (keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
   Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default; preferred over q8_0 to leave headroom alongside Q4_K_M weights on a 10 GB card
@@ -500,6 +500,7 @@ top-level commands that touch scoring/listing/applying must call it too.
    - **Research/ML-title drop** via `ingest._filter.is_research_title`, opt-in via `cfg.ingest.drop_research_titles` (default False). Matches Applied / ML / AI / Research / Quant scientist|engineer|researcher + Data scientist|engineer|platform. Enable for frontend / CMS / full-stack profiles where these roles are never a fit.
    - **Senior-title drop** via `ingest._filter.is_senior_title`, gated by `cfg.applicant.include_senior_roles` (default True). When False, drops Senior / Sr. / Lead / Staff / Principal / Architect titles. Captured via the `jobhunt setup` wizard as a yes/no preference — no YoE inference is applied at ingest. Independent of `applicant.years_experience` (which feeds the score prompt, not the ingest filter).
    - **Freshness window** via `ingest._filter.is_within_age_window` — `cfg.ingest.max_age_days` (default 7) caps how stale a `posted_at` can be. CLI override via `jobhunt scan --max-age-days N`; 0 disables. As of Phase 5 the Workday adapter parses `postedOn` prose ("Posted 3 Days Ago" / "Yesterday" / "Today" / "30+ Days Ago") into a timestamp so Workday rows now respect the window; any future adapter that still can't infer a posted-at passes through.
+10. **Workday adaptive GTA scan** (`ingest.workday._scan`, May 2026). Workday's CXS `/jobs` endpoint has no server-side GTA filter, so the adapter applies `is_gta_eligible` client-side. A blank `searchText=""` scan only walks the first 100 postings (`max_pages=5 × _PAGE_LIMIT`); on large global tenants (NVIDIA ~2000, Live Nation ~1417, Capital One ~1571 postings) the handful of GTA roles sit past offset 100 and were silently missed. `_scan` now reads `total` from one probe page: boards `<= _BLANK_SCAN_MAX` (200) keep the blank walk (Canada-centric tenants like TD/BMO/Moneris surface GTA roles early — zero behavior change); larger boards issue a deduped union of `_GTA_SEARCH_TERMS` (`"Toronto"`, `"Ontario"`, `"Remote, Canada"`) so GTA roles land in the scanned window. `"Canada"` is deliberately excluded — it matched every posting on some tenants (boilerplate). `is_gta_eligible` is still the precision gate in both branches. Tuning lives in the two module constants (promote to `cfg.ingest` only if per-region tuning is ever needed). The reprobe/discover skip for Workday (CXS isn't a cheap probe) is unchanged.
 
 ## Browser automation rules — non-negotiable
 
@@ -526,14 +527,28 @@ top-level commands that touch scoring/listing/applying must call it too.
    model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
    before the scoring loop so the first real call doesn't pay cold-load on
    top of the 240 s gateway timeout.
-4. **Truncate inputs** to fit the Ollama server's context length
-   (`OLLAMA_CONTEXT_LENGTH`, currently 16384). The gateway does NOT send
-   `num_ctx` — the server env is the sole source of truth. The score/tailor
-   pipelines truncate description to `MAX_DESC_CHARS=20000` and policy to
-   `MAX_POLICY_CHARS=8000` — see `pipeline.score`. If you change
-   `OLLAMA_CONTEXT_LENGTH`, bump these in step so the prompts use the
-   additional room rather than leaving it idle.
+4. **Context length is app-owned** (2026-05-28). The gateway pins
+   `num_ctx=16384` in `_DEFAULT_OPTIONS` and sends it on every call. This is
+   deliberate: `OLLAMA_CONTEXT_LENGTH` is not reliably set on this box, Ollama's
+   default is 4096, and the score/tailor prompts run ~6k+ tokens — so relying on
+   the server env silently truncated prompts to 4096 and the model emitted prose
+   instead of schema JSON (only masked before because qwen-custom baked
+   `num_ctx 16384`). The score/tailor pipelines truncate description to
+   `MAX_DESC_CHARS=16000` and policy to `MAX_POLICY_CHARS=6000` — see
+   `pipeline.score`. If you change the pinned `num_ctx`, bump these in step so
+   the prompts use the room rather than overflowing it.
 5. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
+5a. **Options are app-owned** (2026-05-28). The gateway pins
+   `gateway.client._DEFAULT_OPTIONS` (`num_ctx=16384, top_p=0.95, top_k=20,
+   min_p=0, presence_penalty=0`) on every call so structured-task behavior is
+   defined in-repo, not by the model's Modelfile or server env. `num_ctx=16384`
+   is the load-bearing one (see item 4 — without it prompts truncate to 4096 and
+   the model emits prose). `presence_penalty=0` drops qwen3.5:9b's `1.5` chat/
+   thinking anti-repeat default, which fights the repeated tokens structured JSON
+   needs (field names, the verbatim JD keywords the tailor must echo). Together
+   these are what let jobhunt run bare `qwen3.5:9b` instead of a custom Modelfile.
+   Override per call via `complete_json(options=…)`; the `temperature` kwarg
+   always wins.
 6. **Honesty enforcement is structural.** The tailor pipeline's
    `_enforce_no_fabrication` rejects any role/employer/dates that diverge from
    `verified.json`, any skill not in `verified.json` (paren-substring tolerated),

@@ -153,6 +153,96 @@ guards.
 
 ---
 
+## Active plan — Workday CXS GTA-targeted scan
+
+### Phase 1 — Bias large Workday boards toward GTA roles via adaptive `searchText`
+
+**Goal:** Large Workday boards issue GTA-targeted `searchText` queries so their
+GTA roles aren't buried past the first 100 unsorted postings.
+
+**Files touched:**
+- `src/jobhunt/ingest/workday.py` — adaptive scan + constants.
+- `tests/test_ingest_adapters.py` — two new tests.
+- `AGENTS.md`, `README.md` — behavior docs.
+
+**Functions changed:**
+- `workday._scan` (renamed from `_paginate`) — add — reads `total` from a probe
+  page; ≤ `_BLANK_SCAN_MAX` (200) → blank walk (reuses probe as page 0), else
+  union of `_GTA_SEARCH_TERMS` deduped across terms.
+- `workday._walk`, `workday._emit`, `workday._body` — add — single-term
+  pagination, posting→Job emission with externalPath dedup, request-body builder.
+- `workday.fetch` — change — calls `_scan`; public signature unchanged.
+
+**Status:** [x] **done** 2026-05-28. Verified live first (2026-05-28): blank-scan
+missed NVIDIA (0/16 Toronto), Live Nation (0/26), Capital One (6/53). Root cause:
+`searchText=""` + first-100 walk on multi-thousand-posting global boards. Probing
+showed `"Ontario"` ⊇ `"Toronto"`, `"Remote, Canada"` adds remote, `"Canada"`
+useless (matched all 1571 Capital One postings). Added `_BLANK_SCAN_MAX = 200`
+and `_GTA_SEARCH_TERMS = ("Toronto", "Ontario", "Remote, Canada")` constants;
+refactored `_paginate` → `_scan`/`_walk`/`_emit`/`_body` with a tenant-wide
+`seen` set for cross-term dedup. 2 new tests (small-board blank branch never
+issues a term; large-board term union dedupes a cross-term posting + drops NY).
+Full pytest: 683 passed; `mypy --strict` clean on workday.py; no new ruff debt.
+AGENTS.md §"Ingestion rules" item 10 + README dorking section updated.
+
+**Deferred (follow-up phase if ever needed):** promote `_GTA_SEARCH_TERMS` /
+`_BLANK_SCAN_MAX` to `cfg.ingest` for per-region tuning — currently module
+constants matching `_PAGE_LIMIT` / `_TENANT_BUDGET_SECONDS` style.
+
+---
+
+## Active plan — base qwen3.5:9b + app-owned options (num_ctx + samplers)
+
+### Phase 1 — Pin app-owned options in the gateway and run base qwen3.5:9b
+
+**Goal:** the gateway supplies its own options (`num_ctx` + sampler params) on
+every call so structured-task behavior is defined in-repo, letting jobhunt run
+bare `qwen3.5:9b`.
+
+**Files touched:**
+- `src/jobhunt/gateway/client.py` — `_DEFAULT_OPTIONS` + `options` kwarg + merge.
+- `src/jobhunt/config.py` + `~/.config/jobhunt/config.toml` — model → `qwen3.5:9b`.
+- `tests/test_gateway_errors.py` — two payload-options tests.
+- `AGENTS.md`, `README.md` — model + options docs.
+
+**Reuse audit:** reused the existing `payload["options"]` dict + temperature-merge
+shape and the `test_payload_includes_keep_alive` body-capture pattern; no new util.
+
+**Investigation note (the long way round).** First hypothesis (presence_penalty
+1.5 hurts structured JSON) was only *harmless*, not helpful — A/B on qwen-custom
+showed 0/8 score divergence at pp 1.5 vs 0. Switching to bare qwen then returned
+prose; first blamed the missing `RENDERER`/`PARSER` Modelfile extras, but a
+minimal extras-only model ALSO returned prose. Real root cause (verified
+2026-05-28): **`OLLAMA_CONTEXT_LENGTH` is unset**, Ollama defaults to 4096, the
+score prompt is ~6.3k tokens → it truncated to 4096 (`prompt_eval=4096`), the
+schema instruction fell off, and the model rambled. bare `qwen3.5:9b` +
+`num_ctx=16384` → valid JSON (`prompt_eval=9152`), byte-identical to qwen-custom.
+qwen-custom only ever worked because it baked `num_ctx 16384`.
+
+**Status:** [x] **done** 2026-05-28. `_DEFAULT_OPTIONS = {num_ctx 16384, top_p
+0.95, top_k 20, min_p 0, presence_penalty 0}` merged as `{**defaults, **(options
+or {}), "temperature": temperature}`. Model → `qwen3.5:9b` (config.py +
+config.toml). 2 gateway tests (default options incl. num_ctx=16384 pinned;
+per-call override + temperature precedence). Reversed the prior "gateway does NOT
+send num_ctx / server owns context" guidance in AGENTS.md rule 4 + 5a + Hardware
+context + README. App-side only — `OLLAMA_CONTEXT_LENGTH` systemd env left
+untouched per user. Full pytest: see verification.
+
+**Verification done** 2026-05-28. Full pytest 685 passed; no new ruff/mypy debt
+(file's pre-existing `_post` no-any-return + test `I001` only). Score A/B
+(pp 1.5 vs 0, temp 0): 0/8 divergence — harmless. Cover+tailor A/B on bare
+qwen3.5:9b (temps 0.7/0.3): cover 4/4 valid both arms, distinct-word ratio
+0.694→0.737 and repeated-trigrams 1.5→0.0 at pp=0 (i.e. *less* repetitive, not
+more); identical tailor FabricationErrors across arms (honesty guard, not
+penalty). End-to-end `jobhunt apply greenhouse:dialpad:8512122002 --no-browser`
+on bare qwen3.5:9b → `verdict=ship`, 0 cover violations, both .docx rendered.
+
+**Deferred (Phase 2, conditional):** per-task frontmatter `options` →
+`Prompt.options` → pipeline pass-through, only if the eval shows a task wants a
+non-default value.
+
+---
+
 ## Phase template
 
 Copy this block for each phase of an approved plan. One phase = one atomic,

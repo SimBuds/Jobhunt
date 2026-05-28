@@ -303,6 +303,85 @@ def test_workday_fixture_populates_posted_at() -> None:
     assert all(t is not None for t in parsed)
 
 
+# Phase: adaptive GTA-term scan (drive fetch() with a mocked post_json)
+
+
+def _wd_posting(ext: str, title: str, location: str) -> dict[str, Any]:
+    # non-empty shortDescription so _emit doesn't trigger a detail get_json call
+    return {
+        "externalPath": f"/job/{ext}",
+        "title": title,
+        "locationsText": location,
+        "shortDescription": "desc",
+        "postedOn": "Posted Today",
+    }
+
+
+def test_workday_blank_scan_small_board(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Boards <= _BLANK_SCAN_MAX keep the blank first-100 walk and never issue a
+    GTA search term."""
+    from jobhunt.ingest import workday
+
+    seen_terms: list[str] = []
+
+    async def fake_post_json(*args: Any, json_body: Any, **kwargs: Any) -> Any:
+        seen_terms.append(json_body["searchText"])
+        return {
+            "total": 10,
+            "jobPostings": [
+                _wd_posting("A", "Frontend Developer", "Toronto, ON"),
+                _wd_posting("NY", "Backend Engineer", "New York, NY"),
+            ],
+        }
+
+    monkeypatch.setattr(workday, "post_json", fake_post_json)
+    jobs = _drain(workday.fetch(client=None, limiter=None, spec="acme:wd1:Careers"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    assert "Frontend Developer" in titles
+    assert "Backend Engineer" not in titles  # NY dropped by is_gta_eligible
+    assert set(seen_terms) == {""}  # only the blank probe — no GTA term query
+    first = next(j for j in jobs if j.title == "Frontend Developer")
+    assert first.id == "workday:acme:A"
+    assert first.source == "workday"
+
+
+def test_workday_term_scan_large_board_dedupes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Boards > _BLANK_SCAN_MAX switch to the GTA search-term union; a posting
+    surfaced under two terms is emitted once and the probe page isn't walked."""
+    from jobhunt.ingest import workday
+
+    pages = {
+        "Toronto": [
+            _wd_posting("A", "React Developer", "Toronto, ON"),
+            _wd_posting("NY", "Backend Engineer", "New York, NY"),
+        ],
+        "Ontario": [
+            _wd_posting("A", "React Developer", "Toronto, ON"),  # dup of the Toronto hit
+            _wd_posting("B", "Vue Developer", "Mississauga, ON"),
+        ],
+        "Remote, Canada": [],
+    }
+
+    async def fake_post_json(*args: Any, json_body: Any, **kwargs: Any) -> Any:
+        term = json_body["searchText"]
+        if term == "":  # size probe — big board, page must NOT be walked in term mode
+            return {"total": 900, "jobPostings": [_wd_posting("Z", "Ignored", "New York, NY")]}
+        return {"total": 50, "jobPostings": pages.get(term, [])}
+
+    monkeypatch.setattr(workday, "post_json", fake_post_json)
+    jobs = _drain(workday.fetch(client=None, limiter=None, spec="big:wd5:Careers"))  # type: ignore[arg-type]
+
+    titles = [j.title for j in jobs]
+    ids = [j.id for j in jobs]
+    assert titles.count("React Developer") == 1  # under both Toronto + Ontario → emitted once
+    assert "Vue Developer" in titles
+    assert "Backend Engineer" not in titles  # NY dropped
+    assert "Ignored" not in titles  # probe page never walked in term mode
+    assert ids.count("workday:big:A") == 1
+    assert len(jobs) == 2
+
+
 # ---------------------------------------------------------------------------
 # workable adapter
 # ---------------------------------------------------------------------------
