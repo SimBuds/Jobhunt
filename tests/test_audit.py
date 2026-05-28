@@ -155,18 +155,53 @@ def test_audit_ship(verified: dict) -> None:
     assert result.fabrication_flags == []
 
 
-def test_audit_revise_on_low_coverage(verified: dict) -> None:
-    score_missing = _score(must_haves=["Angular", "Vue", "Kubernetes", "Terraform", "Go"])
+def test_audit_revise_on_borderline_coverage(verified: dict) -> None:
+    # 3 of 5 must-haves matched (60%) — below soft 70 floor, above hard 50 floor → revise.
+    score_borderline = _score(must_haves=["TypeScript", "React", "Node.js", "Terraform", "Go"])
     result = audit(
         tailored=_minimal_tailored(verified),
         cover=_good_cover(),
-        score=score_missing,
+        score=score_borderline,
         verified=verified,
         company="Acme Corp",
         cover_max_words=280,
     )
     assert result.verdict == "revise"
-    assert result.keyword_coverage_pct < 70
+    assert result.keyword_coverage_pct is not None
+    assert 50 <= result.keyword_coverage_pct < 70
+
+
+def test_audit_block_on_below_hard_floor_coverage(verified: dict) -> None:
+    # 1 of 5 must-haves matched (20%) — below the 50% hard floor → block.
+    # Submitting at this coverage is invisible to the keyword screen.
+    score_failing = _score(must_haves=["TypeScript", "Terraform", "Go", "Rust", "Kubernetes"])
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=score_failing,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+    )
+    assert result.verdict == "block"
+    assert result.keyword_coverage_pct is not None
+    assert result.keyword_coverage_pct < 50
+
+
+def test_audit_block_on_zero_coverage(verified: dict) -> None:
+    # 0 of 5 must-haves matched (0%) — the OCR/Tesseract/Airflow case from
+    # the 2026-05-27 audit. Tailor can't fabricate, screen will toss it.
+    score_zero = _score(must_haves=["Tesseract", "Airflow", "Temporal", "Go", "Rust"])
+    result = audit(
+        tailored=_minimal_tailored(verified),
+        cover=_good_cover(),
+        score=score_zero,
+        verified=verified,
+        company="Acme Corp",
+        cover_max_words=280,
+    )
+    assert result.verdict == "block"
+    assert result.keyword_coverage_pct == 0
 
 
 def test_audit_revise_on_cover_violation(verified: dict) -> None:
