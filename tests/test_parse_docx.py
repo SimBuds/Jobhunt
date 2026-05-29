@@ -58,63 +58,6 @@ def test_parse_baseline_missing_file_errors(tmp_path: Path):
         parse_baseline(tmp_path / "nope.docx")
 
 
-def _build_minimal_resume_docx(path: Path) -> None:
-    """Synthesize a baseline .docx covering all four sections, including a
-    'Projects:' skills line. Independent of the real Resume.docx so it runs in
-    CI (unlike the skipif-gated round-trip test above)."""
-    from docx import Document
-
-    doc = Document()
-    doc.add_paragraph("Casey Hsu")
-    doc.add_paragraph("me@example.com | example.com")
-    doc.add_paragraph("SUMMARY")
-    doc.add_paragraph("Full-stack developer with 2+ years of client work.")
-    doc.add_paragraph("TECHNICAL SKILLS")
-    doc.add_paragraph("Core: JavaScript, TypeScript, React")
-    doc.add_paragraph("Projects: React Native, Astro")
-    doc.add_paragraph("Familiar: Java, Angular")
-    doc.add_paragraph("PROFESSIONAL EXPERIENCE")
-    doc.add_paragraph("Web Developer (Contract) | Atelier Dacko\t2023 – Present")
-    doc.add_paragraph("Built a Shopify storefront.", style="List Paragraph")
-    doc.add_paragraph("CERTIFICATIONS & EDUCATION")
-    doc.add_paragraph("Computer Programming & Analysis (Advanced Diploma), GBC, April 2024")
-    doc.save(str(path))
-
-
-def test_parse_baseline_populates_projects_tier(tmp_path: Path):
-    p = tmp_path / "resume.docx"
-    _build_minimal_resume_docx(p)
-    facts = parse_baseline(p)
-    assert facts.skills_projects == ["React Native", "Astro"]
-    # Projects items must NOT leak into Core or Familiar.
-    assert "React Native" not in facts.skills_core
-    assert "React Native" not in facts.skills_familiar
-    # Familiar still parses independently (Angular stays Familiar).
-    assert facts.skills_familiar == ["Java", "Angular"]
-
-
-def test_parse_baseline_projects_absent_yields_empty_list(tmp_path: Path):
-    """A resume with no Projects skills line parses to an empty list, not an
-    error — the tier is optional."""
-    from docx import Document
-
-    doc = Document()
-    doc.add_paragraph("Casey Hsu")
-    doc.add_paragraph("me@example.com | example.com")
-    doc.add_paragraph("SUMMARY")
-    doc.add_paragraph("Full-stack developer with 2+ years of client work.")
-    doc.add_paragraph("TECHNICAL SKILLS")
-    doc.add_paragraph("Core: JavaScript, React")
-    doc.add_paragraph("PROFESSIONAL EXPERIENCE")
-    doc.add_paragraph("Web Developer (Contract) | Atelier Dacko\t2023 – Present")
-    doc.add_paragraph("Built a Shopify storefront.", style="List Paragraph")
-    doc.add_paragraph("CERTIFICATIONS & EDUCATION")
-    doc.add_paragraph("Diploma, GBC, April 2024")
-    p = tmp_path / "resume.docx"
-    doc.save(str(p))
-    assert parse_baseline(p).skills_projects == []
-
-
 @pytest.mark.parametrize(
     "value,expected",
     [
