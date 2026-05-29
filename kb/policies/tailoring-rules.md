@@ -8,12 +8,19 @@ a trimmed, prompt-injectable mirror — keep it short. Update both when rules ch
 - Use **only** facts present in `kb/profile/verified.json`. If a JD asks for something
   not there, name it as a gap — never invent.
 - Do not invent metrics, employers, dates, projects, or skills.
-- Do not promote a "Familiar" skill into a Core/primary category. Casey's Familiar
-  bucket is: Java, Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma.
+- Do not promote a "Familiar" skill into a Core/primary or Projects category.
+  Casey's Familiar bucket is: Java, Spring Boot, Angular, MCP Servers,
+  Agile/Scrum, Headless Architecture, Figma.
 - Python is **Core (data/devops)**, not Familiar — Casey writes and operates this CLI
   daily. Do not list Python under Familiar.
 - Java and Spring Boot are **Familiar** (GBC coursework only); do not promote to Core
-  even if the JD asks. Name as gap if must-have.
+  even if the JD asks. Name as gap if must-have. **Angular** is Familiar too
+  (least-used); do not promote to Core or Projects.
+- **Projects tier** (`skills_projects`: React Native, Astro) is substantial
+  school/personal-project depth — NOT paid-career. It MAY be used for JD
+  matching and summary mentions, but only in a category named exactly
+  "Projects" (after stack categories, before Familiar) and framed as project
+  work in the summary — never as paid-client experience, never in `roles`.
 - Do not fabricate a job title Casey has not held (no Senior/Staff/Lead/Principal/Architect).
 
 ## Reframe-only adjustments (allowed)
@@ -23,6 +30,10 @@ a trimmed, prompt-injectable mirror — keep it short. Update both when rules ch
 - **Use the JD's surface form** for known tech keywords. JD writes "Postgres" /
   "JS" / "GH Actions" / "Node" → the tailored bullet uses that exact form, not
   the verified.json long form. AI-screeners score on substring presence.
+- **React umbrella.** Verified Core skill `React (Redux, React Native)` covers
+  the React ecosystem. Render as just "React" by default; surface "Redux" or
+  "React Native" as explicit items ONLY when the JD names them. They are
+  Core-grade when surfaced — never a separate Redux item, never Familiar.
 - **First skills-category matches the JD's primary stack.** Frontend role →
   lead with a category named for frontend; backend role → lead with backend;
   CMS → CMS; AI/LLM → AI tooling. `Familiar` bucket is always last.

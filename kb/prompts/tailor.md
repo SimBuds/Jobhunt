@@ -49,6 +49,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
    dates, projects, or skills.
 2. Do NOT promote a "Familiar" skill into a Core/primary category. Familiar
    skills can appear ONLY in a category named exactly "Familiar".
+2a. `verified_facts.skills_projects` is a real middle tier (substantial
+   school/personal-project depth, NOT paid-career work). These items MAY be
+   used for JD matching and summary mentions, but they MUST live in a category
+   named exactly "Projects" (placed after the stack categories and before
+   "Familiar") — never folded into a paid-stack category and never claimed as
+   employer work in `roles`. Do not invent a Projects item not in
+   `skills_projects`.
 3. Roles list MUST contain EVERY role in verified_facts.work_history with the
    exact same `employer` and `dates`. You may reword `title` slightly only if
    the verified title is preserved in meaning. **Bullets must be actively
@@ -90,8 +97,11 @@ Hard rules (from kb/policies/tailoring-rules.md):
       does call for those signals, the clause comes last and is ≤1 short
       clause; never the first sentence or lead frame.
    d. Tech-stack name-drops in the summary must come from
-      `verified_facts.skills_core` ∪ `verified_facts.skills_cms` only — never
-      from `skills_familiar`.
+      `verified_facts.skills_core` ∪ `verified_facts.skills_cms` ∪
+      `verified_facts.skills_projects` only — never from `skills_familiar`.
+      When name-dropping a `skills_projects` item in the summary, frame it as
+      project/portfolio work (e.g. "…with React Native in personal projects"),
+      not as paid-client experience.
    e. If the JD mentions AI, ML, LLM, generative AI, RAG, prompt engineering,
       or "modern tooling", the summary's first OR second sentence MUST surface
       Casey's local LLM / Ollama / GPU / prompt-engineering work — do NOT
@@ -120,10 +130,19 @@ Hard rules (from kb/policies/tailoring-rules.md):
    | Headless CMS | Contentful (Certified Professional) | "Headless CMS (Contentful)" |
    | REST APIs | RESTful APIs | "REST APIs" |
    | Node | Node.js | "Node" |
+   | Redux | React (Redux, React Native) | "Redux" |
+   | React Native | React (Redux, React Native) | "React Native" |
 
    Same fact; the JD's wording. This rule applies inside `bullets`, `summary`,
    and `skills_categories.items`. Do NOT invert it — do not use the JD form
    if `verified.json` has no underlying fact.
+
+   **React umbrella.** The verified Core skill `React (Redux, React Native)`
+   bundles the React ecosystem. By default render it as just **"React"** — do
+   NOT list "Redux" or "React Native" as separate skill items. Surface "Redux"
+   or "React Native" explicitly (in `skills_categories.items` or a bullet) ONLY
+   when the JD names that exact technology. They are Core-grade when surfaced
+   (never Familiar, never a separate Projects item).
 10. **Skills-category priority and size.** The first category in
     `skills_categories` MUST be the one most relevant to the JD's primary
     stack. Examples:
@@ -133,8 +152,10 @@ Hard rules (from kb/policies/tailoring-rules.md):
       `Node & Data`.
     - CMS role → first category named e.g. `CMS & E-commerce`.
     - AI/LLM role → first category named e.g. `AI & LLM Tooling`.
-    The `Familiar` bucket is ALWAYS last. Item order *within* the first
-    category surfaces the JD's specific keywords first. This is what
+    The `Projects` bucket (if `skills_projects` items are relevant to the JD)
+    sits after the stack categories and before `Familiar`; it is NEVER the
+    lead category. The `Familiar` bucket is ALWAYS last. Item order *within*
+    the first category surfaces the JD's specific keywords first. This is what
     survives the AI-screener's first-200-token budget.
 
     **Per-category size limits** (May 2026). Do NOT cram every verified

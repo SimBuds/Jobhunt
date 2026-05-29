@@ -245,7 +245,10 @@ def test_audit_falls_back_to_jd_when_score_must_haves_empty(verified: dict) -> N
     )
     assert result.keyword_coverage_pct is not None
     assert "TypeScript" in result.matched_keywords
-    assert "React" in result.matched_keywords
+    # React is matched; its verified label is the umbrella "React (Redux,
+    # React Native)" (audit lists the full verified skill form, as it does for
+    # "Shopify (Liquid, Custom Themes)").
+    assert any("React" in k for k in result.matched_keywords)
 
 
 def test_audit_short_jd_uses_peer_families(verified: dict) -> None:

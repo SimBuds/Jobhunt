@@ -37,13 +37,19 @@ Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
 ### Skills Casey actually uses (Core / production)
 
-JavaScript (ES6+), TypeScript, React, Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes, apps), Shopify App Development, HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (cache, flash attention), prompt engineering, Claude Code CLI, OpenAI Codex, Stripe integration, Google Tag Manager.
+JavaScript (ES6+), TypeScript, React (Redux, React Native), Next.js, Node.js, Express, HTML5, CSS3/Sass, RESTful APIs, Shopify (Liquid, custom themes, apps), Shopify App Development, HubSpot CMS (HubL, CRM integration), WordPress (Elementor), Contentful (Certified Professional), MongoDB, MySQL, PostgreSQL, Docker, Git, GitHub Actions CI/CD, Jest, Playwright, AWS, Azure, Python (daily for tooling, including this CLI), Ollama (local LLM hosting), GPU optimization (cache, flash attention), prompt engineering, Claude Code CLI, OpenAI Codex, Stripe integration, Google Tag Manager.
+
+**React umbrella:** `React (Redux, React Native)` is one Core skill covering the React ecosystem. Render as just "React" by default; surface "Redux" or "React Native" as explicit items ONLY when the JD names them (they are Core-grade when surfaced, never a separate Redux item, never Familiar).
 
 The **AI & Tooling row in `Resume.docx`** is the canonical source of truth for the tools Casey uses daily. Keep it in sync with this list whenever you add or remove a daily-use tool. Deep implementation details (e.g. specific quantization names like `q5_0`) belong in project descriptions or cover notes, not the docx skills row — they over-specify for a recruiter glance.
 
+### Skills Casey has from projects (school / personal — the "Projects" tier)
+
+Astro (personal site caseyhsu.com). Substantial depth from **personal projects**, not paid-career work — but real and usable. MAY be used for JD matching and surfaced in the summary (framed as project/portfolio work). In the resume skills block it lives in a category named exactly **"Projects"** (placed after the stack categories, before Familiar) and is never claimed as paid-client experience or listed under a paid role. This is the honest middle tier between Core (paid production) and Familiar (light/academic). (React Native is NOT here — it's covered by the React umbrella in Core.)
+
 ### Skills Casey is "Familiar" with (academic / light use)
 
-Java, Spring Boot, MCP (Model Context Protocol) Servers, Agile/Scrum, Headless Architecture, Figma. **Do not promote these to "Proficient" or "Strong."** They can be elevated honestly when the job requires them — see Section 4.
+Java, Spring Boot, Angular, MCP (Model Context Protocol) Servers, Agile/Scrum, Headless Architecture, Figma. **Do not promote these to "Proficient" or "Strong," nor into Core or Projects.** Angular is Familiar (least-used). They can be elevated honestly when the job requires them — see Section 4.
 
 SEO is technical-only (audits, security hardening) and lives in work-history bullets, not as a top-line skill.
 
@@ -138,7 +144,8 @@ Follow this order. Do not skip steps.
    - The **`Familiar` bucket is always last.**
    - Drop categories that are irrelevant clutter for the target role (e.g., for a backend role, "CMS & E-Commerce" can be demoted to a single line at the bottom).
    - **Category sizes:** first (most-JD-relevant) category should be 6–10 items; secondary categories 4–8; `Familiar` ≥4. Don't cram every Core/DevOps skill into the lead — a 16-item lead reads like a keyword wall to a human reviewer, and the ATS already scores at 8 items.
-   - Never promote a "Familiar" skill (Java, Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma) into a primary category. Honesty signal stays.
+   - Never promote a "Familiar" skill (Java, Spring Boot, Angular, MCP Servers, Agile/Scrum, Headless Architecture, Figma) into a primary or Projects category. Honesty signal stays.
+   - The **`Projects` tier** (Astro) may be surfaced for relevant JDs in a category named exactly "Projects" (after stack categories, before Familiar) and framed as project work in the summary — never as paid experience.
 
 6. **Re-emphasize bullet points, do not invent.**
    - You may reorder bullets within a job to put the most relevant first.

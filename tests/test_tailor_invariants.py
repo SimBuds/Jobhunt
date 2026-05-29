@@ -20,6 +20,7 @@ VERIFIED = {
     "skills_cms": ["Shopify (Liquid, Custom Themes)"],
     "skills_data_devops": ["Docker"],
     "skills_ai": ["Local LLM hosting with Ollama"],
+    "skills_projects": ["React Native", "Astro"],
     "skills_familiar": ["Java", "Python"],
 }
 
@@ -90,6 +91,43 @@ def test_rejects_invented_skill():
         _enforce_no_fabrication(bad, VERIFIED)
 
 
+def test_react_umbrella_accepts_redux_and_native():
+    """React umbrella: verified 'React (Redux, React Native)' accepts tailored
+    'Redux' and 'React Native' (identity-subset), so Redux-required JDs tailor
+    cleanly without a standalone Redux verified item. Unverified React supersets
+    are still rejected."""
+    verified = dict(VERIFIED)
+    verified["skills_core"] = ["JavaScript", "TypeScript", "React (Redux, React Native)"]
+    for surfaced in ("Redux", "React Native", "React"):
+        ok = _make(
+            skills_categories=[
+                TailoredCategory("Frontend", ["JavaScript", surfaced]),
+                TailoredCategory("Familiar", ["Java"]),
+            ]
+        )
+        _enforce_no_fabrication(ok, verified)
+    bad = _make(
+        skills_categories=[
+            TailoredCategory("Frontend", ["React Server Components"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    with pytest.raises(PipelineError, match="not in verified"):
+        _enforce_no_fabrication(bad, verified)
+
+
+def test_allows_projects_skill_in_non_familiar_category():
+    # skills_projects is a verified tier; its items may appear in any
+    # non-Familiar category (unlike Familiar, which is name-gated).
+    ok = _make(
+        skills_categories=[
+            TailoredCategory("Frontend & React", ["JavaScript", "React Native"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    _enforce_no_fabrication(ok, VERIFIED)
+
+
 def test_rejects_summary_with_unverified_seniority():
     bad = _make(summary="Senior Full Stack Developer with 2+ years of experience.")
     with pytest.raises(PipelineError, match="seniority token"):
@@ -146,15 +184,16 @@ def test_annotation_expansion_tolerated():
     _enforce_no_fabrication(ok, verified_narrow)
 
 
-def test_rejects_react_native_against_verified_react():
-    """May 2026 fix: the old one-way subset check accepted 'React Native'
-    against verified 'React' because verified-tokens were a subset of the
-    broader claim. That direction implied Casey owned strict supersets of
-    his verified skills (mobile, GraphQL, etc.). New rule allows only
-    annotation-grade additions; 'native' is not annotation."""
+def test_rejects_superset_claim_against_verified_skill():
+    """May 2026 fix: the old one-way subset check accepted a broader claim
+    (verified-tokens ⊆ claim) implying Casey owned strict supersets of his
+    verified skills. New rule allows only annotation-grade additions.
+    (React Native was the original example here; it is now a verified
+    Projects skill, so 'React Server Components' — a still-unverified
+    superset of verified 'React' — exercises the same rejection.)"""
     bad = _make(
         skills_categories=[
-            TailoredCategory("Core", ["React Native"]),
+            TailoredCategory("Core", ["React Server Components"]),
             TailoredCategory("Familiar", ["Java"]),
         ]
     )
@@ -426,3 +465,30 @@ def test_shrink_to_one_page_trims_familiar_first():
     if fits_one_page(t):
         familiar = next(c for c in t.skills_categories if c.name == "Familiar")
         assert len(familiar.items) <= 8  # trimmed or unchanged
+
+
+def test_shrink_to_one_page_with_projects_category_keeps_role_leads():
+    from jobhunt.pipeline.tailor import _shrink_to_one_page
+    from jobhunt.resume.render_docx import fits_one_page
+
+    long_summary = "Full-stack JavaScript developer with 2+ years building things. " + (
+        "Sentence about a project. " * 30
+    )
+    long_bullets = ["A reasonably long bullet describing a real shipped project. " * 2] * 6
+    t = _make(
+        summary=long_summary,
+        roles=[
+            TailoredRole("Dev", "Acme", "2023 – Present", list(long_bullets)),
+            TailoredRole("Dev", "BetaCo", "2021 – 2023", list(long_bullets)),
+        ],
+        skills_categories=[
+            TailoredCategory("Frontend & React", ["JavaScript", "React", "React Native"]),
+            TailoredCategory("Projects", ["React Native", "Astro"]),
+            TailoredCategory("Familiar", ["Java", "Angular", "Spring Boot", "Figma"]),
+        ],
+    )
+    t.coursework = ["A", "B", "C", "D"]
+    _shrink_to_one_page(t)
+    # Shrink must succeed (no overflow error) and every role retains its lead.
+    assert fits_one_page(t)
+    assert all(len(r.bullets) >= 1 for r in t.roles)
