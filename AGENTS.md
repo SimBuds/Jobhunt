@@ -177,13 +177,13 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and the active model lands at ~9.1 GB resident with comfortable headroom.
 - Ollama at `http://localhost:11434`
-- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. `qwen-custom:latest` remains Casey's general chat model (`~/ai/`) but is no longer the jobhunt default. **The load-bearing app-owned option is `num_ctx=16384`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is *not* set on this box — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. qwen-custom historically masked this by baking `num_ctx 16384`; pinning it in the gateway is what makes bare `qwen3.5:9b` work (verified 2026-05-28: bare qwen + `num_ctx=16384` returns valid JSON byte-for-byte equal to qwen-custom). All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=16384` (keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=16384`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is *not* set on this box — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx=16384` in the gateway is what makes bare `qwen3.5:9b` work (verified 2026-05-28: bare qwen + `num_ctx=16384` returns valid JSON). All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=16384` (keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
   Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default; preferred over q8_0 to leave headroom alongside Q4_K_M weights on a 10 GB card
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
-  Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context — sole source of truth; gateway does not pass num_ctx
+  Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context server-side fallback; the gateway ALSO pins num_ctx=16384 per call (app-owned, load-bearing — see LLM rules 4/5a). Keep the two aligned.
   Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload after 10m; per-call keep_alive=-1 from gateway pins model during active scans
   Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one model in VRAM at a time
   ```
@@ -514,9 +514,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 
 1. **Every structured call uses a JSON schema.** `gateway.client.complete_json(schema=...)` posts to Ollama `/api/chat` with `format: <schema>`. No free-form JSON parsing.
 2. **Reasoning disabled.** The gateway sends `"think": false` so qwen3.5's
-   reasoning trace doesn't blow past the timeout on structured calls (this
-   applies to bare `qwen3.5:9b` and the project default `qwen-custom:latest`,
-   which is derived from it). Quality is held by the deterministic
+   reasoning trace doesn't blow past the timeout on structured calls. Quality is held by the deterministic
    post-processing layers (score clamp, cover validator + retry, audit), not
    by reasoning tokens. If a future task slot needs thinking, plumb it
    through as a per-call kwarg — don't flip the default.
@@ -532,8 +530,7 @@ top-level commands that touch scoring/listing/applying must call it too.
    deliberate: `OLLAMA_CONTEXT_LENGTH` is not reliably set on this box, Ollama's
    default is 4096, and the score/tailor prompts run ~6k+ tokens — so relying on
    the server env silently truncated prompts to 4096 and the model emitted prose
-   instead of schema JSON (only masked before because qwen-custom baked
-   `num_ctx 16384`). The score/tailor pipelines truncate description to
+   instead of schema JSON. The score/tailor pipelines truncate description to
    `MAX_DESC_CHARS=16000` and policy to `MAX_POLICY_CHARS=6000` — see
    `pipeline.score`. If you change the pinned `num_ctx`, bump these in step so
    the prompts use the room rather than overflowing it.
@@ -636,21 +633,16 @@ top-level commands that touch scoring/listing/applying must call it too.
    not match the "JavaScript" substring (which would incorrectly resolve
    Java into skills_core and bypass the cap).
 
-   **Projects tier (`skills_projects`, May 2026).** A third honesty tier
-   between Core (paid production) and Familiar (light/academic): substantial
-   school/personal-project depth (currently Astro — the personal site
-   caseyhsu.com; React Native folds into the React Core umbrella instead).
-   Treated as
-   legitimate — it counts as a non-Familiar bucket in `_all_matched_are_familiar`
-   (so a Projects-only match does NOT trip the score cap) and the fabrication
-   guard `_enforce_no_fabrication` accepts its items in any non-Familiar
-   category. Prompt/policy (`kb/prompts/tailor.md` rule 2a, `tailoring-rules.md`,
-   `Resume_Tailoring_Instructions.md`) require these items to live in a category
-   named exactly "Projects" (after stack categories, before Familiar), be framed
-   as project work in the summary, and never appear in `roles` as paid
-   experience. The shrink ladder (`tailor._shrink_to_one_page`) trims the
-   Projects category (to `_PROJECTS_FLOOR=3`, then drops it whole) after Familiar
-   but before paid-role bullets — project work is secondary to paid roles.
+   **React umbrella (2026-05-28).** The verified Core skill is
+   `React (Redux, React Native)` — one entry covering the React ecosystem.
+   `_enforce_no_fabrication`'s identity-subset check accepts `React`, `Redux`,
+   and `React Native` as surface forms of it (their identity tokens are a
+   subset), so a Redux-required JD tailors cleanly without a standalone Redux
+   item. Prompt/policy render it as plain "React" by default; Redux/React
+   Native surface as explicit items only when the JD names them (Core-grade,
+   never Familiar). (A `skills_projects` middle tier existed briefly in May
+   2026 but was removed — Casey's only project-tier skill, Astro, moved to
+   Familiar and React Native folded into this umbrella.)
 
 ## Post-generation audit rules
 

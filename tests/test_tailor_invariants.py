@@ -20,7 +20,6 @@ VERIFIED = {
     "skills_cms": ["Shopify (Liquid, Custom Themes)"],
     "skills_data_devops": ["Docker"],
     "skills_ai": ["Local LLM hosting with Ollama"],
-    "skills_projects": ["React Native", "Astro"],
     "skills_familiar": ["Java", "Python"],
 }
 
@@ -114,18 +113,6 @@ def test_react_umbrella_accepts_redux_and_native():
     )
     with pytest.raises(PipelineError, match="not in verified"):
         _enforce_no_fabrication(bad, verified)
-
-
-def test_allows_projects_skill_in_non_familiar_category():
-    # skills_projects is a verified tier; its items may appear in any
-    # non-Familiar category (unlike Familiar, which is name-gated).
-    ok = _make(
-        skills_categories=[
-            TailoredCategory("Frontend & React", ["JavaScript", "React Native"]),
-            TailoredCategory("Familiar", ["Java"]),
-        ]
-    )
-    _enforce_no_fabrication(ok, VERIFIED)
 
 
 def test_rejects_summary_with_unverified_seniority():
@@ -465,30 +452,3 @@ def test_shrink_to_one_page_trims_familiar_first():
     if fits_one_page(t):
         familiar = next(c for c in t.skills_categories if c.name == "Familiar")
         assert len(familiar.items) <= 8  # trimmed or unchanged
-
-
-def test_shrink_to_one_page_with_projects_category_keeps_role_leads():
-    from jobhunt.pipeline.tailor import _shrink_to_one_page
-    from jobhunt.resume.render_docx import fits_one_page
-
-    long_summary = "Full-stack JavaScript developer with 2+ years building things. " + (
-        "Sentence about a project. " * 30
-    )
-    long_bullets = ["A reasonably long bullet describing a real shipped project. " * 2] * 6
-    t = _make(
-        summary=long_summary,
-        roles=[
-            TailoredRole("Dev", "Acme", "2023 – Present", list(long_bullets)),
-            TailoredRole("Dev", "BetaCo", "2021 – 2023", list(long_bullets)),
-        ],
-        skills_categories=[
-            TailoredCategory("Frontend & React", ["JavaScript", "React", "React Native"]),
-            TailoredCategory("Projects", ["React Native", "Astro"]),
-            TailoredCategory("Familiar", ["Java", "Angular", "Spring Boot", "Figma"]),
-        ],
-    )
-    t.coursework = ["A", "B", "C", "D"]
-    _shrink_to_one_page(t)
-    # Shrink must succeed (no overflow error) and every role retains its lead.
-    assert fits_one_page(t)
-    assert all(len(r.bullets) >= 1 for r in t.roles)

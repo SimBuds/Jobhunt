@@ -183,25 +183,87 @@ interview rate per score band and tune `[pipeline] min_score`.
 
 ## Commands
 
-Ten user-facing commands. Run `<command> --help` for full flags.
+Ten user-facing commands, grouped by workflow stage below. Run
+`<command> --help` for the full flag list. `config seed --apply` is part of
+onboarding; the rest of `config` and all of `db` are hidden setup-only internals.
 
-| Command | Purpose |
-|---|---|
-| `setup` | Guided first-run wizard (DB init, resume parse, applicant defaults, seed import) |
-| `convert-resume` | Parse `Resume.docx` → `kb/profile/` |
-| `scan` | Ingest GTA jobs + score against profile |
-| `apply` | Tailor resume + cover letter; autofill the form |
-| `add` | URL → ATS slug → `config.toml` |
-| `answer` | Draft a tailored response to a form question |
-| `interview-prep` | Draft a stage-aware interview prep doc |
-| `list` | Pipeline view + weekly tracking |
-| `analyze certs` | Cert frequency, trends, fit verdicts |
-| `discover slugs` | Maintenance: harvest URLs in jobs DB + probe public ATS APIs |
+| Command | Stage | Purpose |
+|---|---|---|
+| `setup` | Setup | Guided first-run wizard (DB init, resume parse, applicant defaults, seed import) |
+| `convert-resume` | Setup | Parse `Resume.docx` → `kb/profile/` |
+| `scan` | Find | Ingest GTA jobs + score against profile |
+| `list` | Find | Pipeline view + weekly rollup |
+| `apply` | Apply | Tailor resume + cover letter; autofill the form (you submit) |
+| `answer` | Apply | Draft a tailored response to a form question |
+| `interview-prep` | Apply | Stage-aware interview prep doc |
+| `add` | Slugs | URL → ATS slug → `config.toml` |
+| `discover slugs` | Slugs | Harvest URLs in the jobs DB + probe public ATS APIs |
+| `analyze` | Analyze | Deterministic intel (certs, skills, employers, validators, response-rate) |
 
-`config seed --apply` is part of the user-facing onboarding flow; the rest
-of `config` and all of `db` are hidden internals.
+### Setup & profile
 
-### `apply` selection modes
+#### `setup`
+
+Guided first-run wizard — see [First run](#first-run) for the full step list.
+Safe to re-run any time to update applicant defaults; each step detects
+existing state and offers keep/redo.
+
+#### `convert-resume`
+
+Parses `./Resume.docx` into `kb/profile/verified.json` plus markdown sidecars
+(`skills.md`, `work-history.md`, `education.md`). `Resume.docx` is the single
+source of truth — re-run after editing it. `scan`, `list`, `apply`, `answer`,
+and `analyze` refuse to run until this has produced `verified.json`.
+
+```bash
+jobhunt convert-resume
+```
+
+### Finding & scoring jobs
+
+#### `scan`
+
+Ingests GTA + Remote-Canada postings from every configured source, scores each
+against your profile, dedupes across sources, and (by default) auto-discovers
+new ATS slugs after ingest.
+
+```bash
+jobhunt scan                    # pull new jobs + score + auto-discover slugs
+jobhunt scan --max-age-days 30  # widen the freshness window (default 7; 0 disables)
+jobhunt scan --no-discover      # skip the post-ingest slug auto-discovery step
+```
+
+Pre-score filters: 7-day freshness, management-title drop, plus optional
+senior-title and research/ML-title drops (`[applicant] include_senior_roles`,
+`[ingest] drop_research_titles`). A warm-up call fires before the scoring loop
+so the first real call doesn't pay cold-load.
+
+#### `list`
+
+Pipeline view + weekly rollup. Always renders a footer (scanned / declined /
+per-status counts). Rows you've run `apply` on show a `cov=NN%` tag — the
+keyword-coverage % from the latest `audit.json`; `cov < 70%` is a re-tailor
+candidate.
+
+```bash
+jobhunt list --week 0                       # 0=current week, 1=last, …
+jobhunt list --min-score 70                 # high-fit subset
+jobhunt list --status interviewing          # drafted|applied|interviewing|offer|rejected
+jobhunt list --verdict ship                 # audit verdict: ship|revise|block
+jobhunt list --source greenhouse            # greenhouse|lever|ashby|smartrecruiters|workday|
+                                            #   workable|recruitee|job_bank_ca|rss|adzuna_ca
+jobhunt list --no-reply --older-than 14d    # applied, no recruiter reply, >14d — nudge list
+```
+
+### Applying
+
+#### `apply`
+
+Tailors a resume + cover letter for a job, runs the deterministic audit, then
+opens a headed browser and fills the form — **you review and click Submit
+yourself.** Add `--no-browser` to any invocation to generate docs only.
+
+Selection modes:
 
 - **`apply <job-id>`** — single job by id.
 - **`apply --top N`** — N highest-scoring unapplied jobs above `--min-score`
@@ -216,10 +278,7 @@ of `config` and all of `db` are hidden internals.
   auto-detection misses. Escape hatches: `--no-score` skips scoring;
   `--force-robots` overrides the robots.txt check for that single fetch.
 
-Add `--no-browser` to any `apply` invocation to generate tailored docs
-without launching Playwright.
-
-After submitting, update status:
+After submitting, update status (the flag comes **before** the job id):
 
 ```bash
 jobhunt apply --set-status applied      <job-id>
@@ -227,15 +286,16 @@ jobhunt apply --set-status interviewing <job-id>
 jobhunt apply --set-status rejected     <job-id>
 ```
 
-The flag comes **before** the job id.
+After a batch `apply --top N` / `apply --best` run, the tool prints a one-line
+summary: how many drafted / revised / blocked, plus the top warning categories
+across the batch.
 
-### `answer` — application-form question assistant
+#### `answer`
 
-When a form asks free-form questions ("Why are you interested in this
-role?", "Describe a project where you faced a technical challenge"), paste
-the question into `jobhunt answer` and get a tailored response drafted
-against your verified profile under the same honesty rules as cover
-letters.
+When a form asks free-form questions ("Why are you interested in this role?",
+"Describe a project where you faced a technical challenge"), paste the question
+into `jobhunt answer` and get a response drafted against your verified profile
+under the same honesty rules as cover letters.
 
 ```bash
 # Standalone — no JD context, useful for recruiter screens / general intros
@@ -252,164 +312,124 @@ jobhunt answer "Walk me through a project" --max-words 250  # STAR-style
 jobhunt answer "Anything else?" --no-save
 ```
 
-The answer prints between separator bars (clean copy-paste target). By
-default it's also saved to:
+The answer prints between separator bars (clean copy-paste target). By default
+it's also saved to `data/applications/<job-id>/answers/<sha1>.md` (with `--job`)
+or `data/answers/<sha1>.md` (standalone). Filename is a sha1 of the question
+text, so re-running the same question overwrites the same file. Validation
+reuses the cover-letter rules (banned phrases, defensive gap-volunteering,
+fabrication watchlist, unverified numbers) with up to 3 retries.
 
-- `data/applications/<job-id>/answers/<sha1>.md` when `--job` is set
-- `data/answers/<sha1>.md` otherwise
+#### `interview-prep`
 
-Filename is a sha1 of the question text — re-running the same question
-overwrites the same file. Validation reuses the cover-letter rules
-(banned phrases, defensive gap-volunteering, fabrication watchlist,
-unverified numbers). Up to 3 retries on violations; the final attempt
-ships with warnings on stderr if retries don't recover.
-
-### `interview-prep` — stage-aware interview prep doc
-
-When an application converts to an interview, draft a prep doc anchored
-on your verified profile and the cached JD:
+When an application converts to an interview, draft a prep doc anchored on your
+verified profile and the cached JD.
 
 ```bash
-jobhunt interview-prep <job-id>                       # default --stage agency
-jobhunt interview-prep <job-id> --stage agency        # agency / recruiter screen
+jobhunt interview-prep <job-id>                        # default --stage agency
 jobhunt interview-prep <job-id> --stage hiring_manager # hiring-manager round
-jobhunt interview-prep <job-id> --stage assessment    # assessment / final round
-jobhunt interview-prep <job-id> --research            # fetch JD URL + company root
+jobhunt interview-prep <job-id> --stage assessment     # assessment / final round
+jobhunt interview-prep <job-id> --research             # fetch JD URL + company root
 jobhunt interview-prep <job-id> --research --force-robots
-jobhunt interview-prep <job-id> --no-llm              # skeleton-only (debug)
+jobhunt interview-prep <job-id> --no-llm               # skeleton-only (debug)
 ```
 
-Output: `data/interview-prep/<job-id-safe>.md`. Re-runs overwrite — use
-the same file as the doc evolves across stages.
-
-Hybrid generation: deterministic skeleton (header, comp heads-up,
-pre-call checklist, after-the-call footer) wraps an LLM-drafted middle
-(role decode, strongest anchors, likely questions with answer beats,
-questions to ask back, honest gaps with reframes). Anchors must trace
-to verified facts; the same honesty rules as the cover-letter pipeline
-apply. Up to 3 retries on validator violations.
-
-`apply --set-status interviewing <job-id>` prints a nudge pointing at
-this command (or notes that a prep doc already exists).
-
-### `list` filters
-
-```
---week N                 0=current, 1=last, …
---status                 drafted | applied | interviewing | offer | rejected
---min-score N
---source                 greenhouse | lever | ashby | smartrecruiters | workday |
-                         workable | recruitee | job_bank_ca | rss | adzuna_ca
-```
-
-Always renders a weekly rollup footer (scanned / declined / per-status
-counts). Rows for jobs you've already run `apply` on show a `cov=NN%` tag
-— the keyword-coverage % from the most recent `audit.json`. Drafted
-applications with `cov < 70%` are good candidates for a re-tailor.
+Output: `data/interview-prep/<job-id-safe>.md` (re-runs overwrite). Hybrid
+generation — a deterministic skeleton (header, comp heads-up, pre-call
+checklist, footer) wraps an LLM-drafted middle (role decode, anchors, likely
+questions with answer beats, questions to ask back, honest gaps with reframes).
+Anchors must trace to verified facts; same honesty rules + 3 retries as covers.
+`apply --set-status interviewing` prints a nudge pointing here.
 
 ### Slug acquisition — automatic, with manual fallbacks
 
-Adzuna ships short JD snippets (~500 chars). Greenhouse, Lever, Ashby,
-SmartRecruiters, Workday, Workable, and Recruitee return full descriptions,
-but each employer needs a slug in `config.toml`. **As of the May 2026
-auto-discovery work, `jobhunt scan` does this for you** — after ingest it
-probes the public APIs of Greenhouse / Ashby / Lever / SmartRecruiters /
-Workable / Recruitee for slugs of any new aggregator-only companies it just
-saw, and appends hits to `config.toml` (with a `.bak` snapshot). The next
-scan ingests those slugs natively. Toggle off with `jobhunt scan
---no-discover` or `[ingest] auto_discover = false` in `config.toml`.
+Adzuna ships short JD snippets (~500 chars); Greenhouse, Lever, Ashby,
+SmartRecruiters, Workday, Workable, and Recruitee return full descriptions but
+need a slug in `config.toml`. **`jobhunt scan` self-bootstraps this** — after
+ingest it probes the public APIs for slugs of newly-seen aggregator-only
+companies and appends hits to `config.toml` (with a `.bak`). Toggle off with
+`jobhunt scan --no-discover` or `[ingest] auto_discover = false`.
 
-Manual fallbacks remain for cold-start and one-offs:
+The three manual paths below remain for cold-start and one-offs.
 
-1. **`jobhunt add <URL>`** — the daily driver. Paste any recognized
-   career-page or job-posting URL; the tool parses the ATS, probes once
-   to confirm, and appends to config.
+#### `add`
 
-   ```bash
-   jobhunt add https://boards.greenhouse.io/faire
-   jobhunt add https://jobs.ashbyhq.com/cohere
-   jobhunt add https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers
-   ```
+The daily driver. Paste any recognized career-page or job-posting URL; the tool
+parses the ATS, probes once to confirm, and appends to config.
 
-   Recognized hosts: `boards.greenhouse.io`, `jobs.lever.co`,
-   `jobs.ashbyhq.com`, `jobs.smartrecruiters.com`,
-   `*.wd*.myworkdayjobs.com`, `apply.workable.com`, `*.workable.com`,
-   `*.recruitee.com`. iCIMS URLs are recognized but exit with "coming
-   soon" — no adapter yet.
+```bash
+jobhunt add https://boards.greenhouse.io/faire
+jobhunt add https://jobs.ashbyhq.com/cohere
+jobhunt add https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers
+```
 
-2. **`jobhunt config seed`** — cold start. Imports the live-verified
-   seed list from `kb/seeds/gta-employers.toml`. Every entry is
-   probe-checked via `scripts/verify_seeds.py` before being committed,
-   so dead slugs don't ship.
+Recognized hosts: `boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`,
+`jobs.smartrecruiters.com`, `*.wd*.myworkdayjobs.com`, `apply.workable.com`,
+`*.workable.com`, `*.recruitee.com`. iCIMS URLs are recognized but exit with
+"coming soon" — no adapter yet. After `apply --url <careers-page>`, the tool
+prints an `add` suggestion if the URL belongs to an unconfigured ATS.
 
-   ```bash
-   jobhunt config seed --preview   # see what would be added
-   jobhunt config seed --apply     # additively merge into config.toml
-   ```
+#### `config seed`
 
-3. **`jobhunt discover slugs`** — maintenance. Same machinery `scan`
-   uses, but runnable on demand against the full jobs DB. Harvests
-   confirmed slugs from URLs already in your jobs DB (offline, no HTTP),
-   then probes public Greenhouse / Lever / Ashby / SmartRecruiters /
-   Workable / Recruitee APIs for company names not yet covered.
+Cold start. Imports the live-verified seed list from
+`kb/seeds/gta-employers.toml`; every entry is probe-checked via
+`scripts/verify_seeds.py` before being committed, so dead slugs don't ship.
 
-   ```bash
-   jobhunt discover slugs                     # print suggestions (default --limit 100)
-   jobhunt discover slugs --apply             # append confirmed slugs to config.toml
-   jobhunt discover slugs --ats greenhouse    # restrict probe targets
-   jobhunt discover slugs --include-cached    # re-probe past misses
-   ```
+```bash
+jobhunt config seed --preview   # see what would be added
+jobhunt config seed --apply     # additively merge into config.toml
+```
 
-   Misses are cached in the `slug_probes` table so repeat runs only probe
-   new companies, with a soft 90-day TTL — older misses re-probe
-   automatically since companies stand up new ATS boards over time. Pass
-   `--include-cached` to force re-probing inside the TTL. Zero-job 200
-   responses are treated as misses. Staffing-agency names (Astra North,
-   Targeted Talent, etc.) are filtered at the candidate stage and never
-   hit the network.
+#### `discover slugs`
 
-**Google dorking for Workday boards.** Workday slugs don't surface in
-Greenhouse/Lever/Ashby probes, and the auto-discovery pass can't infer
-them. Use Google search operators to uncover active Workday career pages
-in the GTA, then feed the URLs straight to `add`:
+Maintenance. The same machinery `scan` uses, runnable on demand against the full
+jobs DB. Harvests confirmed slugs from URLs already in the DB (offline), then
+probes the public Greenhouse / Lever / Ashby / SmartRecruiters / Workable /
+Recruitee APIs for company names not yet covered.
+
+```bash
+jobhunt discover slugs                     # print suggestions (default --limit 100)
+jobhunt discover slugs --apply             # append confirmed slugs to config.toml
+jobhunt discover slugs --ats greenhouse    # restrict probe targets
+jobhunt discover slugs --include-cached    # re-probe past misses inside the TTL
+```
+
+Misses are cached in `slug_probes` with a 90-day TTL (older misses re-probe
+automatically). Zero-job 200s count as misses. Staffing-agency names (Astra
+North, Targeted Talent, etc.) are filtered at the candidate stage and never hit
+the network.
+
+**Google dorking for Workday boards.** Workday slugs don't surface in the
+public-API probes. Use search operators to find active GTA Workday boards, then
+feed the URLs to `add`:
 
 ```text
 site:myworkdayjobs.com "Toronto" "Software Engineer"
 ```
 
-Grab the URLs Google returns (e.g.
-`https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers`) and pipe them into
-the CLI:
-
 ```bash
 jobhunt add https://rbc.wd3.myworkdayjobs.com/en-US/RBC_Careers
 ```
 
-Vary the role keyword (`"Frontend"`, `"Full Stack"`, `"Web Developer"`)
-or city (`"Mississauga"`, `"Remote Canada"`) to surface more boards.
-Same trick works for the other ATS hosts — substitute
+Vary the role keyword (`"Frontend"`, `"Full Stack"`) or city (`"Mississauga"`,
+`"Remote Canada"`). Same trick works for the other hosts — substitute
 `site:boards.greenhouse.io`, `site:jobs.lever.co`, `site:jobs.ashbyhq.com`,
-`site:apply.workable.com`, etc.
-
-Once a Workday tenant is configured, large enterprise/banking boards
-(TD, BMO, NVIDIA, Capital One — thousands of global postings) are scanned
-with GTA-targeted `searchText` queries so Toronto/Remote-Canada roles
-aren't buried past the first scanned page; smaller Canada-centric boards
-keep the plain first-100 walk. No extra config — the adapter picks the
-strategy by board size.
-
-After `apply --url <some-careers-page>`, the tool prints a `jobhunt add`
-suggestion if the URL belongs to an ATS you haven't configured yet —
-slug acquisition as a byproduct of normal use.
+`site:apply.workable.com`, etc. Once a Workday tenant is configured, large
+enterprise/banking boards (TD, BMO, NVIDIA, Capital One) are scanned with
+GTA-targeted `searchText` queries so Toronto roles aren't buried; smaller
+Canada-centric boards keep the plain first-100 walk — no extra config.
 
 > **Heads-up:** all three writers (`add`, `config seed --apply`,
-> `discover slugs --apply`) write `config.toml` programmatically — any
-> inline comments you've added will be stripped on write. A `.bak`
-> snapshot is created next to the file.
+> `discover slugs --apply`) write `config.toml` programmatically — any inline
+> comments are stripped on write. A `.bak` snapshot is created next to the file.
 
-### `analyze certs` — cert decision tool
+### Analysis (`analyze`)
 
-Three modes, all deterministic and LLM-free:
+Deterministic, LLM-free aggregations over the jobs DB — regex + counters, no
+network I/O.
+
+#### `analyze certs` — cert decision tool
+
+Three modes:
 
 ```bash
 jobhunt analyze certs                          # snapshot frequency (default 25 rows)
@@ -417,11 +437,9 @@ jobhunt analyze certs --trend                  # prev vs current 30d windows + �
 jobhunt analyze certs --trend --min-score 55   # fit-filtered: adds Fit column + Verdict
 ```
 
-Windows bucket by `COALESCE(posted_at, ingested_at)`. Use `--window-days N`
-to widen or narrow (default 30).
-
-The Verdict column (only with `--min-score`) classifies each cert against
-a small rubric so the decision is one column wide:
+Windows bucket by `COALESCE(posted_at, ingested_at)`; `--window-days N` adjusts
+(default 30). The Verdict column (only with `--min-score`) classifies each cert
+against a small rubric so the decision is one column wide:
 
 | Verdict | Means |
 |---|---|
@@ -433,13 +451,22 @@ a small rubric so the decision is one column wide:
 | Skip | Fewer than 3 jobs you'd qualify for mention it |
 | Wrong direction | Common in the market (cur ≥ 5) but zero fit-eligible jobs |
 
-`--min-score N` joins the `scores` table. `N` should match your apply
-threshold (default 55 — set in `[pipeline] min_score`).
+`--min-score N` joins the `scores` table; match it to your apply threshold
+(default 55). The `Potential new certs` section surfaces generic-regex hits not
+yet in the curated `_KNOWN` list in `src/jobhunt/analyze/certs.py` — review and
+promote real catches by hand.
 
-The `Potential new certs` section surfaces generic-regex hits
-(`Certified <Noun>` / `<Noun> Certification`) that aren't in the curated
-`_KNOWN` list in `src/jobhunt/analyze/certs.py`. Review and promote real
-catches by hand.
+#### Other `analyze` subcommands
+
+```bash
+jobhunt analyze skills --gaps                  # tech tokens over-represented in declined vs accepted JDs
+jobhunt analyze employers --hiring-velocity    # post counts per slug; surfaces configured-but-silent boards
+jobhunt analyze validators                     # which cover-letter validators fired most — prune over-broad rules
+jobhunt analyze response-rate --by score       # interview/response rate per score band (or --by ats)
+```
+
+All take `--window-days N`; most take `--top N`. Use `response-rate` after ~20
+applications alongside `jobhunt config calibrate` to tune `[pipeline] min_score`.
 
 ## Configuration
 
@@ -532,7 +559,7 @@ work_arrangements      = ["onsite", "hybrid", "remote"]
 employment_types       = ["full_time", "contract"]
 ```
 
-See [Slug acquisition](#slug-acquisition--add-config-seed-discover-slugs)
+See [Slug acquisition](#slug-acquisition--automatic-with-manual-fallbacks)
 for filling in the ATS slug lists. The full Pydantic schema with every
 default lives in [src/jobhunt/config.py](src/jobhunt/config.py).
 
