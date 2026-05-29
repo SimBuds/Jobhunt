@@ -209,9 +209,19 @@ def _add_bottom_border(paragraph: Any) -> None:
 # 48 lines with wrap-aware skill/summary/bullet counts produces reliable
 # single-page output.
 LINES_PER_PAGE = 48
+# One line of headroom: the flat per-section estimates accumulate small
+# rounding errors, so a resume estimated at exactly LINES_PER_PAGE renders onto
+# a second line in practice (observed 2026-05-28 when a 6th skills category —
+# the Projects tier — tipped a real resume's Dean's List onto page 2 while the
+# estimate landed exactly on 48). The shrink ladder trims until the estimate is
+# within this margin.
+_PAGE_SAFETY_MARGIN = 1
 BULLET_CHARS_PER_LINE = 95
 SUMMARY_CHARS_PER_LINE = 100
 SKILL_CHARS_PER_LINE = 95
+# The coursework block renders as one paragraph: "Dean's List (all terms).
+# Coursework: <list>." Estimate it wrap-aware rather than as a flat 2 lines.
+_DEANS_PREFIX = "Dean's List (all terms). Coursework: "
 
 
 def _wrapped_lines(text: str, width: int) -> int:
@@ -234,9 +244,10 @@ def estimate_lines(tailored: TailoredResume) -> int:
             lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
     lines += 1 + len(tailored.certifications) + len(tailored.education)
     if tailored.coursework:
-        lines += 2
+        deans_text = _DEANS_PREFIX + ", ".join(tailored.coursework) + "."
+        lines += _wrapped_lines(deans_text, SKILL_CHARS_PER_LINE)
     return lines
 
 
 def fits_one_page(tailored: TailoredResume) -> bool:
-    return estimate_lines(tailored) <= LINES_PER_PAGE
+    return estimate_lines(tailored) <= LINES_PER_PAGE - _PAGE_SAFETY_MARGIN

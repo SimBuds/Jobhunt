@@ -42,6 +42,7 @@ class VerifiedFacts:
     skills_cms: list[str]
     skills_data_devops: list[str]
     skills_ai: list[str]
+    skills_projects: list[str]
     skills_familiar: list[str]
     work_history: list[Role]
     certifications: list[str]
@@ -153,6 +154,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         "CMS & E-Commerce": [],
         "Data & DevOps": [],
         "AI & Tooling": [],
+        "Projects": [],
         "Familiar": [],
     }
     for _, text in sections["TECHNICAL SKILLS"]:
@@ -210,6 +212,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         skills_cms=skill_buckets["CMS & E-Commerce"],
         skills_data_devops=skill_buckets["Data & DevOps"],
         skills_ai=skill_buckets["AI & Tooling"],
+        skills_projects=skill_buckets["Projects"],
         skills_familiar=skill_buckets["Familiar"],
         work_history=work_history,
         certifications=certifications,
@@ -244,8 +247,11 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
     skills_md = profile / "skills.md"
     skills_md.write_text(
         "# Skills\n\n"
-        "Core vs Familiar is a hard honesty signal. Tailoring must not promote a Familiar\n"
-        "skill into a Core category. See `kb/policies/tailoring-rules.md`.\n\n"
+        "Core / Projects / Familiar is a hard honesty signal. Core = paid-career\n"
+        "production. Projects = substantial school/personal-project depth (usable, but\n"
+        "labeled as project work). Familiar = light/academic. Tailoring must not promote\n"
+        "a Familiar skill into a Core/Projects category. See\n"
+        "`kb/policies/tailoring-rules.md`.\n\n"
         "## Core\n\n"
         f"{_md_bullets(facts.skills_core)}\n"
         "## CMS & E-Commerce\n\n"
@@ -254,6 +260,9 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
         f"{_md_bullets(facts.skills_data_devops)}\n"
         "## AI & Tooling\n\n"
         f"{_md_bullets(facts.skills_ai)}\n"
+        # Projects is an optional tier — omit the heading entirely when empty
+        # so a user with no project-tier skills doesn't get a bare heading.
+        f"{('## Projects\n\n' + _md_bullets(facts.skills_projects) + chr(10)) if facts.skills_projects else ''}"
         "## Familiar\n\n"
         f"{_md_bullets(facts.skills_familiar)}",
         encoding="utf-8",

@@ -18,6 +18,7 @@ from jobhunt.config import Config, GatewayConfig, PathsConfig
 from jobhunt.models import Job
 from jobhunt.pipeline import score as score_mod
 from jobhunt.pipeline.score import (
+    _all_matched_are_familiar,
     _clamp_by_coverage,
     _coverage_pct,
     _verify_against_profile,
@@ -69,6 +70,25 @@ def test_verify_demotes_llm_matched_when_not_in_profile() -> None:
 def test_verify_dedupes_overlap_between_matched_and_gaps() -> None:
     matched, gaps = _verify_against_profile(["React"], ["React"], VERIFIED_BLOB)
     assert matched.count("React") + gaps.count("React") == 1
+
+
+def test_matched_in_familiar_only_triggers_cap() -> None:
+    assert _all_matched_are_familiar(["Java"], VERIFIED_BLOB) is True
+
+
+def test_projects_tier_match_is_not_familiar_only() -> None:
+    """skills_projects is a legitimate (non-Familiar) tier — a Projects-only
+    match must NOT trip the Familiar-only-fit cap."""
+    blob = json.dumps(
+        {
+            "skills_core": ["JavaScript", "React"],
+            "skills_projects": ["React Native", "Astro"],
+            "skills_familiar": ["Java", "Angular"],
+        }
+    )
+    assert _all_matched_are_familiar(["React Native"], blob) is False
+    # Angular is Familiar → still caps
+    assert _all_matched_are_familiar(["Angular"], blob) is True
 
 
 def test_coverage_pct_handles_empty() -> None:

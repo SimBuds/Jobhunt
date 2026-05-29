@@ -182,7 +182,7 @@ def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
     familiar_items = [s.lower() for s in (v.get("skills_familiar", []) or [])]
     core_items = [
         item.lower()
-        for key in ("skills_core", "skills_cms", "skills_data_devops", "skills_ai")
+        for key in ("skills_core", "skills_cms", "skills_data_devops", "skills_ai", "skills_projects")
         for item in (v.get(key, []) or [])
     ]
     if not familiar_items:

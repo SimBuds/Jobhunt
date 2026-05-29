@@ -636,6 +636,22 @@ top-level commands that touch scoring/listing/applying must call it too.
    not match the "JavaScript" substring (which would incorrectly resolve
    Java into skills_core and bypass the cap).
 
+   **Projects tier (`skills_projects`, May 2026).** A third honesty tier
+   between Core (paid production) and Familiar (light/academic): substantial
+   school/personal-project depth (currently Astro — the personal site
+   caseyhsu.com; React Native folds into the React Core umbrella instead).
+   Treated as
+   legitimate — it counts as a non-Familiar bucket in `_all_matched_are_familiar`
+   (so a Projects-only match does NOT trip the score cap) and the fabrication
+   guard `_enforce_no_fabrication` accepts its items in any non-Familiar
+   category. Prompt/policy (`kb/prompts/tailor.md` rule 2a, `tailoring-rules.md`,
+   `Resume_Tailoring_Instructions.md`) require these items to live in a category
+   named exactly "Projects" (after stack categories, before Familiar), be framed
+   as project work in the summary, and never appear in `roles` as paid
+   experience. The shrink ladder (`tailor._shrink_to_one_page`) trims the
+   Projects category (to `_PROJECTS_FLOOR=3`, then drops it whole) after Familiar
+   but before paid-role bullets — project work is secondary to paid roles.
+
 ## Post-generation audit rules
 
 After `tailor_resume` + `write_cover`, `pipeline.audit.audit()` runs before

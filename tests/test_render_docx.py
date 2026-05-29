@@ -62,6 +62,31 @@ def test_estimate_fits_one_page(tailored: TailoredResume):
     assert estimate_lines(tailored) > 0
 
 
+def test_fits_one_page_enforces_safety_margin():
+    """Regression (2026-05-28): a resume estimated at exactly LINES_PER_PAGE
+    rendered onto a second page in practice (the Dean's List line tipped over
+    when a 6th skills category was added). fits_one_page must reserve one line
+    of headroom, so an estimate equal to the raw budget is NOT a fit."""
+    from jobhunt.resume.render_docx import LINES_PER_PAGE, _PAGE_SAFETY_MARGIN
+
+    assert _PAGE_SAFETY_MARGIN >= 1
+    # Build a resume padded to estimate exactly LINES_PER_PAGE, then assert it
+    # is rejected (would have passed under the old zero-margin check).
+    base = TailoredResume(
+        summary="Full-stack developer.",
+        skills_categories=[TailoredCategory("Core", ["JavaScript"])],
+        roles=[TailoredRole("Dev", "Acme", "2023 – Present", ["b"])],
+        certifications=[],
+        education=["Diploma"],
+        coursework=[],
+        model="x",
+    )
+    pad = LINES_PER_PAGE - estimate_lines(base)
+    base.roles[0].bullets.extend(["padding bullet"] * max(0, pad))
+    assert estimate_lines(base) == LINES_PER_PAGE
+    assert not fits_one_page(base)  # exactly-at-budget must fail with margin
+
+
 def test_render_emits_single_deans_list_paragraph(tailored: TailoredResume, tmp_path: Path):
     out = render(
         tailored,

@@ -221,6 +221,10 @@ def _complete_familiar_bucket(tailored: TailoredResume, verified: dict[str, Any]
 
 
 _FAMILIAR_FLOOR = 4
+# Projects tier (skills_projects) is real but secondary to paid roles, so the
+# shrink ladder trims it after Familiar and before paid-role bullets are
+# dropped. Trim to this floor, then drop the category whole if still overflowing.
+_PROJECTS_FLOOR = 3
 
 # tailor.md rule 10 caps the first skills category at 6-10 items, but
 # qwen3.5:9b obeyed it only ~38% of the time in live runs (5/8 outputs
@@ -360,6 +364,25 @@ def _shrink_to_one_page(tailored: TailoredResume) -> None:
         while len(cat.items) > _FAMILIAR_FLOOR and not fits_one_page(tailored):
             cat.items.pop()
         break
+    if fits_one_page(tailored):
+        return
+
+    # Projects tier: trim to a floor, then drop the category whole. Done before
+    # paid-role bullets are dropped — project work is secondary to paid roles.
+    projects_idx = next(
+        (
+            i
+            for i, c in enumerate(tailored.skills_categories)
+            if c.name.strip().lower() == "projects"
+        ),
+        None,
+    )
+    if projects_idx is not None:
+        proj = tailored.skills_categories[projects_idx]
+        while len(proj.items) > _PROJECTS_FLOOR and not fits_one_page(tailored):
+            proj.items.pop()
+        if not fits_one_page(tailored):
+            tailored.skills_categories.pop(projects_idx)
     if fits_one_page(tailored):
         return
 
@@ -592,6 +615,7 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             "skills_cms",
             "skills_data_devops",
             "skills_ai",
+            "skills_projects",
             "skills_familiar",
         )
         for s in verified.get(key, [])
