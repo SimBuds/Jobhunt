@@ -47,7 +47,7 @@ async def complete_json(
     schema: dict[str, Any],
     temperature: float = 0.0,
     timeout_s: float = 240.0,
-    keep_alive: str | int = -1,
+    keep_alive: str | int | None = -1,
     options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send a chat completion to Ollama and return the parsed JSON object.
@@ -68,6 +68,8 @@ async def complete_json(
     across scan/apply runs without paying a 5-15 s reload. This matches the
     server-side `OLLAMA_KEEP_ALIVE=-1`; the per-call value is what Ollama uses,
     so making it explicit here keeps behavior consistent regardless of env.
+    Pass `keep_alive=None` to omit the key entirely and let the server-side
+    `OLLAMA_KEEP_ALIVE` govern residency (used by the manual bench script).
     """
     host = base_url.rstrip("/")
     if host.endswith("/v1"):
@@ -82,11 +84,14 @@ async def complete_json(
         "stream": False,
         "format": schema,
         "think": False,
-        "keep_alive": keep_alive,
         # Per-call `options` override the app defaults; the explicit
         # `temperature` kwarg always wins over either.
         "options": {**_DEFAULT_OPTIONS, **(options or {}), "temperature": temperature},
     }
+    # keep_alive=None omits the key so Ollama's server-side OLLAMA_KEEP_ALIVE
+    # governs residency. The default (-1) still pins the model for active runs.
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     async def _post(p: dict[str, Any]) -> str:
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
