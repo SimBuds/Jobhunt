@@ -62,7 +62,7 @@ The gateway is tuned to a specific server config. Mirror these
 Environment="OLLAMA_KV_CACHE_TYPE=q5_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_KEEP_ALIVE=10m"
+Environment="OLLAMA_KEEP_ALIVE=30m"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 ```
 
