@@ -533,6 +533,8 @@ cover_retry_attempts  = 3
 tailor_retry_attempts = 3
 answer_max_words      = 200  # `answer` default word cap
 min_score             = 55   # apply / list default floor
+thin_jd_score_cap     = 70   # confidence ceiling for signal-poor (short) JDs
+thin_jd_chars         = 800  # a JD shorter than this is treated as signal-poor
 
 [browser]
 headed        = true

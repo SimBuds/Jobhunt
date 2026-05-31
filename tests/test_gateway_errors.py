@@ -134,6 +134,10 @@ async def test_payload_pins_default_options(monkeypatch: pytest.MonkeyPatch) -> 
     )
     opts = captured.get("options") or {}
     assert opts.get("num_ctx") == 16384
+    # num_predict bounds in-band reasoning runaways (qwen reasons into a JSON
+    # string until num_ctx is exhausted, hanging the scan past the 240s timeout).
+    # 4096 > the largest legit output (tailor ~2.2k tokens) so it never truncates.
+    assert opts.get("num_predict") == 4096
     assert opts.get("presence_penalty") == 0
     assert opts.get("top_p") == 0.95
     assert opts.get("top_k") == 20

@@ -10,7 +10,7 @@ import httpx
 from jobhunt.errors import GatewayError
 
 # Options the app pins on every structured call so behavior is defined in-repo
-# and identical regardless of which model is configured. Two parts:
+# and identical regardless of which model is configured. Three parts:
 #
 #   num_ctx: the score/tailor prompts run ~6k+ tokens. Ollama's default context
 #   is 4096 and OLLAMA_CONTEXT_LENGTH is NOT reliably set on this box, so without
@@ -27,10 +27,25 @@ from jobhunt.errors import GatewayError
 #   needs: JSON field names, the verbatim JD keywords the tailor must echo), so
 #   we drop it to 0 and otherwise keep Qwen's recommended nucleus sampling.
 #
+#   num_predict: the generation ceiling and the safety net for the dropped
+#   presence_penalty above. With think=false the model is *supposed* to emit only
+#   schema-constrained JSON, but on some inputs qwen3.5:9b reasons IN-BAND — it
+#   opens a JSON string (e.g. a `reasons[]` item) and pours a stream-of-conscious
+#   monologue into it, never closing the string, generating until it exhausts
+#   num_ctx (~16k tokens ≈ 210s). That blows past the 240s ReadTimeout below and
+#   stalls the whole scan (measured 2026-05-31: a thin Adzuna junior-coop JD hit
+#   8000 tokens, done_reason=length, 28KB of unterminated JSON). 4096 sits well
+#   above the largest legitimate output (tailor at 700 words ≈ ~2.2k tokens) so it
+#   never truncates real work, while bounding each generation to ~50s. A
+#   pathological JD is then abandoned in ~100s end-to-end (the ~50s cap × the one
+#   invalid-JSON retry complete_json does below) — a fast, logged failure instead
+#   of the prior 240s-per-attempt ReadTimeout that stalled the whole scan.
+#
 # Override any of these per call via the `options` kwarg; the `temperature`
 # kwarg always wins.
 _DEFAULT_OPTIONS: dict[str, Any] = {
     "num_ctx": 16384,
+    "num_predict": 4096,
     "top_p": 0.95,
     "top_k": 20,
     "min_p": 0.0,

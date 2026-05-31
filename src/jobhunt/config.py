@@ -120,6 +120,21 @@ class PipelineConfig(BaseModel):
     # the "stretch, tailor required" zone where a strong AI/LLM cover hook can
     # break through. Raise back to 65 via config.toml if the list gets noisy.
     min_score: int = 55
+    # Confidence ceiling for signal-poor JDs (2026-05-31 audit fix). When a JD
+    # yields fewer than 3 extracted must-haves the coverage clamp is skipped
+    # (too few to trust the denominator) — without a ceiling the raw LLM score
+    # floats to the top band, so a ~500-char Adzuna snippet scored 82 while the
+    # same role's 7,140-char full JD scored 55. Capping thin postings here keeps
+    # them applyable (> min_score) without letting them outrank fully-described
+    # roles. Tune up if the thin-JD band looks under-ranked, down to push snippet
+    # roles further below full-JD ones. See pipeline.score.score_job.
+    thin_jd_score_cap: int = 70
+    # A JD shorter than this (chars) is treated as signal-poor for the cap above.
+    # Adzuna snippets run ~500 chars; real ATS JDs 4,000-7,000. 800 matches the
+    # "short JD signals Adzuna" threshold the audit must-have fallback already
+    # uses, and exempts full-JD `apply --url` fetches that happened to yield <3
+    # must-haves.
+    thin_jd_chars: int = 800
 
 
 class BrowserConfig(BaseModel):

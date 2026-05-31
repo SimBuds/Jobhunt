@@ -79,10 +79,22 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     coverage_pct = _coverage_pct(matched, gaps)
     # Adzuna ships ~500-char snippets; the LLM commonly extracts only 1-2 phrases
     # from those, and clamping against a 1/2 denominator over-penalizes signal-poor
-    # postings. Skip the clamp when the must-have set is too small to be reliable.
+    # postings. Skip the coverage clamp when the must-have set is too small to be
+    # reliable — but DON'T pass the raw score through unbounded. The LLM can't
+    # penalize gaps it can't see, so thin snippets float to 82-88 and outrank
+    # fully-described full-JD roles (audit 2026-05-31: the same ZoomInfo Full
+    # Stack Engineer scored 82 from its 500-char Adzuna snippet vs 55 from the
+    # 7,140-char Greenhouse JD). Cap thin postings at a confidence ceiling so they
+    # stay applyable (above min_score) without dominating the queue. Long JDs that
+    # merely happened to yield <3 must-haves (e.g. manual `apply --url` fetches)
+    # are exempt via the length gate. The cap only lowers, never raises, so the
+    # original "don't drag a 1/1 down to 64" intent holds for any score ≤ ceiling.
     must_have_count = len(matched) + len(gaps)
     if must_have_count < 3:
-        score = raw_score
+        if len(job.description) < cfg.pipeline.thin_jd_chars:
+            score = min(raw_score, cfg.pipeline.thin_jd_score_cap)
+        else:
+            score = raw_score
     else:
         score = _clamp_by_coverage(raw_score, coverage_pct)
 
