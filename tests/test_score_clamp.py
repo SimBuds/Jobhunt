@@ -176,16 +176,19 @@ async def test_score_job_clamps_when_llm_inflates(
     assert "TypeScript" in result.matched_must_haves
 
 
-# --- tiny-denominator clamp carve-out (May 2026) ---
+# --- tiny-denominator carve-out + thin-JD confidence cap (2026-05-31) ---
 
 
 @pytest.mark.asyncio
-async def test_score_job_skips_clamp_on_tiny_denominator(
+async def test_score_job_caps_thin_jd_snippet(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Adzuna's ~500-char snippets often yield only 1-2 phrases. Clamping a
-    1/1 or 0/1 coverage to cap-at-64 over-penalizes signal-poor postings —
-    skip the clamp when matched + gaps < 3."""
+    """Thin-JD inflation fix (2026-05-31 audit). Adzuna's ~500-char snippets
+    yield only 1-2 phrases, so the coverage clamp is skipped (1/2 denominator
+    over-penalizes). But the raw LLM score must NOT pass through unbounded — the
+    model can't penalize gaps it can't see, so snippets float to 82-88 and
+    outrank full-JD roles. Cap them at thin_jd_score_cap (70). `_job()` has a
+    ~46-char description (< thin_jd_chars=800), so the cap fires."""
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return {
@@ -198,9 +201,61 @@ async def test_score_job_skips_clamp_on_tiny_denominator(
 
     monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
     result = await score_job(_cfg(kb_dir), _job())
-    # Without the carve-out this would clamp 78 → 64 (50% coverage).
-    # With the carve-out, raw 78 stands.
-    assert result.score == 78
+    # Pre-fix this stood at raw 78. Now the thin-JD ceiling caps it at 70.
+    assert result.score == 70
+
+
+@pytest.mark.asyncio
+async def test_score_job_thin_jd_cap_never_raises(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap only lowers. A thin-JD raw score already below the ceiling is
+    left alone — preserving the original carve-out intent of not dragging a
+    signal-poor 1/1 coverage down to the coverage-clamp's 64 floor."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 64,
+            "matched_must_haves": ["React"],
+            "gaps": ["GraphQL"],  # 2 total < 3 threshold
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())
+    assert result.score == 64  # below cap (70) → unchanged
+
+
+@pytest.mark.asyncio
+async def test_score_job_long_jd_few_musthaves_not_capped(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The thin-JD cap is length-gated. A long, fully-described JD that merely
+    happened to yield <3 must-haves (e.g. a manual `apply --url` fetch) is
+    exempt — its raw score stands. Only short snippets (< thin_jd_chars) are
+    treated as signal-poor."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 82,
+            "matched_must_haves": ["React"],
+            "gaps": ["GraphQL"],  # 2 total < 3 threshold
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    long_job = Job(
+        id="test:long",
+        source="manual",
+        external_id="long",
+        title="Front-end Engineer",
+        description="React and TypeScript role. " * 50,  # ~1300 chars > 800
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), long_job)
+    assert result.score == 82  # length gate exempts full JDs
 
 
 @pytest.mark.asyncio

@@ -536,14 +536,29 @@ top-level commands that touch scoring/listing/applying must call it too.
    the prompts use the room rather than overflowing it.
 5. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
 5a. **Options are app-owned** (2026-05-28). The gateway pins
-   `gateway.client._DEFAULT_OPTIONS` (`num_ctx=16384, top_p=0.95, top_k=20,
-   min_p=0, presence_penalty=0`) on every call so structured-task behavior is
-   defined in-repo, not by the model's Modelfile or server env. `num_ctx=16384`
-   is the load-bearing one (see item 4 — without it prompts truncate to 4096 and
-   the model emits prose). `presence_penalty=0` drops qwen3.5:9b's `1.5` chat/
-   thinking anti-repeat default, which fights the repeated tokens structured JSON
-   needs (field names, the verbatim JD keywords the tailor must echo). Together
-   these are what let jobhunt run bare `qwen3.5:9b` instead of a custom Modelfile.
+   `gateway.client._DEFAULT_OPTIONS` (`num_ctx=16384, num_predict=4096,
+   top_p=0.95, top_k=20, min_p=0, presence_penalty=0`) on every call so
+   structured-task behavior is defined in-repo, not by the model's Modelfile or
+   server env. `num_ctx=16384` is the load-bearing one (see item 4 — without it
+   prompts truncate to 4096 and the model emits prose). `presence_penalty=0`
+   drops qwen3.5:9b's `1.5` chat/thinking anti-repeat default, which fights the
+   repeated tokens structured JSON needs (field names, the verbatim JD keywords
+   the tailor must echo). Together these are what let jobhunt run bare
+   `qwen3.5:9b` instead of a custom Modelfile. `num_predict=4096` (2026-05-31) is
+   the generation ceiling **and** the safety net for that dropped
+   `presence_penalty`: on some thin JDs qwen ignores `think=false` and reasons
+   **in-band**, opening a `reasons[]` JSON string and pouring a monologue into it
+   until it exhausts `num_ctx` (~16k tokens ≈ 210s) — that blows past the 240s
+   gateway timeout and hangs the whole `scan` (measured: 8000 tokens,
+   `done_reason=length`, 28 KB of unterminated JSON). 4096 sits above the largest
+   legitimate output (tailor at 700 words ≈ ~2.2k tokens) so it never truncates
+   real work, while bounding each generation to ~50s; a pathological JD is
+   abandoned in ~100s end-to-end (the cap × `complete_json`'s one invalid-JSON
+   retry) — a fast, logged failure instead of the prior 240s-per-attempt hang. It
+   stops the *hang*, not the underlying in-band
+   reasoning, so the pathological JD still fails to score (truncated JSON is
+   invalid); making qwen stop reasoning in-band (schema `maxItems`, a score-only
+   `presence_penalty`, or a `done_reason=length` retry) is logged as future work.
    Override per call via `complete_json(options=…)`; the `temperature` kwarg
    always wins.
 6. **Honesty enforcement is structural.** The tailor pipeline's
@@ -619,6 +634,27 @@ top-level commands that touch scoring/listing/applying must call it too.
    AI/LLM cover hook can break through — Casey's highest-leverage band
    given his interview-rate situation. Raise back to 65 in config.toml if
    the list gets noisy.
+
+   **Thin-JD confidence cap (2026-05-31 audit fix).** The deterministic
+   `must_have_count < 3` carve-out in `pipeline.score` skips the coverage
+   clamp for signal-poor JDs (Adzuna's ~500-char snippets yield 1-2 phrases,
+   so a 1/2 denominator over-penalizes). It used to pass the **raw** LLM
+   score through unbounded — but the model can't penalize gaps it can't see,
+   so thin snippets floated to 82-88 and outranked fully-described full-JD
+   roles. A 2026-05-31 score audit found the same ZoomInfo *Full Stack
+   Engineer* scored **82** from its 500-char Adzuna snippet vs **55** from
+   the 7,140-char Greenhouse JD. The carve-out now caps thin postings at
+   `cfg.pipeline.thin_jd_score_cap` (default **70**) when
+   `len(description) < cfg.pipeline.thin_jd_chars` (default **800** — Adzuna
+   snippets run ~500, real ATS JDs 4,000-7,000). The cap **only lowers**, so
+   the original "don't drag a 1/1 down to the coverage clamp's 64 floor"
+   intent holds for any score ≤ ceiling, and roles stay applyable (> 55)
+   without dominating the queue. Long JDs that merely yield <3 must-haves
+   (e.g. manual `apply --url` full-JD fetches) are exempt via the length
+   gate. A code-only change to `score.py` does NOT bump `prompt_hash`, so the
+   cap applies to newly-scored jobs — re-score the backlog to correct an
+   existing queue. Both thresholds are config knobs; tune `thin_jd_score_cap`
+   up if the thin-JD band looks under-ranked.
 
    **Familiar-only-fit cap (Phase 10.2).** When every matched must-have
    resolves into `verified.skills_familiar` (Java, Spring Boot, MCP
@@ -814,6 +850,25 @@ to it without explicit discussion.
    ordering) — or, if the only secondary is Familiar, moved to a new
    "Additional" bucket inserted before Familiar. Verified skills are
    never dropped, just demoted to non-lead position.
+
+10. **JD-required-skill backfill** (`pipeline/tailor._ensure_jd_required_skills`,
+    2026-05-31). `_tailor_once` never sees the JD must-haves, so when the LLM
+    reorganizes verified skills into JD-relevant categories it sometimes drops
+    infra/cloud/tooling skills that don't fit them — even when the JD requires
+    them. Observed: the shyftlabs JD required Git/AWS/Azure (all in
+    `verified.skills_data_devops`), but the tailor folded that bucket into a
+    "Backend & APIs" category and dropped them, sinking audit keyword coverage to
+    62%. This deterministic post-processor (after `_complete_familiar_bucket`,
+    before `_cap_lead_category_size` / `_shrink_to_one_page`) re-adds any verified
+    non-Familiar skill the JD names (`phrase_present` vs title+description — the
+    same primitive `audit.keyword_coverage` uses, with paren-stripped cores so
+    "React" satisfies "React (Redux, Native)") that the flattened tailored resume
+    omits, placing it in the category with the most same-bucket siblings (else the
+    last non-Familiar category, else a new "Additional" bucket). Honest by
+    construction — only ever re-adds skills already in `verified.json`. Familiar
+    is left to `_complete_familiar_bucket`. The fix recovered the shyftlabs
+    artifact from 62% to 100% coverage. (Adding cloud LLM/runtime path is still
+    forbidden; this is a pure deterministic post-process.)
 
 ## Testing
 

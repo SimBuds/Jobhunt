@@ -56,6 +56,51 @@ def test_known_certs(text: str, expected: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# extract_certs — 2026 AI/LLM certs (canonical name OR exam code)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("AWS Certified AI Practitioner preferred.",
+         ["AWS Certified AI Practitioner"]),
+        ("AIF-C01 holders welcome.", ["AWS Certified AI Practitioner"]),
+        ("AWS Certified Machine Learning Engineer – Associate required.",
+         ["AWS Certified Machine Learning Engineer – Associate"]),
+        ("MLA-C01 a plus.",
+         ["AWS Certified Machine Learning Engineer – Associate"]),
+        ("AWS Certified Machine Learning – Specialty desired.",
+         ["AWS Certified Machine Learning – Specialty"]),
+        ("MLS-C01 holders preferred.",
+         ["AWS Certified Machine Learning – Specialty"]),
+        ("AI-102 certification needed.", ["Azure AI Engineer Associate"]),
+        ("Azure AI Engineer Associate preferred.",
+         ["Azure AI Engineer Associate"]),
+        ("Databricks Certified Generative AI Engineer Associate a bonus.",
+         ["Databricks Certified Generative AI Engineer Associate"]),
+        ("NCA-GENL certified.",
+         ["NVIDIA-Certified Associate: Generative AI LLMs"]),
+        ("Google Cloud Generative AI Leader credential.",
+         ["Google Cloud Generative AI Leader"]),
+        ("Google Professional Machine Learning Engineer required.",
+         ["Google Professional Machine Learning Engineer"]),
+    ],
+)
+def test_ai_llm_certs(text: str, expected: list[str]) -> None:
+    assert extract_certs(text) == expected
+
+
+def test_databricks_genai_wins_over_generic() -> None:
+    # The specific GenAI Engineer entry is ordered before the generic
+    # "Databricks Certified" so the overlap-filter keeps the longer match —
+    # the generic name must NOT also appear.
+    result = extract_certs(
+        "Databricks Certified Generative AI Engineer Associate required."
+    )
+    assert result == ["Databricks Certified Generative AI Engineer Associate"]
+    assert "Databricks Certified" not in result
+
+
+# ---------------------------------------------------------------------------
 # extract_certs — word-boundary safety (no false positives)
 # ---------------------------------------------------------------------------
 

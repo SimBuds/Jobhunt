@@ -11,6 +11,7 @@ from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
+from jobhunt.pipeline._keywords import phrase_present
 from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
 
 
@@ -101,6 +102,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     _enforce_no_fabrication(tailored, verified)
     _dedupe_education(tailored)
     _complete_familiar_bucket(tailored, verified)
+    _ensure_jd_required_skills(tailored, verified, job)
     _cap_lead_category_size(tailored)
     _shrink_to_one_page(tailored)
     return tailored
@@ -285,6 +287,105 @@ def _cap_lead_category_size(tailored: TailoredResume) -> None:
         tailored.skills_categories.append(additional)
     else:
         tailored.skills_categories.insert(familiar_index, additional)
+
+
+# Verified buckets the JD-required-skill backfill draws from. Familiar is
+# excluded — `_complete_familiar_bucket` already guarantees that bucket.
+_JD_SKILL_BUCKETS = ("skills_core", "skills_cms", "skills_data_devops", "skills_ai")
+
+
+def _skill_core(skill: str) -> str:
+    """Lower-cased skill with parenthetical annotations stripped, for surface-
+    form-tolerant matching: 'React (Redux, Native)' -> 'react', so a resume that
+    renders the clean form still counts as containing the verified skill."""
+    return re.sub(r"\s*\(.*?\)\s*", " ", skill.lower()).strip()
+
+
+def _tailored_resume_blob(tailored: TailoredResume) -> str:
+    """Flatten the tailored resume to a lower-cased blob — mirrors
+    `audit._resume_text` (can't import it: audit imports tailor). Used to decide
+    whether a JD-required skill is already present anywhere (skills OR a bullet)
+    before re-adding it, so the backfill tracks what the audit will count."""
+    parts: list[str] = [tailored.summary]
+    for cat in tailored.skills_categories:
+        parts.append(cat.name)
+        parts.extend(cat.items)
+    for role in tailored.roles:
+        parts.extend([role.title, role.employer, role.dates, *role.bullets])
+    parts.extend(tailored.certifications)
+    parts.extend(tailored.education)
+    parts.extend(tailored.coursework)
+    return "\n".join(parts).lower()
+
+
+def _append_jd_skill(
+    tailored: TailoredResume, skill: str, bucket: str, verified: dict[str, Any]
+) -> None:
+    """Append `skill` to the non-Familiar category that holds the most items from
+    the same verified bucket (so AWS lands next to Docker/Postgres, not under
+    CMS). Fallbacks: the last non-Familiar category, else a new 'Additional'
+    bucket before Familiar (mirrors `_cap_lead_category_size`)."""
+    bucket_skills = {s.strip().lower() for s in (verified.get(bucket) or []) if isinstance(s, str)}
+    non_familiar = [c for c in tailored.skills_categories if c.name.strip().lower() != "familiar"]
+
+    if non_familiar:
+        def _sibling_count(cat: TailoredCategory) -> int:
+            return sum(1 for it in cat.items if it.strip().lower() in bucket_skills)
+
+        best = max(non_familiar, key=_sibling_count)
+        (best if _sibling_count(best) > 0 else non_familiar[-1]).items.append(skill)
+        return
+
+    additional = TailoredCategory(name="Additional", items=[skill])
+    familiar_index = next(
+        (
+            i
+            for i, c in enumerate(tailored.skills_categories)
+            if c.name.strip().lower() == "familiar"
+        ),
+        None,
+    )
+    if familiar_index is None:
+        tailored.skills_categories.append(additional)
+    else:
+        tailored.skills_categories.insert(familiar_index, additional)
+
+
+def _ensure_jd_required_skills(
+    tailored: TailoredResume, verified: dict[str, Any], job: Job
+) -> None:
+    """Re-add any verified skill the JD names but the tailored output dropped.
+
+    The tailor LLM reorganizes verified skills into JD-relevant categories and
+    sometimes drops infra/cloud/tooling skills that don't fit those categories —
+    even when the JD requires them (observed 2026-05-31: the shyftlabs JD
+    required Git/AWS/Azure, all in `verified.skills_data_devops`, but the tailor
+    folded that bucket into a 'Backend & APIs' category and dropped them, sinking
+    keyword coverage to 62%). This deterministic backfill closes that gap.
+
+    Mirrors `_complete_familiar_bucket`: honest by construction (only ever
+    re-adds skills already in `verified.json`), runs before `_shrink_to_one_page`
+    (which never trims non-Familiar skill categories, so re-added skills survive
+    — summary/bullets absorb the page pressure instead). Familiar skills are left
+    to `_complete_familiar_bucket`. Matching reuses `_keywords.phrase_present`,
+    the same primitive `audit.keyword_coverage` uses, so the backfill tracks
+    exactly what the audit measures.
+    """
+    jd_blob = f"{job.title or ''} {job.description or ''}".lower()
+    resume_blob = _tailored_resume_blob(tailored)
+    for bucket in _JD_SKILL_BUCKETS:
+        for skill in verified.get(bucket, []) or []:
+            if not isinstance(skill, str) or not skill.strip():
+                continue
+            core = _skill_core(skill)
+            if not core:
+                continue
+            if not phrase_present(core, jd_blob):
+                continue  # JD doesn't name this skill
+            if phrase_present(core, resume_blob):
+                continue  # already present (skills list or a bullet)
+            _append_jd_skill(tailored, skill, bucket, verified)
+            resume_blob += "\n" + skill.lower()  # keep in sync within this pass
 
 
 def _dedupe_education(tailored: TailoredResume) -> None:

@@ -127,6 +127,42 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     # --- Google Marketing ---
     ("Google Analytics Certification", _pat(r"\bGoogle\s+Analytics\s+Cert(?:ification)?\b")),
     ("Google Ads Certification", _pat(r"\bGoogle\s+Ads\s+Cert(?:ification)?\b")),
+    # --- AI / LLM (2026) ---
+    # Canonical name OR exam code only (curated-precision: no loose shorthand).
+    # Databricks specifics MUST precede the generic "Databricks Certified" below
+    # so the overlap-filter keeps the longer match.
+    ("AWS Certified AI Practitioner", _pat(
+        r"\bAWS\s+Certified\s+AI\s+Practitioner\b|\bAIF-?C01\b"
+    )),
+    ("AWS Certified Machine Learning Engineer – Associate", _pat(
+        r"\bAWS\s+Certified\s+Machine\s+Learning\s+Engineer[\s–-]+Associate\b"
+        r"|\bMLA-?C01\b"
+    )),
+    ("AWS Certified Machine Learning – Specialty", _pat(
+        r"\bAWS\s+Certified\s+Machine\s+Learning[\s–-]+Specialty\b|\bMLS-?C01\b"
+    )),
+    ("Azure AI Engineer Associate", _pat(
+        r"\bAI-?102\b|\bAzure\s+AI\s+Engineer\b"
+    )),
+    ("Databricks Certified Generative AI Engineer Associate", _pat(
+        r"\bDatabricks\s+Certified\s+Generative\s+AI\s+Engineer(?:\s+Associate)?\b"
+    )),
+    ("Databricks Certified Machine Learning Professional", _pat(
+        r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Professional\b"
+    )),
+    ("Databricks Certified Machine Learning Associate", _pat(
+        r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Associate\b"
+    )),
+    ("NVIDIA-Certified Associate: Generative AI LLMs", _pat(
+        r"\bNCA-?GENL\b"
+        r"|\bNVIDIA[\s-]+Certified\s+Associate[:\s–-]+Generative\s+AI\b"
+    )),
+    ("Google Cloud Generative AI Leader", _pat(
+        r"\b(?:Google\s+Cloud|GCP)\s+Generative\s+AI\s+Leader\b"
+    )),
+    ("Google Professional Machine Learning Engineer", _pat(
+        r"\b(?:GCP|Google)\s+(?:Cloud\s+)?Professional\s+Machine\s+Learning\s+Engineer\b"
+    )),
     # --- Data / ML ---
     ("Databricks Certified", _pat(r"\bDatabricks\s+Certified\b")),
     ("Snowflake SnowPro", _pat(r"\bSnowPro\b|\bSnowflake\s+SnowPro\b")),
