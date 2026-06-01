@@ -148,7 +148,25 @@ tripping fabrication enforcement or sinking audit coverage.
 - Unit: `audit.keyword_coverage` counts FastAPI as covered (no false `revise`).
 - `pytest -q` green.
 
-**Status:** [ ] not started
+**Status:** [x] DONE (2026-06-01).
+- Shipped: `"skills_projects"` added to `tailor._JD_SKILL_BUCKETS` (so a
+  JD-named project skill backfills onto the resume), to the
+  `_enforce_no_fabrication` allowlist tuple (so project skills are accepted, not
+  flagged as invented), and to `audit._verified_skills` (so the deterministic
+  must-have fallback + coverage credit them). No `apply_cmd` change needed:
+  it already reads `verified.json` into the dict it passes to tailor/audit, and
+  `skills_projects` will be present there once PB3 lands the parser.
+- Tested: `test_tailor_backfill.test_backfills_jd_required_project_skill`,
+  `test_tailor_invariants.test_accepts_project_skill_in_non_familiar_category`,
+  `test_audit.test_extract_must_haves_includes_project_skill`. Full suite 761
+  passed. Stash-compared lint: 0 new errors (15 pre-existing in the touched
+  files left untouched, out of phase surface). Pre-existing mypy debt
+  (`audit.py:230`) also left untouched.
+- Docs: this file + the AGENTS.md `skills_projects` note (PB-status line).
+- NOT done (deferred): the `PROJECTS` narrative section is still not parsed
+  (PB3) and does not render on the resume (PB4). Project SKILLS now flow through
+  the skills section, but project ENTRIES do not. `convert-resume` still must
+  wait for PB3.
 
 ---
 

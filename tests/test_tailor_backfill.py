@@ -24,6 +24,7 @@ VERIFIED = {
     "skills_cms": ["Shopify (Liquid, Custom Themes)"],
     "skills_data_devops": ["MongoDB", "PostgreSQL", "Docker", "Git", "AWS", "Azure"],
     "skills_ai": ["Ollama (Local LLM hosting)"],
+    "skills_projects": ["FastAPI", "Redis", "Claude API"],
     "skills_familiar": ["Java", "Angular"],
 }
 
@@ -96,6 +97,18 @@ def test_does_not_duplicate_already_present_skill() -> None:
     resume = _resume([backend, TailoredCategory("Familiar", ["Java"])])
     _ensure_jd_required_skills(resume, VERIFIED, _job("Cloud on AWS."))
     assert [it.lower() for it in backend.items].count("aws") == 1
+
+
+def test_backfills_jd_required_project_skill() -> None:
+    """PB2: a JD that names a `skills_projects` skill (FastAPI) backfills it
+    onto the tailored resume, just like a Core/DevOps skill."""
+    resume = _resume([
+        TailoredCategory("Backend & APIs", ["Node.js", "Docker"]),
+        TailoredCategory("Familiar", ["Java"]),
+    ])
+    _ensure_jd_required_skills(resume, VERIFIED, _job("Backend in FastAPI with Redis."))
+    items = _all_skill_items(resume)
+    assert {"fastapi", "redis"} <= items
 
 
 def test_paren_skill_present_in_clean_form_not_re_added() -> None:

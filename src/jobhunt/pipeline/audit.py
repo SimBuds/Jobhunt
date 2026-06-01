@@ -180,7 +180,14 @@ def keyword_coverage(
 
 def _verified_skills(verified: dict[str, Any]) -> list[str]:
     skills: list[str] = []
-    for key in ("skills_core", "skills_cms", "skills_data_devops", "skills_ai", "skills_familiar"):
+    for key in (
+        "skills_core",
+        "skills_cms",
+        "skills_data_devops",
+        "skills_ai",
+        "skills_projects",
+        "skills_familiar",
+    ):
         for s in verified.get(key, []) or []:
             if isinstance(s, str) and s.strip():
                 skills.append(s.strip())

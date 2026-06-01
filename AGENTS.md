@@ -697,11 +697,15 @@ top-level commands that touch scoring/listing/applying must call it too.
    distinct from `skills_familiar` (academic / light use) and the professional
    Core buckets (paid client work). It is treated as a Core bucket by
    `_all_matched_are_familiar`, so a JD whose only match is a project skill is
-   NOT Familiar-capped. PB1 wires it for scoring only. Rendering project skills
-   on the tailored resume (PB2) and parsing a `PROJECTS` narrative section
-   (PB3) are later phases. Until PB3 lands, do NOT run `convert-resume` against
-   the projects-augmented `Resume.docx`: the parser does not yet know the
-   `PROJECTS` section and would mis-file those lines into `education`.
+   NOT Familiar-capped. PB1 wired it for scoring. PB2 wired it through the
+   tailor (`_JD_SKILL_BUCKETS` backfill + the `_enforce_no_fabrication`
+   allowlist) and the audit (`_verified_skills`), so a JD-named project skill
+   can appear in the tailored resume's skills section and is credited by
+   coverage. Still deferred: parsing a `PROJECTS` narrative section (PB3) and
+   rendering project ENTRIES on the resume (PB4). Until PB3 lands, do NOT run
+   `convert-resume` against the projects-augmented `Resume.docx`: the parser
+   does not yet know the `PROJECTS` section and would mis-file those lines into
+   `education`.
 
    **React umbrella (2026-05-28).** The verified Core skill is
    `React (Redux, React Native)` — one entry covering the React ecosystem.
