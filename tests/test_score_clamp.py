@@ -40,6 +40,7 @@ VERIFIED_BLOB = json.dumps(
             "Shopify (Liquid, Custom Themes)",
         ],
         "skills_familiar": ["Python", "Java"],
+        "skills_projects": ["FastAPI", "Redis"],
         "ai_tooling": "Local LLM hosting via Ollama; prompt engineering for code generation.",
     }
 )
@@ -74,6 +75,15 @@ def test_verify_dedupes_overlap_between_matched_and_gaps() -> None:
 
 def test_matched_in_familiar_only_triggers_cap() -> None:
     assert _all_matched_are_familiar(["Java"], VERIFIED_BLOB) is True
+
+
+def test_project_skill_counts_as_core_not_familiar() -> None:
+    """PB1: a skill verified in `skills_projects` is Core-grade, so the
+    Familiar-only cap must NOT fire when the only match is a project skill."""
+    assert _all_matched_are_familiar(["FastAPI"], VERIFIED_BLOB) is False
+    # Mixed: a project skill alongside a familiar skill is still not
+    # familiar-only, so no cap.
+    assert _all_matched_are_familiar(["FastAPI", "Java"], VERIFIED_BLOB) is False
 
 
 def test_coverage_pct_handles_empty() -> None:

@@ -39,6 +39,12 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "Python" in facts.skills_data_devops
     assert "Java" not in facts.skills_core
 
+    # PB1: the "Project Stack:" skills line populates a Core-grade bucket
+    # distinct from Familiar (project-demonstrated, not academic).
+    assert "FastAPI" in facts.skills_projects
+    assert "FastAPI" not in facts.skills_familiar
+    assert "FastAPI" not in facts.skills_core
+
     # Round-trip via verified.json.
     out = tmp_path / "verified.json"
     write_verified_json(facts, out)
@@ -50,7 +56,10 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     kb = tmp_path / "kb"
     paths = write_kb_markdown(facts, kb)
     assert len(paths) == 4
-    assert (kb / "profile" / "skills.md").read_text().count("## Familiar") == 1
+    skills_md = (kb / "profile" / "skills.md").read_text()
+    assert skills_md.count("## Familiar") == 1
+    assert skills_md.count("## Project Stack") == 1
+    assert "FastAPI" in skills_md
 
 
 def test_parse_baseline_missing_file_errors(tmp_path: Path):
