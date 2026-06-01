@@ -75,6 +75,13 @@ class IngestConfig(BaseModel):
     # profiles (e.g. frontend / CMS / full-stack) where these roles are never
     # a fit. See `ingest._filter.is_research_title`.
     drop_research_titles: bool = False
+    # Drop clearly non-engineering function titles at ingest (Office Administrator,
+    # Sanitation, Food Safety, Maintenance Technician, Account Executive, Legal
+    # Counsel, Buyer, etc.) so the scorer isn't burned on roles it always declines.
+    # Default-on (unlike drop_research_titles): non-eng functions are never a fit
+    # for any engineering profile. A dev/eng signal in the title always wins —
+    # see `ingest._filter.is_non_engineering_title`. Set False to disable.
+    drop_non_engineering_titles: bool = True
 
 
 class GatewayConfig(BaseModel):

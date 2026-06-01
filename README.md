@@ -424,7 +424,11 @@ smartrecruiters      = []     # case-sensitive company slugs (e.g. "Bosch")
 workday              = []     # "tenant:host:site" triples (ingest/workday.py)
 workable             = []     # board slugs, e.g. "deliveroo"
 recruitee            = []     # board slugs (the `<slug>` in <slug>.recruitee.com)
-job_bank_ca          = []     # full RSS URLs from jobbank.gc.ca search results
+job_bank_ca          = []     # full jobbank.gc.ca HTML *search* URLs, one per role query,
+                              # e.g. ".../jobsearch/jobsearch?searchstring=software+developer
+                              # &locationstring=Toronto%2C+ON&fage=7&sort=D" (RSS is dead;
+                              # the adapter scrapes results + GTA-filters client-side, and
+                              # honors the site's Crawl-delay: 5)
 rss                  = []     # generic employer career-page RSS/Atom URLs
 auto_discover        = true   # post-ingest probe new companies + append hits.
                               # Disable for narrow profiles where the GTA

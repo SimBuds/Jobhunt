@@ -11,8 +11,14 @@
 # Workday is intentionally absent: tenant:host:site triples are easier to
 # acquire by pasting the URL into `jobhunt add` than by curating here.
 
-greenhouse = ["konradgroup", "appnovation"]
-lever = ["benchsci"]
-ashby = []
+greenhouse = [
+    "konradgroup", "appnovation",
+    "clutch", "geotab", "hootsuite", "instacart", "mejuri",
+]
+lever = ["achievers", "deepgenomics", "knix", "waabi", "wattpad"]
+ashby = [
+    "1password", "clearco", "docebo", "float",
+    "hopper", "loopio", "procurify", "wealthsimple",
+]
 smartrecruiters = []
 workday = []

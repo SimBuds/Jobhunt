@@ -56,13 +56,24 @@ CANDIDATES: dict[str, list[str]] = {
         "league",
         "shakepay",
         "borrowell",
+        # Confirmed GTA-live 2026-06-01:
+        "clutch",
+        "geotab",
+        "instacart",
+        "mejuri",
     ],
     "lever": [
-        "benchsci",
+        # benchsci removed 2026-06-01 — 404 (stale).
         "fellow",
         "kovrr",
         "voiceflow",
         "deeplearningai",
+        # Confirmed GTA-live 2026-06-01:
+        "achievers",
+        "deepgenomics",
+        "knix",
+        "waabi",
+        "wattpad",
     ],
     "ashby": [
         "cohere",
@@ -70,6 +81,15 @@ CANDIDATES: dict[str, list[str]] = {
         "mercor",
         "sentry",
         "klue",
+        # Confirmed GTA-live 2026-06-01:
+        "1password",
+        "clearco",
+        "docebo",
+        "float",
+        "hopper",
+        "loopio",
+        "procurify",
+        "wealthsimple",
     ],
     "smartrecruiters": [
         # Hand-add after `jobhunt discover slugs` confirms — SmartRecruiters

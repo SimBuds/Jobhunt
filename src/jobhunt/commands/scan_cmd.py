@@ -48,6 +48,7 @@ from jobhunt.ingest import (
 )
 from jobhunt.ingest._filter import (
     is_management_title,
+    is_non_engineering_title,
     is_research_title,
     is_senior_title,
     is_within_age_window,
@@ -144,6 +145,8 @@ async def _run(
                 ]
                 if filtered.get("research"):
                     parts.append(f"{filtered['research']} research/ML-title")
+                if filtered.get("non_eng"):
+                    parts.append(f"{filtered['non_eng']} non-engineering-title")
                 if filtered.get("senior"):
                     parts.append(f"{filtered['senior']} senior-title (YoE)")
                 typer.echo(f"ingest: filtered {' + '.join(parts)} job(s)")
@@ -353,6 +356,10 @@ async def _ingest_all(
     """
     secrets = load_secrets()
     limiter = RateLimiter(cfg.ingest.rate_limit_per_sec)
+    # Job Bank's robots.txt requests Crawl-delay: 5. Its HTML-scrape adapter gets
+    # a dedicated 5 s-spaced limiter (separate host-keyed state from the shared
+    # 1 req/s limiter, so it doesn't slow the API adapters).
+    jobbank_limiter = RateLimiter(0.2)
     headers = {"User-Agent": cfg.ingest.user_agent, "Accept": "application/json"}
 
     async with httpx.AsyncClient(
@@ -378,7 +385,9 @@ async def _ingest_all(
         for slug in cfg.ingest.recruitee:
             adapters.append(("recruitee", slug, recruitee.fetch(client, limiter, slug)))
         for url in cfg.ingest.job_bank_ca:
-            adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, limiter, url)))
+            adapters.append(
+                ("job_bank_ca", url, job_bank_ca.fetch(client, jobbank_limiter, url))
+            )
         for url in cfg.ingest.rss:
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
         adzuna_queries = cfg.ingest.adzuna.queries
@@ -490,8 +499,9 @@ async def _ingest_all(
             closer_task = asyncio.create_task(closer())
 
             inserted = 0
-            filtered = {"mgmt": 0, "stale": 0, "research": 0, "senior": 0}
+            filtered = {"mgmt": 0, "stale": 0, "research": 0, "senior": 0, "non_eng": 0}
             drop_research = cfg.ingest.drop_research_titles
+            drop_non_eng = cfg.ingest.drop_non_engineering_titles
             drop_senior = not cfg.applicant.include_senior_roles
             seen_dedup: set[str] = set()
             while True:
@@ -509,6 +519,9 @@ async def _ingest_all(
                     continue
                 if drop_research and is_research_title(item.title):
                     filtered["research"] += 1
+                    continue
+                if drop_non_eng and is_non_engineering_title(item.title):
+                    filtered["non_eng"] += 1
                     continue
                 if drop_senior and is_senior_title(item.title):
                     filtered["senior"] += 1

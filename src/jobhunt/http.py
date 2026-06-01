@@ -68,6 +68,45 @@ async def get_json(
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
 
+async def get_text(
+    client: httpx.AsyncClient,
+    url: str,
+    limiter: RateLimiter,
+    *,
+    params: Mapping[str, Any] | None = None,
+    accept: str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    max_retries: int = 3,
+) -> str:
+    """GET a URL, return the response body as text. Backs off on 429/5xx.
+
+    Sibling of `get_json` for HTML/text endpoints. The shared client sets a
+    default `Accept: application/json`; some HTML endpoints (e.g. Job Bank's
+    search results) reject that with 406, so the Accept header is overridden
+    per request here.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        await limiter.wait(host_of(url))
+        try:
+            r = await client.get(
+                url,
+                params=dict(params) if params else None,
+                headers={"Accept": accept},
+            )
+        except httpx.HTTPError as e:
+            last_exc = e
+            await asyncio.sleep(2**attempt)
+            continue
+        if r.status_code == 429 or r.status_code >= 500:
+            await asyncio.sleep(2**attempt)
+            continue
+        if r.status_code == 404:
+            raise IngestError(f"404 {url}")
+        r.raise_for_status()
+        return r.text
+    raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
+
+
 async def post_json(
     client: httpx.AsyncClient,
     url: str,
