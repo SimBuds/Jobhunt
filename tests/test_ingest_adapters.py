@@ -9,8 +9,7 @@ from typing import Any
 import pytest
 
 from jobhunt.errors import IngestError
-from jobhunt.ingest._rss import RSSItem, parse_feed, strip_html
-from jobhunt.ingest.job_bank_ca import _split_title
+from jobhunt.ingest._rss import parse_feed, strip_html
 from jobhunt.ingest.smartrecruiters import (
     _extract_description,
     _format_location,
@@ -25,15 +24,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # ---------------------------------------------------------------------------
 # RSS parser (_rss.py)
 # ---------------------------------------------------------------------------
-
-
-def test_rss_parse_job_bank_feed() -> None:
-    xml = (FIXTURES / "job_bank_ca.xml").read_text()
-    items = list(parse_feed(xml))
-    assert len(items) == 3
-    assert items[0].title == "web developer - ACME Inc - Toronto (ON)"
-    assert items[0].link and "123456" in items[0].link
-    assert items[0].pub_date is not None
 
 
 def test_rss_parse_generic_feed() -> None:
@@ -54,38 +44,47 @@ def test_strip_html_removes_tags() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_job_bank_split_title_full() -> None:
-    company, title, location = _split_title("web developer - ACME Inc - Toronto (ON)")
-    assert title == "web developer"
-    assert company == "ACME Inc"
-    assert location == "Toronto (ON)"
+def test_job_bank_html_filters_to_gta(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Parse the HTML results fixture: keep GTA rows, drop non-GTA + empty-location."""
+    from jobhunt.ingest import job_bank_ca
+
+    html = (FIXTURES / "job_bank_ca.html").read_text()
+
+    async def fake_get_text(*args: Any, **kwargs: Any) -> str:
+        return html
+
+    monkeypatch.setattr(job_bank_ca, "get_text", fake_get_text)
+    jobs = _drain(job_bank_ca.fetch(client=None, limiter=None, search_url="x"))  # type: ignore[arg-type]
+
+    locs = [j.location for j in jobs]
+    # GTA cities kept (Toronto, Mississauga); non-GTA + empty-location dropped.
+    assert any(loc and "Mississauga" in loc for loc in locs)
+    assert any(loc and "Toronto" in loc for loc in locs)
+    assert not any(loc and "Surrey" in loc for loc in locs)
+    assert not any(loc and "Montr" in loc for loc in locs)
 
 
-def test_job_bank_split_title_two_parts() -> None:
-    company, title, location = _split_title("developer - ACME Inc")
-    assert title == "developer"
-    assert company == "ACME Inc"
-    assert location is None
+def test_job_bank_html_extracts_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.ingest import job_bank_ca
 
+    html = (FIXTURES / "job_bank_ca.html").read_text()
 
-def test_job_bank_gta_filter_applies() -> None:
-    """Only Toronto + Remote Canada items should pass the GTA filter."""
-    xml = (FIXTURES / "job_bank_ca.xml").read_text()
-    items = list(parse_feed(xml))
-    from jobhunt.ingest._filter import is_gta_eligible
-    from jobhunt.ingest.job_bank_ca import _split_title
+    async def fake_get_text(*args: Any, **kwargs: Any) -> str:
+        return html
 
-    eligible = []
-    for item in items:
-        if not item.title:
-            continue
-        _, _, location = _split_title(item.title)
-        if is_gta_eligible(location) or is_gta_eligible(item.description):
-            eligible.append(item.title)
-    # Vancouver item must NOT be eligible.
-    assert not any("Vancouver" in t for t in eligible)
-    # Toronto item must be eligible.
-    assert any("Toronto" in t for t in eligible)
+    monkeypatch.setattr(job_bank_ca, "get_text", fake_get_text)
+    jobs = _drain(job_bank_ca.fetch(client=None, limiter=None, search_url="x"))  # type: ignore[arg-type]
+
+    miss = next(j for j in jobs if j.location and "Mississauga" in j.location)
+    assert miss.source == "job_bank_ca"
+    assert miss.id.startswith("job_bank_ca:")
+    assert miss.company == "Intellgen Solutions Inc."
+    assert miss.title == "software developer"
+    assert miss.remote_type == "hybrid"  # telework span = "Hybrid"
+    # URL is absolute, points at the posting, and has no session id.
+    assert miss.url and miss.url.startswith("https://www.jobbank.gc.ca/jobsearch/jobposting/")
+    assert ";jsessionid=" not in miss.url
+    assert miss.posted_at is not None  # "May 29, 2026" parsed
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,265 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### GTA-exposure initiative (2026-06-01) — 5 phases, awaiting approval
+
+**Why:** A 3-day sample (153 jobs, 13 applications, 3 answers) showed the
+apply/tailor/answer end is healthy (10 ship / 3 revise / 0 block; honest,
+anchored answers) but the GTA-exposure funnel is starved upstream: the
+applyable pool (score ≥55) is only 32 jobs and leans on Adzuna staffing-agency
+reposts. Four leaks identified — dormant free sources, scan budget burned on
+non-eng noise, junior roles wrongly declined as "Senior-band", and dead slugs.
+User approved tackling all four (2026-06-01).
+
+Diagnostic evidence (do not re-derive — captured at plan time):
+- Sources: workday 76 · greenhouse 36 · adzuna 30 · manual 5 · ashby 2 · lever 2 · rss 2.
+- `job_bank_ca=[]`, `workable=[]`, `recruitee=["synechron"→0 posts]` — adapters
+  wired in `scan_cmd._ingest_all` (lines 376-381), starved of slugs/feeds.
+- 17 configured slugs returned 0 posts/30d (`analyze employers --hiring-velocity`).
+- Many sub-40 declines are non-eng Workday roles (Office Admin, Sanitation, Food
+  Safety, Maintenance Tech, Legal, Account Executive) — no non-eng ingest filter
+  exists (`_filter.py` has mgmt/research/senior only).
+- Co-op/Campus/Intern titles match neither `is_senior_title` nor
+  `is_explicit_junior_title`, so qwen's bogus "Senior-band" decline
+  (`pipeline/score.py:108-113` override) is never nullified for them.
+
+**Cross-phase inherited decisions (set at plan time):**
+- New no-key sources that are *employer slugs* (Workable, Recruitee) go into the
+  committed `kb/seeds/gta-employers.toml` + `config seed` loader (durable,
+  reviewable). Job Bank feeds are *role-query RSS URLs*, not employers — they go
+  in Casey's `config.toml` directly + a documented default set in README (not the
+  employer seed file). **← surface for correction if you'd rather seed Job Bank too.**
+- `drop_non_engineering_titles` defaults **True** (unlike `drop_research_titles`
+  which is opt-in False) — non-eng functions are never a fit for any eng profile.
+  **← confirm or flip to opt-in during approval.**
+- Slug/feed population into Casey's live `~/.config/jobhunt/config.toml` is an
+  operational step verified by a live scan; it is NOT a git commit (config.toml
+  is not in the repo). Each phase's *committed* artifact is called out separately.
+
+---
+
+### Phase G1 — Rewrite Job Bank Canada adapter as a robots-respecting HTML scraper
+
+**Original RSS plan BLOCKED (2026-06-01 live investigation):** Job Bank's public
+RSS is dead — `format=rss` on `/jobsearch/jobsearch` returns the HTML page, and the
+real feed `/jobsearch/feed/jobSearchRSSfeed?empl=...` returns an empty `<feed>`
+(0 `<entry>`) even with a valid `jsessionid` + search context. Only the HTML results
+page carries data. robots.txt = no Disallow, `Crawl-delay: 5`. **User approved (2026-06-01)
+rewriting the adapter as an HTML scraper** — a sanctioned, documented exception to the
+"public APIs only" rule (Job Bank is a Govt-of-Canada public service, robots-clean,
+not in the forbidden-site list, and its sanctioned API is dead).
+
+**Goal:** Replace the dead RSS adapter with an HTML-results parser that yields GTA-eligible Job Bank postings.
+
+**Diff-surface note (justifies >5 surfaces):** core code is 3 files (adapter,
+http primitive, scan wiring) + 1 test + 1 fixture; the AGENTS.md/README edits are
+DoD doc-updates, not feature code. Splitting the rewrite from its wiring would ship a
+half-wired adapter (not end-to-end, not cleanly revertable), so one phase is correct.
+
+**Files to touch:**
+- `src/jobhunt/ingest/job_bank_ca.py` — REWRITE: HTML `<article>` parser (stdlib `html.parser`), drop the RSS `_split_title` path.
+- `src/jobhunt/http.py` — add `get_text(client, url, limiter, *, accept=...)` (backoff + limiter, returns `r.text`).
+- `src/jobhunt/commands/scan_cmd.py` — pass a dedicated slow `RateLimiter(0.2)` (5 s) to the job_bank adapter to honor Crawl-delay.
+- `tests/fixtures/job_bank_ca.html` — new captured results page; **delete** `tests/fixtures/job_bank_ca.xml`.
+- `tests/test_ingest_adapters.py` — rewrite the job_bank case against the HTML fixture.
+- `AGENTS.md` — amend ingestion rule 1 to record the Job Bank HTML-scrape carve-out + Crawl-delay handling.
+- `README.md` — update the Job Bank config example (HTML search URLs, not RSS).
+- `~/.config/jobhunt/config.toml` (operational) — set `[ingest] job_bank_ca = [<GTA search URLs>]`; verify scan.
+
+**Functions to add/change:**
+- `job_bank_ca.fetch` — change — fetch HTML via `get_text`, parse `<article>` results, bounded page walk, `is_gta_eligible` filter (precision gate; Job Bank location filter is loose — confirmed Thunder Bay leaked into a Toronto search).
+- `job_bank_ca._parse_results` — add — stdlib `HTMLParser` subclass extracting per-article: posting id + url (strip `;jsessionid`), title (`span.noctitle`), employer (`li.business`), location (`li.location`), date (`li.date`), salary (`li.salary` → folded into description), remote hint (`span.telework`).
+- `http.get_text` — add — text GET sibling of `get_json` (HTML Accept; reuses backoff + limiter).
+
+**Reuse audit:**
+- Search terms: `rg "def get_json|def fetch_feed|RateLimiter|strip_html" src/jobhunt`, `rg "HTMLParser|lxml|BeautifulSoup" src/`.
+- Candidates found: `http.get_json` (JSON only), `_rss.fetch_feed` (sends `application/rss+xml` Accept → 406 on this HTML endpoint), `_rss.strip_html` (tag-strip), `RateLimiter` (per-host, global interval), lxml (transitive-only in uv.lock).
+- Why not reused / how reused: `get_json` parses JSON (can't return HTML) and `fetch_feed`'s xml Accept 406s here → new `get_text` primitive; `strip_html` IS reused for the description; `RateLimiter` IS reused via a dedicated 0.2/s instance; lxml NOT promoted to a direct dep — stdlib `html.parser` keeps the no-new-dep convention (`_rss` precedent).
+
+**Verification:** (≤3 bullets)
+- New unit test: parse `job_bank_ca.html` fixture → asserts GTA rows kept, non-GTA (Thunder Bay) dropped, fields populated, `;jsessionid` stripped from URL.
+- `pytest -q` green (old XML fixture/test removed cleanly).
+- Operational: `jobhunt scan` → `SELECT COUNT(*) FROM jobs WHERE source='job_bank_ca'` > 0 with GTA locations.
+
+**Status:** [x] DONE (2026-06-01). Rewrote `job_bank_ca.py` as a stdlib-`html.parser`-free
+regex HTML scraper (no new dep); added `http.get_text`; wired a dedicated `RateLimiter(0.2)`
+in `scan_cmd` for Crawl-delay: 5. New fixture `tests/fixtures/job_bank_ca.html` (+2 tests),
+deleted the stale `.xml` + its 3 RSS tests. Suite 707 green, ruff/mypy clean on touched code
+(net −1 pre-existing lint error). AGENTS.md rule 1/4 + structure comment + README config example
+updated. Live E2E: `scan --skip-score` ingested 23 Job Bank postings → **14 net-new GTA rows**
+(rest deduped vs Adzuna), all real Toronto/Mississauga employers (Nelson Education, Avant Techno,
+Source Code, Upstaff, Intellgen, …). Config populated with 5 GTA role-query URLs.
+
+---
+
+### Phase G2 — Non-engineering ingest prefilter
+
+**Goal:** Drop non-engineering-function titles at ingest so the scorer isn't burned on roles it will always decline.
+
+**Files to touch:**
+- `src/jobhunt/ingest/_filter.py` — add `_NON_ENG_TITLE_RE` + `is_non_engineering_title`.
+- `src/jobhunt/config.py` — add `IngestConfig.drop_non_engineering_titles: bool = True`.
+- `src/jobhunt/commands/scan_cmd.py` — wire into the drain-loop chokepoint + `filtered` dict + summary line.
+- `tests/test_non_eng_title_filter.py` — new unit test.
+- `AGENTS.md` — add the filter to the §"Ingestion rules" pre-score chokepoint list (item 9).
+
+**Functions to add/change:**
+- `_filter.is_non_engineering_title` — add — regex match for clearly non-eng functions (Administrator, Coordinator, Technician (non-software), Sanitation, Food Safety/FSQA, Buyer/Procurement/Supply, Production Supervisor, Account Executive/Sales, Legal/Counsel, Recruiter, Marketing, Accountant, Custodian). Word-boundaried; must NOT match Software/Data/QA/DevOps/Frontend/Backend/Full Stack engineer-dev titles.
+- `scan_cmd._ingest_all` — change — add the drop branch + `filtered["non_eng"]` counter.
+
+**Reuse audit:**
+- Search terms: `rg "is_management_title|is_research_title|_RESEARCH_TITLE_RE" src/`.
+- Candidates found: `is_management_title`, `is_research_title` (sibling title filters).
+- Why not reused: they target different title classes (people-management; ML/research). Non-eng *functions* (admin/ops/sales/legal) are a disjoint set — overloading either regex would blur their documented contracts. New sibling matches the established pattern exactly.
+
+**Verification:** (≤3 bullets)
+- New test: non-eng titles (Office Administrator, Sanitation Associate, Food Safety Specialist, Account Executive) → True; eng titles (Software Developer, Full Stack Engineer, QA Contractor, DevOps Engineer) → False.
+- `pytest -q` stays green.
+- Manual: re-run `jobhunt scan --skip-ingest`? No — confirm via the new test + the scan summary line showing a non-eng drop count on next real scan.
+
+**Status:** [x] DONE (2026-06-01). Added `is_non_engineering_title` + `_NON_ENG_TITLE_RE`
++ `_ENG_GUARD_RE` (guard wins) to `_filter.py`; `drop_non_engineering_titles=True` in
+`config.py`; wired into the `scan_cmd` drain loop + `filtered["non_eng"]` + summary line.
+New `tests/test_non_eng_title_filter.py` (32 cases). Suite 739 green; touched code ruff/mypy
+clean (the SIM103 in `is_gta_eligible` + the 2 ApplicantProfile mypy errors are pre-existing,
+untouched). Live-DB validation: 25/167 dropped, **0 false positives** among score ≥55. AGENTS.md
+rule 9 updated. Default-True confirmed (flagged for flip in report; left on).
+
+---
+
+### Phase G3 — Junior/co-op title misfire fix
+
+**Goal:** Extend the explicit-junior matcher so Co-op/Intern/Campus roles stop being declined as "Senior-band".
+
+**Files to touch:**
+- `src/jobhunt/ingest/_filter.py` — extend `_JUNIOR_TITLE_RE` with `co-?op`, `intern(ship)?`, `campus`, `early[-\s]talent`, `student`, `placement`.
+- `tests/test_senior_title_filter.py` — add cases asserting these match `is_explicit_junior_title`.
+
+**Functions to add/change:**
+- `_filter._JUNIOR_TITLE_RE` — change — broaden the alternation.
+
+**Reuse audit:**
+- Search terms: `rg "is_explicit_junior_title|_JUNIOR_TITLE_RE" src/`.
+- Candidates found: `is_explicit_junior_title` (the consumer in `pipeline/score.py:108`).
+- Why not reused: this IS the function being extended — the score override already exists; it just needs the regex to recognize co-op/intern/campus markers.
+
+**Verification:** (≤3 bullets)
+- New cases: "Early Talent ... Co-op", "Software Engineer Intern", "Campus Recruitment Fall 2026" → `is_explicit_junior_title` True.
+- `pytest -q` green; existing senior-title cases unchanged.
+
+**Status:** [x] DONE (2026-06-01). Extended `_JUNIOR_TITLE_RE` with
+`co-?op|intern(ship)?|campus|early-talent|student|practicum` (\b-bounded so
+`internal`/`international`/`cooperative` don't false-match). Added an
+`is_explicit_junior_title` parametrized test block to `test_senior_title_filter.py`.
+Suite 757 green; `_filter.py` mypy clean. No AGENTS.md/README change — the junior-title
+override (`pipeline.score`) is an existing documented mechanism; only its matcher widened.
+
+---
+
+### Phase G4 — Enable Workable + Recruitee via verified GTA slugs
+
+**Goal:** Add live-verified Toronto Workable/Recruitee employer slugs to the committed seed pipeline.
+
+**Files to touch:**
+- `scripts/verify_seeds.py` — add Workable/Recruitee candidate probing (or run a one-off probe; pick the smaller path during execution).
+- `src/jobhunt/commands/config_cmd.py` — extend `_SEEDABLE_ATSES` with `workable`, `recruitee`.
+- `kb/seeds/gta-employers.toml` — add `workable = [...]` / `recruitee = [...]` (verified hits only).
+- `README.md` — note the two new seedable ATSes.
+- `~/.config/jobhunt/config.toml` (operational) — `config seed --apply` + verify scan.
+
+**Functions to add/change:**
+- `config_cmd._SEEDABLE_ATSES` — change — append the two ATS keys (loader/`seed`/`--preview` already iterate this tuple).
+
+**Reuse audit:**
+- Search terms: `rg "_SEEDABLE_ATSES|_load_seeds" src/`, `rg "is_gta_eligible" src/jobhunt/ingest/workable.py src/jobhunt/ingest/recruitee.py`.
+- Candidates found: `config_cmd._load_seeds`/`seed` (tuple-driven, already generic over ATS keys); `ingest/workable.py` + `recruitee.py` (full adapters, GTA-filtered, wired).
+- Why not reused: fully reused — only the `_SEEDABLE_ATSES` tuple + seed-file data need to grow; no new functions.
+
+**Verification:** (≤3 bullets)
+- Live probe each candidate slug; keep only those returning ≥1 GTA-eligible posting.
+- `config seed --preview` lists the new workable/recruitee entries; `--apply` writes them.
+- `jobhunt scan` shows `workable`/`recruitee` rows in `jobs`.
+
+**Status:** [SKIPPED] (2026-06-01, user decision). Reconnaissance found ~0 discoverable
+GTA Workable/Recruitee inventory and auto-discover already covers both ATSes at runtime,
+so manual seeding adds no exposure now. No code shipped. Dead recruitee/synechron pruned
+in G5. Reconnaissance below kept for the record.
+
+**Reconnaissance (2026-06-01):**
+Probed (a) 65 curated Canadian/GTA tech employers and (b) all 60 companies already
+appearing in GTA scans (via the discover normalizer) against both Workable + Recruitee
+through the real GTA-filtering adapters. Result: a handful of real accounts (ada,
+wealthsimple, apollo) but **0 with any GTA-eligible postings**; unknown slugs 404
+cleanly. Auto-discover ALREADY probes Workable/Recruitee on every scan, so the runtime
+path is covered — the only gap the planned plumbing fills is cold-start `config seed`
+import of *manually-curated* slugs, of which there are currently none to add. Net GTA
+exposure from G4 right now ≈ 0. Options: (A) ship seed-loader plumbing only (extend
+`_SEEDABLE_ATSES`, README) for future hits, no slugs; (B) skip G4, rely on auto-discovery,
+go to G5; (C) wide WebSearch-driven slug hunt (high effort, uncertain).
+
+---
+
+### Phase G5 — Prune dead slugs + add verified GTA Greenhouse/Lever/Ashby employers
+
+**Goal:** Remove the 17 zero-post slugs and seed freshly-verified GTA employer boards.
+
+**Files to touch:**
+- `~/.config/jobhunt/config.toml` (operational) — `jobhunt config reprobe --prune`.
+- `scripts/verify_seeds.py` — add new GTA Greenhouse/Lever/Ashby candidates to vet.
+- `kb/seeds/gta-employers.toml` — add the verified subset.
+
+**Functions to add/change:** none — uses existing `config reprobe` + `verify_seeds.py` + `config seed`.
+
+**Reuse audit:**
+- Search terms: `rg "reprobe|_PROBEABLE_ATSES" src/jobhunt/commands/config_cmd.py`.
+- Candidates found: `config_cmd` reprobe path (probes + prunes stale slugs); `verify_seeds.py` (curation-time verifier).
+- Why not reused: fully reused — this phase is operation + curated data only.
+
+**Verification:** (≤3 bullets)
+- `config reprobe` prints live vs stale; `--prune` removes the 17 (with confirmation).
+- `verify_seeds.py` output confirms each new slug is live before it enters the seed file.
+- `jobhunt scan` post-change shows net-higher real-employer GTA volume.
+
+**Status:** [x] DONE (2026-06-01). **Prune corrected from plan:** `config reprobe`
+(read-only first) showed only `lever/benchsci` is genuinely stale (404) — the 17
+"zero-post" slugs from hiring-velocity are LIVE boards with no GTA posts in-window
+(a different metric); pruning them would cut future exposure, so they were KEPT.
+recruitee/synechron is live (3 non-GTA offers) → kept. Removed only benchsci (config
++ seed + verify_seeds). **Add:** probed a curated GTA-employer candidate set against
+Greenhouse/Lever/Ashby/SmartRecruiters via the real GTA-filtering adapters → 18 verified
+live boards with GTA postings, none previously configured. Added to Casey's config
+(hand-edited to preserve comments — NOT `config seed --apply`, which would strip the G1
+Job Bank comment block), the committed seed file (with refreshed curation rationale), and
+verify_seeds.py CANDIDATES. Suite 757 green; ruff clean. Live E2E scan: greenhouse
+321→500, ashby 84→246, lever 17→88 GTA-eligible ingested; **+27 net-new DB rows / ~22
+survivable GTA roles** at target employers (Wealthsimple, 1Password, Geotab, Instacart,
+Hootsuite, Knix, Achievers, Docebo, Clutch, Mejuri). G2's non-eng filter fired live (78
+dropped). Rest correctly filtered (694 senior-title — these boards skew Senior+, gated by
+include_senior_roles=False).
+
+---
+
+## GTA-exposure initiative — closing summary (2026-06-01)
+
+Goal: maximize GTA-area job exposure. Net result across the queue funnel:
+- **G1** Job Bank Canada resurrected as an HTML scraper (RSS dead) → ~14-23 net-new GTA
+  roles/scan from a national aggregator of small/mid employers no ATS slug list covers.
+- **G2** Non-engineering ingest prefilter (default-on) → ~78 non-eng titles/scan no longer
+  burn LLM scoring budget; 0 false positives on real roles.
+- **G3** Co-op/intern/campus titles no longer wrongly auto-declined as "Senior-band" →
+  recovers the entry-level band most relevant at 3 YoE.
+- **G4** SKIPPED — Workable/Recruitee have ~0 discoverable GTA inventory and auto-discover
+  already covers them at runtime.
+- **G5** +18 verified GTA Greenhouse/Lever/Ashby boards (Wealthsimple, 1Password, Waabi,
+  Geotab, Instacart, Hootsuite, Docebo, Hopper, …) + pruned the one genuinely-dead slug.
+
+Levers NOT pulled (available if the queue needs more later): flip
+`applicant.include_senior_roles=True` to admit Senior-IC roles from the new AI/Staff-heavy
+boards (694/scan currently gated); widen Job Bank role queries; wider Workable/Recruitee
+slug hunt. Re-score the backlog if you want existing rows re-evaluated under any change.
+
+---
+
 ### Phase D1 — README reorganization (docs-only) ✅
 
 **Goal:** Restructure `README.md` into a command-organized reference (every

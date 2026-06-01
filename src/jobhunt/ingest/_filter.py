@@ -139,6 +139,78 @@ def is_research_title(title: str | None) -> bool:
     return bool(_RESEARCH_TITLE_RE.search(title))
 
 
+# Non-engineering function regex. Drives an ingest drop (default-on via
+# `[ingest] drop_non_engineering_titles`) so the scorer doesn't burn budget on
+# roles it will always decline. Large Workday tenants (BMO/TD/HelloFresh/Sanofi/
+# Live Nation) post their entire org — Office Administrator, Sanitation Associate,
+# Food Safety Specialist, Maintenance Technician, Operational Buyer, Account
+# Executive, Legal Counsel, etc. — which previously each cost a full LLM score.
+#
+# Curated, high-precision *function* terms only. Deliberately EXCLUDES ambiguous
+# tokens (`analyst`, `associate`, bare `specialist`/`coordinator`, `engineer`,
+# `security`) that co-occur with engineering roles. `_ENG_GUARD_RE` wins over a
+# match so a real dev/eng title is never dropped even if a non-eng token appears.
+_NON_ENG_TITLE_RE = re.compile(
+    r"\b(?:"
+    # sales / business development
+    r"account\s+executive|sales\s+(?:representative|associate|consultant|rep)"
+    r"|business\s+development\s+(?:representative|rep)|inside\s+sales|outside\s+sales"
+    # admin / office
+    r"|administrative\s+assistant|office\s+administrator|receptionist"
+    r"|executive\s+assistant|data\s+entry"
+    # legal
+    r"|legal\s+counsel|\bcounsel\b|paralegal|attorney|solicitor"
+    # finance / accounting
+    r"|accountant|bookkeeper|accounts\s+(?:payable|receivable)|payroll|underwriter|teller"
+    # HR / recruiting
+    r"|recruiter|talent\s+acquisition|human\s+resources|hr\s+generalist"
+    # marketing / comms
+    r"|performance\s+marketing|content\s+writer|copywriter"
+    r"|communications?\s+specialist|public\s+relations|brand\s+ambassador"
+    # supply chain / operations / production
+    r"|\bbuyer\b|procurement|supply\s+(?:planner|chain)|logistics"
+    r"|warehouse|production\s+(?:supervisor|associate|worker)|machine\s+operator"
+    r"|forklift|dispatcher|merchandiser"
+    # trades / facilities
+    r"|maintenance\s+technician|millwright|electrician|plumber|hvac|welder"
+    r"|machinist|assembler|fabricator|custodian|janitor|sanitation|groundskeeper"
+    # food / health-safety (food context — NOT software QA)
+    r"|food\s+safety|fsqa|butcher|baker|line\s+cook|dishwasher|barista"
+    r"|bartender|food\s+service"
+    # healthcare
+    r"|\bnurse\b|physician|pharmacist|phlebotomist|caregiver|veterinary"
+    # security (physical) / retail / service
+    r"|security\s+(?:guard|officer)|loss\s+prevention|event\s+security"
+    r"|cashier|retail\s+associate|store\s+associate|stocker|delivery\s+driver|courier"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Dev/engineering signal — protects real roles from a coincidental non-eng match.
+_ENG_GUARD_RE = re.compile(
+    r"\b(?:software|developer|programmer|devops|sre|site\s+reliability"
+    r"|front[\s-]?end|back[\s-]?end|full[\s-]?stack|web\s+developer"
+    r"|data\s+engineer|platform\s+engineer|cloud\s+engineer|security\s+engineer"
+    r"|qa\s+engineer|test\s+engineer|automation\s+engineer|software\s+engineer"
+    r"|ml\s+engineer|ai\s+engineer|machine\s+learning\s+engineer"
+    r"|mobile\s+developer|ios\s+developer|android\s+developer)\b",
+    re.IGNORECASE,
+)
+
+
+def is_non_engineering_title(title: str | None) -> bool:
+    """True when the title is a clearly non-engineering function.
+
+    Default-on ingest drop (see `[ingest] drop_non_engineering_titles`). A dev/eng
+    signal (`_ENG_GUARD_RE`) always wins, so engineering roles are never dropped.
+    """
+    if not title:
+        return False
+    if _ENG_GUARD_RE.search(title):
+        return False
+    return bool(_NON_ENG_TITLE_RE.search(title))
+
+
 # Senior-band title regex. Drives an opt-in ingest drop in
 # `scan_cmd._ingest_all`: when `applicant.include_senior_roles` is False,
 # these titles are filtered out before scoring. The user opts in/out via
@@ -165,7 +237,12 @@ def is_senior_title(title: str | None) -> bool:
 _JUNIOR_TITLE_RE = re.compile(
     r"\b(?:junior|jr\.?|intermediate|mid(?:-?level)?|associate|"
     r"developer\s+i{1,2}\b|engineer\s+i{1,2}\b|"
-    r"entry[-\s]?level|new\s+grad|graduate)\b",
+    r"entry[-\s]?level|new\s+grad|graduate|"
+    # Co-op / intern / campus / early-talent markers (2026-06): qwen sometimes
+    # emits a "Senior-band" decline on these despite the title literally being
+    # entry-level (e.g. "Business Systems Analyst Co-op", "Campus Recruitment").
+    # `intern` is \b-bounded so it doesn't match "internal"/"international".
+    r"co[-\s]?op|intern(?:ship)?|campus|early[-\s]?talent|student|practicum)\b",
     re.IGNORECASE,
 )
 

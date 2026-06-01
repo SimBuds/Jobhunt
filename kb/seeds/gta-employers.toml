@@ -17,8 +17,22 @@
 # frontend/CMS fit. AI-startup Ashby batch dropped — those shops post
 # Senior+/Staff overwhelmingly. Re-add selectively (run through
 # scripts/verify_seeds.py first) as Casey identifies live targets.
-greenhouse = ["konradgroup", "appnovation"]
-lever = ["benchsci"]
-ashby = []
+#
+# 2026-06-01: re-expanded for maximum GTA exposure. The earlier prune
+# pre-dated the ingest filters that now neutralize Senior+/Staff noise
+# (include_senior_roles=False senior-title drop + non-engineering-title
+# drop + score-prompt YoE auto-declines), so configuring a board no longer
+# floods the queue with off-target roles — the filters gate them. The boards
+# below were all verified live with ≥1 GTA-eligible posting via
+# scripts/verify_seeds.py on 2026-06-01. Dropped lever/benchsci (404).
+greenhouse = [
+    "konradgroup", "appnovation",
+    "clutch", "geotab", "hootsuite", "instacart", "mejuri",
+]
+lever = ["achievers", "deepgenomics", "knix", "waabi", "wattpad"]
+ashby = [
+    "1password", "clearco", "docebo", "float",
+    "hopper", "loopio", "procurify", "wealthsimple",
+]
 smartrecruiters = []
 workday = []
