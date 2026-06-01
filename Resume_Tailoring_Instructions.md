@@ -83,6 +83,8 @@ Do not invent new numbers. Do not change these numbers up or down to sound stron
 
 **Not in the baseline `Resume.docx` (one-page constraint). Surface only in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant; do not list them as professional experience or attach employer-style metrics.
 
+The long form of this list, with full stacks, what each project proves, and the in-progress flags, lives in [WORK.md](WORK.md) Section 1. Read it when a JD touches AI/LLM, local infra, Linux, automation, backend, or data, and keep it in sync with this section.
+
 - **AI Context Stack** (`github.com/SimBuds/Ollama-LLM-Prompts`) — custom `qwen3.5:9b` via Ollama with a transparent prompt-assembly pipeline. Plain-Markdown sources under `prompts/`, `memory/`, `knowledge/` compiled in fixed order into a generated system prompt + Modelfile. Tuned for q5_0 KV cache, flash attention, 16k context, thinking mode as explicit opt-in. *Stack: Ollama, qwen3.5:9b, Modelfile, local LLM.*
 - **Job Hunt AI Buddy** (`github.com/SimBuds/Jobhunt`) — this CLI. Local-first GTA job search: Greenhouse/Lever/Ashby/SmartRecruiters/Workday/Job Bank CA/Adzuna CA ingest, local Ollama scoring + resume/cover tailoring under structural honesty rules, Playwright autofill (human submits). No LinkedIn scraping, no bot submissions, no stored credentials. *Stack: Python, uv, Ollama, SQLite, Playwright, ATS APIs.*
 - **macOS Ventura on KVM** (`github.com/SimBuds/Auto-Agent/projects`) — battle-tested AMD virtualization path on Ryzen 5900X + RTX 3080. Quickemu-git/QEMU 11, nocow qcow2 on Btrfs, power-of-two CPU topology, CCX-pinned launches via taskset to dodge Infinity Fabric latency. Software rendering forced Ventura over newer releases. *Stack: KVM, QEMU, Quickemu, macOS, Btrfs, Arch Linux.*
@@ -280,3 +282,5 @@ When Casey asks for a cover note or a follow-up email to a recruiter, the same h
 *Last updated: May 20, 2026. Update Section 2 whenever Casey's experience changes.*
 
 *Related: see `AGENTS.md` for the broader CLI rules, including the `interview-prep` honesty checks that apply to interview prep docs (anchor authenticity, banned phrases, retry-on-violation). The same no-fabrication spirit governs both surfaces.*
+
+*Related: [WORK.md](WORK.md) is the long-form knowledge base for Casey's projects (Section 1) and full George Brown coursework (Section 2). This file carries the short summaries. WORK.md carries the depth.*

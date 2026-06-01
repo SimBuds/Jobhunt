@@ -9,6 +9,237 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### Projects-into-profile initiative (2026-06-01) — Approach B, awaiting approval
+
+**Why:** Casey has four public, shipped AI / agentic projects (jobhunt,
+Auto-Agent, SEO-LLM, AI Context Stack) that prove skills absent from every
+verified skill bucket (FastAPI, Redis, Claude / Anthropic API, Docker Compose,
+JSON-LD, agentic architecture) and that are a real hiring differentiator. Today
+`scan` cannot credit a JD asking for those skills, the tailored resume cannot
+show the projects, and `cover` cannot anchor on them. Goal: make the projects
+first-class verified facts so they score, tailor onto the resume, and anchor
+cover letters.
+
+**Approach (user decision 2026-06-01, "curated master docx + PROJECTS"):**
+Projects live in `Resume.docx` as new content, parsed by `parse_baseline` into
+`verified.json` on every `convert-resume`. Casey keeps the master curated to
+roughly one page of his strongest content. The tailor emphasizes and reorders
+per JD (as it does for roles today); the one-page shrink ladder stays the safety
+net. There is **no** separate projects file, **no** merge loader, and **no**
+JD-aware selection engine (that larger "long master auto-trims per job" idea is
+deferred as a possible future initiative, "Approach C").
+
+**This SUPERSEDES the prior plan in this file** (separate `projects.toml` + a
+`resume/profile.py` merge loader + a `prompt_hash` change). None of those are
+needed now: projects flow through `verified.json`, which every consumer and
+`prompt_hash` already read.
+
+**Cross-phase inherited decisions (set at plan time):**
+- Two distinct additions, kept separate:
+  1. A **`skills_projects`** bucket: discrete project-proven skills, parsed from
+     a new labeled line (`Project Stack: ...`) in the docx TECHNICAL SKILLS
+     section via the EXISTING labeled-skills-line mechanism. Core-grade.
+     Semantics, documented in AGENTS.md: "skills demonstrated in shipped
+     personal projects. Honest to claim and creditable, distinct from
+     `skills_familiar` (academic / light use) and the professional Core buckets
+     (paid client work)."
+  2. A **`projects`** narrative list: structured project entries (name, stack,
+     bullets, optional url) parsed from a new `PROJECTS` docx section, rendered
+     on the tailored resume like roles.
+- Projects render like roles: every curated project in the master appears
+  (rewritten / reordered per JD), NOT a JD-selected subset. Casey controls
+  one-page fit by curating the master.
+- Shrink-ladder order: a kept project keeps >= 1 bullet, and projects are
+  trimmed AFTER coursework (the differentiator is trimmed late, not first).
+- Operational: editing `Resume.docx` (adding the `Project Stack` line and the
+  `PROJECTS` section) is Casey's step. The code only makes the parser, tailor,
+  and renderer SUPPORT it. Each phase names the docx edit needed to exercise it.
+
+**Reuse audit (initiative-level, per Reuse-First Rule):**
+- Search terms: `skill_buckets`, `SECTION_HEADERS`, `_SKILL_LINE_RE`, `"skills_`,
+  `_shrink_to_one_page`, `_enforce_no_fabrication`.
+- Candidates: the existing labeled-skills-line parser (`_SKILL_LINE_RE` +
+  `skill_buckets` dict) handles the `skills_projects` line with a one-entry dict
+  change, no new mechanism; the section parser (`SECTION_HEADERS` loop) extends
+  to `PROJECTS`; the shrink ladder extends with one rung.
+- Why partial-new: a PROJECTS *narrative* is a section type the parser, tailor
+  schema, and renderer do not model, so a small `Project` dataclass + render
+  path are genuinely new. The skills bucket reuses the existing mechanism whole.
+
+---
+
+### Phase PB1 — Parse a `skills_projects` bucket and credit it in scoring
+
+**Goal:** Scoring credits a project-backed skills bucket parsed from the master
+resume.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — add a `Project Stack` label to the
+  `skill_buckets` dict; add `skills_projects: list[str]` to `VerifiedFacts`;
+  render it in `write_kb_markdown` (skills.md). `write_verified_json` carries it
+  automatically via `asdict`.
+- `src/jobhunt/pipeline/score.py` — add `"skills_projects"` to the
+  `_all_matched_are_familiar` core-bucket tuple (~line 197) so a matched project
+  skill counts as Core, not Familiar.
+- `src/jobhunt/commands/convert_resume_cmd.py` — include `skills_projects` in
+  the post-parse count summary line.
+- `Resume.docx` (operational, Casey) — add `Project Stack: FastAPI, Redis,
+  Claude API, Docker Compose, JSON-LD, agentic architecture` under TECHNICAL
+  SKILLS; re-run `convert-resume`.
+
+**Functions to add/change:**
+- `resume.parse_docx.parse_baseline` — change — recognize the new skills label.
+- `resume.parse_docx.VerifiedFacts` / `write_kb_markdown` — change — carry +
+  render the bucket.
+- `pipeline.score._all_matched_are_familiar` — change — treat bucket as Core.
+
+**Reuse audit:** reuses the existing `_SKILL_LINE_RE` + `skill_buckets`
+mechanism (one dict entry); no new parser surface.
+
+**Verification:** (<= 3 bullets)
+- Unit: a fixture skills section with a `Project Stack:` line populates
+  `skills_projects`.
+- Unit: `_all_matched_are_familiar(["FastAPI"], blob)` is False when FastAPI is
+  in `skills_projects`.
+- `pytest -q` green.
+
+**Status:** [x] DONE (2026-06-01).
+- Shipped: `VerifiedFacts.skills_projects` + a `Project Stack` entry in the
+  `skill_buckets` dict (reuses the existing labeled-skills-line parser);
+  `write_kb_markdown` renders a `## Project Stack` block in skills.md;
+  `score._all_matched_are_familiar` core tuple now includes `skills_projects`
+  so a matched project skill is Core-grade (not Familiar-capped);
+  `convert_resume_cmd` summary reports the project-skill count.
+- Tested: `test_parse_docx` asserts FastAPI lands in `skills_projects` (not
+  core/familiar) and skills.md gets the heading; `test_score_clamp` adds
+  `test_project_skill_counts_as_core_not_familiar`. Full suite 758 passed.
+- Docs: this file + an AGENTS.md note on the `skills_projects` bucket.
+- Lint/types: fixed the one new E501 (the widened core tuple). Pre-existing
+  `score.py` SIM110 and `parse_docx.py:97` untyped-param are out of phase
+  surface and left untouched.
+- NOT done (correctly deferred): project skills do NOT yet render on the
+  tailored resume (PB2) and the `PROJECTS` narrative is NOT yet parsed (PB3).
+  The master `Resume.docx` already carries both the `Project Stack:` line and a
+  `PROJECTS` section, so **do not run `convert-resume` until PB3** or the
+  PROJECTS lines pollute `education`.
+
+---
+
+### Phase PB2 — Wire `skills_projects` through the tailor + audit honesty chain
+
+**Goal:** Project skills can appear in the tailored skills section without
+tripping fabrication enforcement or sinking audit coverage.
+
+**Files to touch:**
+- `src/jobhunt/pipeline/tailor.py` — add `"skills_projects"` to
+  `_JD_SKILL_BUCKETS` (~294) and the fabrication-allowlist bucket tuple
+  (~692-696); confirm `_ensure_jd_required_skills` backfills from it.
+- `src/jobhunt/pipeline/audit.py` — add `"skills_projects"` to the skill-bucket
+  iteration (~183).
+
+**Functions to add/change:**
+- `pipeline.tailor._enforce_no_fabrication` / `_JD_SKILL_BUCKETS` /
+  `_ensure_jd_required_skills` — change — accept project skills as verified.
+- `pipeline.audit` must-have extraction — change — include the new bucket.
+
+**Verification:** (<= 3 bullets)
+- Unit: a JD naming FastAPI yields a tailored skills list containing FastAPI and
+  `_enforce_no_fabrication` accepts it.
+- Unit: `audit.keyword_coverage` counts FastAPI as covered (no false `revise`).
+- `pytest -q` green.
+
+**Status:** [ ] not started
+
+---
+
+### Phase PB3 — Parse + carry the PROJECTS narrative section
+
+**Goal:** `convert-resume` carries a structured projects list from a new
+`PROJECTS` docx section.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — add `"PROJECTS"` to `SECTION_HEADERS`;
+  add a `Project` dataclass (name, stack, bullets, optional url) +
+  `projects: list[Project]` on `VerifiedFacts`; parse the section; render a new
+  `kb/profile/projects.md`.
+- `tests/test_parse_docx*.py` + a fixture — parser test for the PROJECTS block.
+
+**Functions to add/change:**
+- `resume.parse_docx.Project` — add.
+- `resume.parse_docx.parse_baseline` — change — parse the PROJECTS section.
+- `resume.parse_docx.write_kb_markdown` — change — write `projects.md`.
+
+**Verification:** (<= 3 bullets)
+- Unit: a fixture docx with a PROJECTS section parses into `projects[]` with
+  name / stack / bullets.
+- Unit: `verified.json` round-trips `projects`.
+- `pytest -q` green.
+
+**Status:** [ ] not started — DATA-LAYER ONLY; projects render nowhere yet
+(walking-skeleton bias).
+
+---
+
+### Phase PB4 — Tailor renders a PROJECTS section within the one-page guarantee
+
+**Goal:** Tailored resumes render a JD-emphasized Projects section that still
+fits one page. (May split into PB4a schema/prompt/enforce + PB4b render/shrink
+if the diff exceeds budget.)
+
+**Files to touch:**
+- `kb/prompts/tailor.md` — add `projects` to the output schema + a rule (include
+  every verified project, rewrite / reorder bullets by JD relevance, no
+  fabrication, mirror the role-bullet honesty rules).
+- `src/jobhunt/pipeline/tailor.py` — decode `projects`; extend
+  `_enforce_no_fabrication` to validate project name + bullets against verified
+  projects; add a projects rung to `_shrink_to_one_page` (after coursework,
+  keep >= 1 bullet per kept project).
+- `src/jobhunt/resume/render_docx.py` — render the Projects section and account
+  for it in `fits_one_page`.
+
+**Functions to add/change:**
+- `pipeline.tailor._tailor_once` / decode / `_enforce_no_fabrication` /
+  `_shrink_to_one_page` — change.
+- `resume.render_docx` — change — render projects + page-fit accounting.
+
+**Verification:** (<= 3 bullets)
+- Unit: `render_docx` page-fit passes with a projects section; the shrink rung
+  drops a project's bullet (then a project) on overflow.
+- Manual (real Ollama, not CI): `apply --url` on an AI-backend JD renders a
+  one-page resume with a Projects section; audit ship/revise (not block).
+- `pytest -q` green.
+
+**Status:** [ ] not started
+
+---
+
+### Phase PB5 — Cover letters can anchor on a verified project
+
+**Goal:** The cover pipeline can anchor a paragraph on a verified project, and
+the validator accepts named project skills.
+
+**Files to touch:**
+- `kb/prompts/cover.md` — additive rule permitting a verified-project anchor
+  (keep existing anchor-honesty rules).
+- `src/jobhunt/pipeline/cover_validate.py` — add `"skills_projects"` to
+  `_verified_skill_blob` (~280) so a named project skill is not flagged as
+  fabrication; confirm project names pass the anchor-authenticity check.
+
+**Functions to add/change:**
+- `pipeline.cover_validate._verified_skill_blob` — change — include the bucket.
+
+**Verification:** (<= 3 bullets)
+- Unit: `_verified_skill_blob` includes a `skills_projects` entry; a cover
+  naming FastAPI does not trip the fabrication watchlist.
+- Manual (real Ollama): a cover for an AI-backend JD references a project and
+  passes `validate_cover`.
+- `pytest -q` green.
+
+**Status:** [ ] not started — `cover.py` already reads `verified.json` (now
+projects-aware), so no loader change is needed.
+
+---
+
 ### GTA-exposure initiative (2026-06-01) — 5 phases, awaiting approval
 
 **Why:** A 3-day sample (153 jobs, 13 applications, 3 answers) showed the

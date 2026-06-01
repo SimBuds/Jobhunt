@@ -687,6 +687,22 @@ top-level commands that touch scoring/listing/applying must call it too.
    not match the "JavaScript" substring (which would incorrectly resolve
    Java into skills_core and bypass the cap).
 
+   **`skills_projects` bucket (Phase PB1, 2026-06-01).** A verified skill
+   bucket for skills demonstrated in Casey's shipped personal projects
+   (FastAPI, Redis, Claude API, Docker Compose, JSON-LD, agentic
+   architecture). It is parsed from a `Project Stack:` labeled line in the
+   `Resume.docx` TECHNICAL SKILLS section, reusing the existing
+   labeled-skills-line mechanism (one entry in `parse_docx.skill_buckets`).
+   Honesty semantics: project-demonstrated and honest to claim, Core-grade,
+   distinct from `skills_familiar` (academic / light use) and the professional
+   Core buckets (paid client work). It is treated as a Core bucket by
+   `_all_matched_are_familiar`, so a JD whose only match is a project skill is
+   NOT Familiar-capped. PB1 wires it for scoring only. Rendering project skills
+   on the tailored resume (PB2) and parsing a `PROJECTS` narrative section
+   (PB3) are later phases. Until PB3 lands, do NOT run `convert-resume` against
+   the projects-augmented `Resume.docx`: the parser does not yet know the
+   `PROJECTS` section and would mis-file those lines into `education`.
+
    **React umbrella (2026-05-28).** The verified Core skill is
    `React (Redux, React Native)` — one entry covering the React ecosystem.
    `_enforce_no_fabrication`'s identity-subset check accepts `React`, `Redux`,

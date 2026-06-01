@@ -42,6 +42,7 @@ class VerifiedFacts:
     skills_cms: list[str]
     skills_data_devops: list[str]
     skills_ai: list[str]
+    skills_projects: list[str]
     skills_familiar: list[str]
     work_history: list[Role]
     certifications: list[str]
@@ -153,6 +154,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         "CMS & E-Commerce": [],
         "Data & DevOps": [],
         "AI & Tooling": [],
+        "Project Stack": [],
         "Familiar": [],
     }
     for _, text in sections["TECHNICAL SKILLS"]:
@@ -210,6 +212,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         skills_cms=skill_buckets["CMS & E-Commerce"],
         skills_data_devops=skill_buckets["Data & DevOps"],
         skills_ai=skill_buckets["AI & Tooling"],
+        skills_projects=skill_buckets["Project Stack"],
         skills_familiar=skill_buckets["Familiar"],
         work_history=work_history,
         certifications=certifications,
@@ -254,6 +257,8 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
         f"{_md_bullets(facts.skills_data_devops)}\n"
         "## AI & Tooling\n\n"
         f"{_md_bullets(facts.skills_ai)}\n"
+        "## Project Stack\n\n"
+        f"{_md_bullets(facts.skills_projects)}\n"
         "## Familiar\n\n"
         f"{_md_bullets(facts.skills_familiar)}",
         encoding="utf-8",
