@@ -169,6 +169,22 @@ than working around it.
 - `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never hand-add unverified entries.
 - `CLAUDE.md` — tiny stub that `@`-imports this file so Claude Code's auto-load still works. Don't edit it; edit this file.
 
+### Documentation style
+
+When writing or updating any human-facing markdown doc (`README.md`,
+`PLAN.md`, `IMPLEMENT.md`, `kb/README.md`, and the like), keep prose
+punctuation plain:
+
+- **No em dashes or en dashes (`—`, `–`) in sentences.** Recast with a
+  period, comma, colon, or parentheses, whichever fits the clause.
+- **No semicolons in prose.** Split into two sentences, or join with a
+  comma + conjunction.
+- These two rules apply to **prose only**. Leave code blocks, inline-code
+  spans, config-value literals (e.g. a `user_agent` string), and shell/TOML
+  comments untouched — their punctuation is load-bearing.
+- This style rule does not apply to this file's own existing headings; it
+  governs new and edited prose going forward.
+
 ## What this project is
 
 A local-first CLI tool for personal job search automation. Pulls jobs from public ATS APIs, runs fit-scoring and document tailoring against the user's profile using local Ollama models, and assists with form autofill via Playwright (human submits, never the bot).
