@@ -9,6 +9,87 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### Phase D1 — README reorganization (docs-only) ✅
+
+**Goal:** Restructure `README.md` into a command-organized reference (every
+subcommand + flag listed, ordered most-used → least-used) and collapse the
+duplicated Quickstart / Daily flow / Maintenance(Daily/Weekly) sections into one
+streamlined Workflows block.
+
+**Blast radius:** docs-only. Files touched: `README.md`, `IMPLEMENT.md`. No
+code, no new interfaces.
+
+**Reuse audit:** N/A — prose reorganization, no new utilities/functions. Command
+surface verified against `src/jobhunt/cli.py` + `commands/*.py` (not guessed) —
+see the full inventory below.
+
+**Verified command inventory (source of truth for the rewrite):**
+- `scan` — `--skip-score` `--skip-ingest` `--limit` `--refresh` `--max-age-days`
+  `--no-discover`
+- `list` — `--week` `--status` `--min-score` `--source` `--verdict` `--no-reply`
+  `--older-than` `--limit`
+- `apply <job-id>` — `--top` `--best` `--min-score` `--no-browser` `--set-status`
+  `--mark-response` `--mark-interview` `--set-outcome` `--recruiter-type` `--url`
+  `--title` `--company` `--no-score` `--force-robots` `--description-from-stdin`
+  `--include-borderline`
+- `answer "<q>"` — `--job` `--max-words` `--no-save` `--recall`
+- `add <URL>` — `--skip-probe`
+- `interview-prep <id>` — `--stage` `--research` `--force-robots` `--no-llm`
+  `--recruiter-type` `--refresh-research`
+- `analyze certs` (`--top` `--trend` `--window-days` `--min-score`) · `skills`
+  (`--gaps` `--window-days` `--top`) · `employers` (`--hiring-velocity`
+  `--window-days`) · `response-rate` (`--by`) · `validators` (`--window-days`
+  `--top`)
+- `convert-resume` — `--docx`
+- `setup` — (no flags)
+- `discover slugs` — `--ats` `--limit` `--apply` `--include-cached`  *(legacy)*
+- `config` *(hidden)* — `seed` (`--preview` `--apply`) · `reprobe` (`--prune`
+  `--force`) · `show` · `path` · `calibrate`
+- `db` *(hidden)* — `init` · `migrate` · `reset` (`--force`)
+- Global: `--debug` `--verbose/-v`
+
+**New `README.md` section order:**
+1. Title + intro + Non-goals *(keep)*
+2. Requirements *(keep)*
+3. Install + Ollama systemd settings *(keep)*
+4. **Workflows** *(NEW — merges First run + Daily flow + Maintenance)*:
+   First run · Daily · Weekly — compact command lists, no prose duplication.
+5. **Commands** *(REORGANIZED — per-command, most→least used, every real flag)*:
+   `scan` · `list` · `apply` · `answer` · `add` · `interview-prep` · `analyze`
+   (5 subcmds) · `convert-resume` · `setup` · `discover slugs` (legacy) ·
+   `config` (hidden) · `db` (hidden).
+6. Configuration *(keep)*
+7. Data layout *(keep)*
+8. For maintainers + License *(keep)*
+
+**Decisions made (ambiguous request — correct in next pass):**
+- "Streamlined" = condense the three overlapping flow sections (First run / Daily
+  flow / Maintenance→Daily+Weekly) into ONE Workflows block, not delete guidance.
+- Command order = usage frequency: daily drivers (scan/list/apply) first;
+  onboarding/maintenance (setup/discover/config/db) last.
+- Surface the **full real flag set** per command (the current README omits several
+  real flags, e.g. `apply --mark-response/--mark-interview/--set-outcome`,
+  `scan --skip-score/--skip-ingest/--refresh`, `list --status/--limit`,
+  `add --skip-probe`).
+- Single atomic phase — a prose rewrite must land coherently; splitting mid-way
+  leaves the README internally inconsistent (noted exception to diff-surface).
+
+**Verification:**
+- Every command/flag in the inventory above appears in §Commands; no invented
+  command or flag.
+- `git diff README.md` reviewed; visual read of the rendered structure.
+
+**Status:** [ ] not started | [ ] in progress | [x] done (2026-05-31). README
+rewritten: §Workflows (First run / Daily / Weekly) replaces the old Quickstart +
+Daily flow + Maintenance sections; §Commands is now per-command, ordered
+most→least used, every real flag listed inline (no `--help` round-trip needed —
+per follow-up). Per-command coverage verified against the inventory above (0
+MISSING). config + db documented as hidden internals at the end (user choice).
+Kept verbatim: intro, Non-goals, Requirements, Install, Configuration, Data
+layout, For maintainers, License. Added IMPLEMENT.md to the maintainers doc list.
+
+---
+
 **Plan "Backfill JD-required verified skills the tailor drops" completed
 2026-05-31** (single phase; suite 709). A
 2026-05-31 audit of the 14 tailored applications found honesty airtight (0
