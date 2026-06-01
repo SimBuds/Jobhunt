@@ -291,7 +291,15 @@ def _cap_lead_category_size(tailored: TailoredResume) -> None:
 
 # Verified buckets the JD-required-skill backfill draws from. Familiar is
 # excluded — `_complete_familiar_bucket` already guarantees that bucket.
-_JD_SKILL_BUCKETS = ("skills_core", "skills_cms", "skills_data_devops", "skills_ai")
+# `skills_projects` (project-demonstrated, Core-grade) is included so a JD that
+# names a project skill (e.g. FastAPI) backfills it onto the tailored resume.
+_JD_SKILL_BUCKETS = (
+    "skills_core",
+    "skills_cms",
+    "skills_data_devops",
+    "skills_ai",
+    "skills_projects",
+)
 
 
 def _skill_core(skill: str) -> str:
@@ -693,6 +701,7 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             "skills_cms",
             "skills_data_devops",
             "skills_ai",
+            "skills_projects",
             "skills_familiar",
         )
         for s in verified.get(key, [])

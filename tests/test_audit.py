@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from jobhunt.pipeline.audit import AuditResult, audit, keyword_coverage
+from jobhunt.pipeline.audit import (
+    AuditResult,
+    _extract_must_haves_from_jd,
+    audit,
+    keyword_coverage,
+)
 from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.score import ScoreResult
 from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume, TailoredRole
@@ -249,6 +254,24 @@ def test_audit_falls_back_to_jd_when_score_must_haves_empty(verified: dict) -> N
     # React Native)" (audit lists the full verified skill form, as it does for
     # "Shopify (Liquid, Custom Themes)").
     assert any("React" in k for k in result.matched_keywords)
+
+
+def test_extract_must_haves_includes_project_skill() -> None:
+    """PB2: a `skills_projects` skill named in the JD surfaces as a deterministic
+    must-have. `_verified_skills` now includes the project bucket, so audit's
+    fallback intersect can match it. Without the PB2 change FastAPI is invisible
+    to the audit and the coverage gate silently ignores it."""
+    verified = {
+        "skills_core": ["TypeScript"],
+        "skills_projects": ["FastAPI", "Redis"],
+        "skills_familiar": ["Java"],
+    }
+    must_haves = _extract_must_haves_from_jd(
+        "Backend role using FastAPI and Postgres.",
+        verified,
+        job_title="Backend Developer",
+    )
+    assert any("FastAPI" in m for m in must_haves)
 
 
 def test_audit_short_jd_uses_peer_families(verified: dict) -> None:

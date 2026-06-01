@@ -154,6 +154,20 @@ def test_paren_substring_tolerated():
     _enforce_no_fabrication(ok, VERIFIED)
 
 
+def test_accepts_project_skill_in_non_familiar_category():
+    """PB2: a `skills_projects` skill (FastAPI) is Core-grade, so it may appear
+    in a non-Familiar category without tripping the fabrication guard. Without
+    `skills_projects` in the allowlist this raises (FastAPI reads as invented)."""
+    verified = {**VERIFIED, "skills_projects": ["FastAPI", "Redis"]}
+    ok = _make(
+        skills_categories=[
+            TailoredCategory("Backend & APIs", ["FastAPI", "Redis"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    _enforce_no_fabrication(ok, verified)
+
+
 def test_annotation_expansion_tolerated():
     """Tailored skill that adds only annotation tokens (custom, themes) on top
     of verified should pass. 'Shopify (Liquid, Custom Themes)' tailored against
