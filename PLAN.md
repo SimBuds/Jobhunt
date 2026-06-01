@@ -127,7 +127,14 @@ in five places, not just the prompt:
 1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.
    The tailoring prompt is constrained to only use facts from this file.
    All skill buckets (`skills_core`, `skills_cms`, `skills_data_devops`, `skills_ai`,
-   `skills_familiar`) are **atomic lists** — one item per skill. `skills_ai` in
+   `skills_projects`, `skills_familiar`) are **atomic lists** (one item per skill).
+   `skills_projects` (Core-grade, demonstrated in Casey's shipped personal
+   projects) is treated like a Core bucket by the score and tailor honesty
+   checks, distinct from the academic/light-use `skills_familiar`. `verified.json`
+   also carries a `projects[]` narrative (each with `name`, `url`, `stack`,
+   `bullets`) parsed from the resume's PROJECTS section; it renders as a PROJECTS
+   section on the tailored resume, is credited by audit keyword coverage, and may
+   anchor a cover letter's centerpiece paragraph. `skills_ai` in
    particular must not be a single run-on string; the ATS keyword matchers and the
    audit's keyword-coverage check tokenize against atomic items. If `parse_docx.py`
    produces a run-on for any bucket (it currently does for `skills_ai` when the

@@ -21,8 +21,11 @@ projects and platforms.
 Hard rules:
 1. Use ONLY facts in `verified_facts` JSON. No invented projects, metrics,
    employers, or **technologies**. Cite specific project nouns from his work
-   history (Shopify storefront, HubSpot theme, Ring builder) where they're
-   relevant. Do **not** mention the GBC diploma, George Brown, Dean's List,
+   history (Shopify storefront, HubSpot theme, Ring builder) OR from the
+   `projects` array (his shipped personal projects, e.g. the jobhunt local-LLM
+   CLI) where they're relevant. When you anchor on a `projects` entry, use its
+   exact `name` and only the tech in its `stack` or `bullets` — do not invent
+   stack items or conflate it with a work-history project. Do **not** mention the GBC diploma, George Brown, Dean's List,
    coursework, or any education item anywhere in the cover letter — that
    material lives in the resume's Education section and recapping it in the
    letter is auto-rejected. Do **not** claim familiarity with a tech the JD
@@ -57,7 +60,11 @@ Hard rules:
    summarizer reads the lead first. Do NOT bury this in paragraph 3.
 3. Middle paragraph (3–4 sentences): pick ONE project from verified_facts
    as the centerpiece and go deep — what the problem was, what shipped,
-   what changed. A second project may get one supporting sentence. Do
+   what changed. The centerpiece may be a work-history project OR a
+   `projects` entry. For AI / LLM / backend JDs, the jobhunt local-LLM CLI
+   (or another `projects` entry whose stack maps to the JD) is often the
+   strongest centerpiece — go deep on what it does and what shipped. A
+   second project may get one supporting sentence. Do
    NOT march through three projects in parallel ("At X… At Y… For Z…")
    — that reads like a CV recap, not a letter. Numbers ("14+ page
    Shopify storefront", "30% page load reduction") only if they appear

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from jobhunt.pipeline.cover import CoverLetter
-from jobhunt.pipeline.cover_validate import validate_cover
+from jobhunt.pipeline.cover_validate import _verified_skill_blob, validate_cover
 
 VERIFIED_PATH = Path(__file__).parent.parent / "kb" / "profile" / "verified.json"
 
@@ -446,3 +446,61 @@ def test_legitimate_concepts_usage_not_flagged(verified: dict) -> None:
     )
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("concepts" in v.lower() for v in violations)
+
+
+# --- PB5: cover letters can anchor on a verified project ---------------------
+
+_VERIFIED_WITH_PROJECT = {
+    "summary": "Full-stack developer with 2+ years experience.",
+    "work_history": [{"bullets": ["Built a 14+ page Shopify storefront."]}],
+    "skills_projects": ["FastAPI", "Redis"],
+    "projects": [
+        {
+            "name": "jobhunt",
+            "url": "github.com/SimBuds/Jobhunt",
+            "stack": ["FastAPI", "Redis", "Ollama"],
+            "bullets": ["Built a local-first ATS CLI with a local LLM scorer."],
+        }
+    ],
+}
+
+
+def test_verified_skill_blob_includes_projects() -> None:
+    """PB5: the fabrication blob carries the skills_projects bucket plus the
+    projects narrative (name, stack, bullets) so a cover may anchor on one."""
+    blob = _verified_skill_blob(_VERIFIED_WITH_PROJECT)
+    assert "fastapi" in blob  # skills_projects bucket + project stack
+    assert "jobhunt" in blob  # project name
+    assert "local-first ats cli" in blob  # project bullet
+
+
+def test_project_stack_tech_not_flagged_as_fabrication() -> None:
+    """A watchlist tech (FastAPI) named in the cover is suppressed when it
+    lives in a verified project's stack — anchoring on jobhunt is honest."""
+    cover = _good_cover()
+    cover.body[2] = (
+        "The centrepiece is jobhunt, a local-first ATS CLI I built with FastAPI "
+        "and Redis behind a local Ollama scorer."
+    )
+    violations = validate_cover(
+        cover, verified=_VERIFIED_WITH_PROJECT, company="Acme Corp", max_words=280
+    )
+    assert not any("fastapi" in v.lower() for v in violations), violations
+
+
+def test_project_tech_still_flagged_when_not_in_any_project() -> None:
+    """Control: the suppression is project-scoped. A watchlist tech absent
+    from skills, work history, AND projects still fires."""
+    verified_no_fastapi = {
+        "summary": "Full-stack developer.",
+        "work_history": [{"bullets": ["Built a Shopify storefront."]}],
+        "projects": [
+            {"name": "jobhunt", "stack": ["Redis"], "bullets": ["Built a CLI."]}
+        ],
+    }
+    cover = _good_cover()
+    cover.body[2] = cover.body[2] + " I built the service on FastAPI in production."
+    violations = validate_cover(
+        cover, verified=verified_no_fastapi, company="Acme Corp", max_words=280
+    )
+    assert any("fastapi" in v.lower() for v in violations), violations

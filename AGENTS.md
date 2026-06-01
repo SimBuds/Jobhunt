@@ -701,11 +701,25 @@ top-level commands that touch scoring/listing/applying must call it too.
    tailor (`_JD_SKILL_BUCKETS` backfill + the `_enforce_no_fabrication`
    allowlist) and the audit (`_verified_skills`), so a JD-named project skill
    can appear in the tailored resume's skills section and is credited by
-   coverage. Still deferred: parsing a `PROJECTS` narrative section (PB3) and
-   rendering project ENTRIES on the resume (PB4). Until PB3 lands, do NOT run
-   `convert-resume` against the projects-augmented `Resume.docx`: the parser
-   does not yet know the `PROJECTS` section and would mis-file those lines into
-   `education`.
+   coverage. PB3 added the `PROJECTS` narrative parser: `parse_docx` now reads a
+   `PROJECTS` docx section into a `Project` dataclass list on `VerifiedFacts`
+   (`name`, `url`, `stack`, `bullets`), round-tripped into `verified.json` and a
+   new `kb/profile/projects.md`. `convert-resume` is therefore safe to run again.
+   PB4 wired project ENTRIES through the tailor end-to-end: `tailor.md` rule 11
+   + a `projects` schema field, a `TailoredProject` dataclass on
+   `TailoredResume`, `_enforce_no_fabrication` rejection of unverified project
+   names and url divergence, a `_shrink_to_one_page` projects rung (trimmed
+   after coursework), and a `render_docx` PROJECTS section between Experience
+   and Certifications (audit `_resume_text` and `estimate_lines` count it).
+   PB5 made the cover pipeline projects-aware: `cover_validate._verified_skill_blob`
+   now folds in the `skills_projects` bucket and the `projects[]` narrative
+   (name, stack, bullets) so a cover may anchor on a verified project without
+   tripping the fabrication watchlist, and `cover.md` rules 1/3 permit a
+   `projects` entry (e.g. the jobhunt local-LLM CLI) as the centerpiece. The
+   projects initiative (PB1-PB5) is complete end-to-end. The role-header regex
+   also gained optional
+   parenthesized-date support (e.g. `(2023 – Present)`) during PB3 so Casey's
+   reformatted `Resume.docx` parses.
 
    **React umbrella (2026-05-28).** The verified Core skill is
    `React (Redux, React Native)` — one entry covering the React ecosystem.

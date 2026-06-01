@@ -5,9 +5,11 @@ import pytest
 from jobhunt.errors import PipelineError
 from jobhunt.pipeline.tailor import (
     TailoredCategory,
+    TailoredProject,
     TailoredResume,
     TailoredRole,
     _enforce_no_fabrication,
+    _parse,
 )
 
 VERIFIED = {
@@ -21,6 +23,10 @@ VERIFIED = {
     "skills_data_devops": ["Docker"],
     "skills_ai": ["Local LLM hosting with Ollama"],
     "skills_familiar": ["Java", "Python"],
+    "projects": [
+        {"name": "jobhunt", "url": "github.com/SimBuds/Jobhunt"},
+        {"name": "Auto-Agent", "url": "github.com/SimBuds/Auto-Agent"},
+    ],
 }
 
 
@@ -166,6 +172,69 @@ def test_accepts_project_skill_in_non_familiar_category():
         ]
     )
     _enforce_no_fabrication(ok, verified)
+
+
+def test_accepts_verified_project():
+    """PB4a: a tailored project matching verified (name + url) with rewritten
+    bullets passes the fabrication guard."""
+    ok = _make()
+    ok.projects = [
+        TailoredProject(
+            name="jobhunt",
+            url="github.com/SimBuds/Jobhunt",
+            stack=["Python", "Ollama"],
+            bullets=["Built a local-first ATS CLI with a local LLM scorer."],
+        )
+    ]
+    _enforce_no_fabrication(ok, VERIFIED)
+
+
+def test_accepts_project_name_case_insensitively():
+    """A capitalised 'Jobhunt' still matches verified 'jobhunt'."""
+    ok = _make()
+    ok.projects = [TailoredProject("Jobhunt", "github.com/SimBuds/Jobhunt", [], ["x"])]
+    _enforce_no_fabrication(ok, VERIFIED)
+
+
+def test_rejects_invented_project():
+    """A project not in verified_facts.projects is a fabrication."""
+    bad = _make()
+    bad.projects = [TailoredProject("Phantom Project", "github.com/x/y", [], ["x"])]
+    with pytest.raises(PipelineError, match="project not in verified"):
+        _enforce_no_fabrication(bad, VERIFIED)
+
+
+def test_rejects_project_url_tampering():
+    """A verified project name with an altered url is rejected."""
+    bad = _make()
+    bad.projects = [TailoredProject("jobhunt", "github.com/evil/fork", [], ["x"])]
+    with pytest.raises(PipelineError, match="project url diverged"):
+        _enforce_no_fabrication(bad, VERIFIED)
+
+
+def test_parse_decodes_projects():
+    """PB4a decode: the LLM's `projects` array becomes TailoredProject entries."""
+    raw = {
+        "summary": "x", "skills_categories": [], "roles": [],
+        "certifications": [], "education": [], "coursework": [],
+        "projects": [
+            {"name": "jobhunt", "url": "github.com/SimBuds/Jobhunt",
+             "stack": ["Python"], "bullets": ["Built X."]},
+        ],
+    }
+    t = _parse(raw, "test")
+    assert len(t.projects) == 1
+    assert t.projects[0].name == "jobhunt"
+    assert t.projects[0].stack == ["Python"]
+
+
+def test_parse_tolerates_missing_projects():
+    """A resume with no projects key decodes to an empty list (back-compat)."""
+    raw = {
+        "summary": "x", "skills_categories": [], "roles": [],
+        "certifications": [], "education": [], "coursework": [],
+    }
+    assert _parse(raw, "test").projects == []
 
 
 def test_annotation_expansion_tolerated():
@@ -466,3 +535,32 @@ def test_shrink_to_one_page_trims_familiar_first():
     if fits_one_page(t):
         familiar = next(c for c in t.skills_categories if c.name == "Familiar")
         assert len(familiar.items) <= 8  # trimmed or unchanged
+
+
+def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
+    """PB4b: the projects rung trims trailing project bullets (then whole
+    projects) when nothing earlier in the ladder can recover the page. Every
+    surviving project keeps at least its lead bullet."""
+    from jobhunt.pipeline.tailor import TailoredProject, _shrink_to_one_page
+    from jobhunt.resume.render_docx import fits_one_page
+
+    long_bullet = "A long project bullet describing a shipped system in real detail. " * 2
+    projects = [
+        TailoredProject(
+            f"proj{i}", f"github.com/x/proj{i}", ["Python", "Docker"],
+            [long_bullet, long_bullet, long_bullet],
+        )
+        for i in range(8)
+    ]
+    t = TailoredResume(
+        summary="Full-stack developer. Builds things end to end. Ships production code.",
+        skills_categories=[TailoredCategory("Core", ["JavaScript"])],
+        roles=[TailoredRole("Dev", "Acme", "2023 – Present", ["One lead bullet."])],
+        certifications=[], education=[], coursework=[], model="test",
+        projects=projects,
+    )
+    assert not fits_one_page(t)  # 8 projects x 3 long bullets overflow
+    _shrink_to_one_page(t)
+    assert fits_one_page(t)
+    assert sum(len(p.bullets) for p in t.projects) < 8 * 3  # trimmed
+    assert all(len(p.bullets) >= 1 for p in t.projects)  # survivors keep a lead

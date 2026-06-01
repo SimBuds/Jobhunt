@@ -58,7 +58,27 @@ def verified() -> dict:
     }
 
 
+# Per-role (title, first bullet) by index. Employer + dates are pulled from the
+# active `verified` fixture so the audit's fabrication re-check always sees a
+# matching (employer, dates) — robust to the date format (e.g. bare "2023 –
+# Present" vs the parenthesized "(2023 – Present)" the 2026-06 docx uses).
+_ROLE_CONTENT = [
+    ("Web Developer (Contract)", ["Built Shopify storefront."]),
+    ("Web Developer (Contract)", ["Built HubSpot theme."]),
+    ("Web Developer (Contract)", ["Built Shopify layouts."]),
+    ("Sous Chef & Team Lead", ["Led culinary teams."]),
+]
+
+
 def _minimal_tailored(verified: dict) -> TailoredResume:
+    roles = []
+    for i, r in enumerate(verified.get("work_history", [])):
+        title, bullets = (
+            _ROLE_CONTENT[i] if i < len(_ROLE_CONTENT) else (r.get("title", "Developer"), ["Did work."])
+        )
+        roles.append(
+            TailoredRole(title=title, employer=r["employer"], dates=r["dates"], bullets=list(bullets))
+        )
     return TailoredResume(
         summary="TypeScript and React developer with Shopify and Node.js experience.",
         skills_categories=[
@@ -67,12 +87,7 @@ def _minimal_tailored(verified: dict) -> TailoredResume:
             TailoredCategory("CMS", ["Shopify (Liquid, Custom Themes)"]),
             TailoredCategory("Familiar", ["Python"]),
         ],
-        roles=[TailoredRole(**r) for r in [
-            {"title": "Web Developer (Contract)", "employer": "Custom Jewelry Brand (Atelier Dacko)", "dates": "2023 – Present", "bullets": ["Built Shopify storefront."]},
-            {"title": "Web Developer (Contract)", "employer": "AI Agency (NDA)", "dates": "Jan 2026 – Apr 2026", "bullets": ["Built HubSpot theme."]},
-            {"title": "Web Developer (Contract)", "employer": "Vintage Gaming Retailer (NDA)", "dates": "2024", "bullets": ["Built Shopify layouts."]},
-            {"title": "Sous Chef & Team Lead", "employer": "Multiple Venues, Toronto", "dates": "2015 – 2024", "bullets": ["Led culinary teams."]},
-        ]],
+        roles=roles,
         certifications=["Contentful Certified Professional"],
         education=["Computer Programming & Analysis, George Brown College (April 2024)"],
         coursework=["Full-Stack Development", "DevOps"],

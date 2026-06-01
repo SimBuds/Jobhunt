@@ -38,6 +38,20 @@ schema:
     coursework:
       type: array
       items: { type: string }
+    projects:
+      type: array
+      items:
+        type: object
+        required: [name, url, stack, bullets]
+        properties:
+          name: { type: string }
+          url: { type: string }
+          stack:
+            type: array
+            items: { type: string }
+          bullets:
+            type: array
+            items: { type: string }
 ---
 
 ## SYSTEM
@@ -160,6 +174,23 @@ Hard rules (from kb/policies/tailoring-rules.md):
     full-stack role: `Frontend & React` (6–8 items) + `Backend & APIs`
     (6–8 items) + `Data & DevOps` (4–6 items) + `AI & LLM Tooling` (3
     items) + `Familiar` (4 items).
+11. **Projects.** Output a `projects` array containing the projects from
+    `verified_facts.projects` that are most relevant to this JD. Rules:
+    - Each project's `name` and `url` MUST match `verified_facts.projects`
+      EXACTLY. Never invent a project, never alter a url.
+    - Rewrite and reorder the `bullets` to lead with the JD-relevant outcome,
+      same honesty rules as role bullets (rule 3): same facts only, no invented
+      metrics or scope, strong verbs, use the JD's surface form for tech (rule
+      9). Each bullet must differ in wording from the verified source.
+    - Keep `stack` to the verified project's stack (reorder to surface
+      JD-relevant tech first; JD surface form per rule 9). Do not add tech the
+      verified project doesn't list.
+    - Projects are personal work, NOT employment. Never give them an employer,
+      dates, or employer-style metrics (users, revenue, uptime).
+    - Order projects by JD relevance, most relevant first. When the JD is an
+      AI / LLM / backend / automation / infra role, lead with the project that
+      best matches. For a pure CMS / frontend role with no AI angle, you may
+      include fewer projects (the one-page trim handles the rest).
 
 ## USER
 # Verified facts (source of truth — do not deviate)
@@ -198,7 +229,10 @@ are wrong):
   ],
   "certifications": ["..."],
   "education": ["..."],
-  "coursework": ["..."]
+  "coursework": ["..."],
+  "projects": [
+    {{ "name": "...", "url": "...", "stack": ["..."], "bullets": ["..."] }}
+  ]
 }}
 ```
 

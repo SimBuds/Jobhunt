@@ -172,6 +172,18 @@ tripping fabrication enforcement or sinking audit coverage.
 
 ### Phase PB3 — Parse + carry the PROJECTS narrative section
 
+**Prerequisite shipped early (2026-06-01):** Casey reformatted `Resume.docx` to
+wrap role dates in parentheses (e.g. `(2023 – Present)`), which the role-header
+regex rejected, so `parse_baseline` crashed on the first role. Per Casey's
+choice ("extend the parser, keep parens"), `parse_docx._ROLE_LINE_RE` now
+accepts an optional `(` before the month/year and keeps the parens in the
+captured `dates` (so the tailored resume renders them back). `(NDA)` employer
+suffixes still stay in the employer, and bare dates still parse. Covered by
+`test_parse_docx.test_role_line_accepts_parenthesized_dates` and
+`test_role_line_still_accepts_bare_dates`. Full suite 763 passed. This unblocked
+the docx-parse confirmation but is NOT the narrative parsing below, which is
+still pending approval.
+
 **Goal:** `convert-resume` carries a structured projects list from a new
 `PROJECTS` docx section.
 
@@ -193,16 +205,63 @@ tripping fabrication enforcement or sinking audit coverage.
 - Unit: `verified.json` round-trips `projects`.
 - `pytest -q` green.
 
-**Status:** [ ] not started — DATA-LAYER ONLY; projects render nowhere yet
-(walking-skeleton bias).
+**Status:** [x] DONE (2026-06-01).
+- Shipped: `Project` dataclass (name, url, stack, bullets) + `projects` on
+  `VerifiedFacts` (defaulted, so existing construction stays valid); `"PROJECTS"`
+  added to `SECTION_HEADERS`; `_is_project_header` (header = a `Name | url` line
+  whose right side is a whitespace-free URL token); the parse loop reads
+  header/`Stack:`/bullet lines into structured projects; `write_kb_markdown`
+  emits a 5th file `kb/profile/projects.md` when projects exist;
+  `convert_resume_cmd` summary reports the project count. `asdict` round-trips the
+  nested `Project` dataclass into `verified.json`.
+- Also normalized the master `Resume.docx` (operational): consistent project
+  blocks (`Name | url` / `Stack:` / bullets as separate paragraphs) and a clean
+  single-line contact paragraph (the prior hyperlink fragments are gone). Backup
+  at `Resume_prePB3_backup.docx`.
+- Tested: `test_parse_docx` round-trip now asserts 4 structured projects (name /
+  url / stack / bullets), no `education` leak, `verified.json` projects
+  round-trip, and the 5th markdown file. Full suite 763 passed. 0 new lint
+  (4 pre-existing convert_resume_cmd errors untouched); pre-existing parse_docx
+  untyped-param left alone.
+- **`convert-resume` is now SAFE to run.** The earlier "do not run until PB3"
+  warning is lifted. Running it regenerates `verified.json` with `projects` +
+  `skills_projects`, which the scorer (PB1) and cover (PB5) will use. The tailor
+  will NOT yet render a PROJECTS section on the resume (that is PB4), so projects
+  appear in scoring/cover context but not as resume entries until PB4.
+- Ran `convert-resume` to confirm end-to-end (2026-06-01): 4 roles, 4 projects,
+  6 project skills, parenthesized dates intact, no education leak. `verified.json`
+  + `Resume.docx` are gitignored (local user state), not tracked changes.
+- De-brittled `tests/test_audit.py::_minimal_tailored`: it hardcoded bare role
+  dates, so once `verified.json` carried parenthesized dates the audit
+  fabrication re-check saw a mismatch and 4 tests flipped to `block`. It now
+  derives employer+dates from the active `verified` fixture (real or fallback),
+  matching whatever date format is in use. Suite back to 763.
 
 ---
 
 ### Phase PB4 — Tailor renders a PROJECTS section within the one-page guarantee
 
 **Goal:** Tailored resumes render a JD-emphasized Projects section that still
-fits one page. (May split into PB4a schema/prompt/enforce + PB4b render/shrink
-if the diff exceeds budget.)
+fits one page. SPLIT into PB4a (emit + validate) and PB4b (render + one-page
+shrink) because the whole fails the one-sentence sizing test.
+
+#### PB4a — Tailor emits + validates a `projects` output (no render) — DONE (2026-06-01)
+- Shipped: `TailoredProject` dataclass + `TailoredResume.projects` (defaulted,
+  last, so existing construction stays valid); `_parse` decodes the LLM
+  `projects` array; `kb/prompts/tailor.md` gains the `projects` schema, rule 11
+  (exact name+url, rewrite bullets per role-bullet honesty, JD-surface stack,
+  never employment), and the output-example key; `_enforce_no_fabrication`
+  rejects invented projects (`unverified-project`) and url tampering
+  (`project-url-divergence`), with retry hints in `_violation_hint_line`. Name
+  match is case-insensitive; missing verified projects are allowed (PB4b shrink
+  may drop them).
+- Tested: `test_tailor_invariants` adds accept-verified, case-insensitive,
+  invented-project reject, url-tamper reject, decode, and missing-projects
+  back-compat. Full suite 769 passed. mypy clean on tailor.py; 0 new lint.
+- NOT done: projects still do not RENDER on the resume and have no shrink rung
+  (PB4b). They are decoded + validated but `render_docx` ignores them.
+
+#### PB4b — Render projects + one-page shrink rung — PENDING
 
 **Files to touch:**
 - `kb/prompts/tailor.md` — add `projects` to the output schema + a rule (include
@@ -227,7 +286,21 @@ if the diff exceeds budget.)
   one-page resume with a Projects section; audit ship/revise (not block).
 - `pytest -q` green.
 
-**Status:** [ ] not started
+**Status:** PB4a [x] DONE (2026-06-01) · PB4b [x] DONE (2026-06-01).
+- PB4b shipped: `render_docx` renders a PROJECTS section (bold name + right-tab
+  url, a `Stack:` line, List-Bullet bullets) between PROFESSIONAL EXPERIENCE and
+  CERTIFICATIONS & EDUCATION, only when projects exist; `estimate_lines` accounts
+  for it so `fits_one_page` stays accurate; `_shrink_to_one_page` gains a
+  projects rung AFTER coursework (drop trailing project bullets keeping >= 1
+  each, then drop whole projects from the least-relevant end);
+  `_tailored_resume_blob` (tailor) and `_resume_text` (audit) now include project
+  name/stack/bullets so the JD-skill backfill dedup and keyword coverage stay
+  consistent.
+- Tested: render includes/omits PROJECTS, `estimate_lines` grows with projects,
+  shrink rung trims bullets-then-projects keeping a lead. End-to-end smoke render
+  confirms order Summary→Skills→Experience→Projects→Certs with all 4 real
+  projects. Full suite 773 passed. mypy clean; 0 new lint (rule set identical
+  before/after via stash diff).
 
 ---
 
@@ -253,8 +326,40 @@ the validator accepts named project skills.
   passes `validate_cover`.
 - `pytest -q` green.
 
-**Status:** [ ] not started — `cover.py` already reads `verified.json` (now
-projects-aware), so no loader change is needed.
+**Status:** [x] DONE (2026-06-01). `_verified_skill_blob` now includes the
+`skills_projects` bucket AND the `projects[]` narrative (name, stack, bullets)
+so a cover anchoring on a verified project does not trip the fabrication
+watchlist or overreach patterns. `cover.md` rule 1 + rule 3 were extended
+additively to permit a `projects` entry as the centerpiece (jobhunt local-LLM
+CLI called out as the strongest anchor for AI/LLM/backend JDs). `cover.py`
+needed no loader change. Three tests added to `tests/test_cover_validate.py`:
+blob includes projects, a project-stack tech (FastAPI) is suppressed, and the
+suppression stays project-scoped (FastAPI absent from all sources still fires).
+Suite 776 green, zero new ruff/mypy. **Scope note:** the plan listed only the
+`skills_projects` bucket add; including the `projects[]` narrative was the
+load-bearing addition for anchoring to actually work. Deferred to manual: a
+real-Ollama cover for an AI-backend JD referencing a project.
+
+### Projects initiative — final markdown sweep (2026-06-01)
+
+**Status:** [x] DONE. Reconciled the human-facing docs against `verified.json`
+(source of truth) after the date fixes and the PB1-PB5 feature work:
+- `Resume_Tailoring_Instructions.md` Section 2 work-history table: AI Agency
+  corrected to `Jan 2026 – Apr 2026` (was "2026 – Present"), Vintage Gaming to
+  `Jan 2024 – May 2024` (was "2024"); the "two roles carry Present" note
+  rewritten to reflect only the Custom Jewelry Brand contract is current;
+  footer date bumped to June 1, 2026.
+- `README.md` `convert-resume` sidecar list corrected to the real five files
+  (`resume.md`, `skills.md`, `work-history.md`, `education.md`, `projects.md`).
+- `PLAN.md` verified-snapshot section: added `skills_projects` to the bucket
+  enumeration and a note that `verified.json` carries a `projects[]` narrative
+  that renders on the resume, is audited, and can anchor a cover.
+- `AGENTS.md` `skills_projects` note updated through PB5 (initiative complete).
+The injected mirror `kb/policies/tailoring-rules.md` carries no date table, so
+no stale facts there. Suite 776 green throughout. WORK.md project names/URLs and
+GBC dates already matched `verified.json`. Em-dash/semicolon style cleanup is
+forward-going per AGENTS.md and was not applied retroactively to PLAN.md /
+Resume_Tailoring_Instructions.md (only edited prose was kept compliant).
 
 ---
 

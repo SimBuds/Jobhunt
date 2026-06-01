@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from jobhunt.config import Config
@@ -30,6 +30,18 @@ class TailoredRole:
 
 
 @dataclass
+class TailoredProject:
+    """A tailored personal-project entry. Mirrors `TailoredRole` but for the
+    PROJECTS section: projects are genuine work, not employment, so they carry
+    a repo url + tech stack instead of an employer + dates."""
+
+    name: str
+    url: str
+    stack: list[str]
+    bullets: list[str]
+
+
+@dataclass
 class TailoredResume:
     summary: str
     skills_categories: list[TailoredCategory]
@@ -38,6 +50,9 @@ class TailoredResume:
     education: list[str]
     coursework: list[str]
     model: str
+    # Defaulted + last so existing `TailoredResume(...)` construction (tests,
+    # `_parse`) stays valid. Populated by `_parse` from the LLM's `projects`.
+    projects: list[TailoredProject] = field(default_factory=list)
 
 
 async def tailor_resume(cfg: Config, job: Job) -> TailoredResume:
@@ -198,6 +213,17 @@ def _violation_hint_line(v: "FabricationViolation") -> str:
             "culinary clause to the LAST sentence only, and only if the JD "
             "explicitly asks for team-management or operational leadership."
         )
+    if v.kind == "unverified-project":
+        return (
+            f"- The project {v.detail!r} is NOT in verified_facts.projects. "
+            "REMOVE it. Only include projects that appear verbatim (by name) in "
+            "verified_facts.projects — never invent a project."
+        )
+    if v.kind == "project-url-divergence":
+        return (
+            f"- A project url was changed ({v.detail}). Use the EXACT `url` from "
+            "verified_facts.projects for that project; do not alter or invent it."
+        )
     return f"- Unspecified violation ({v.kind}): {v.detail}"
 
 
@@ -323,6 +349,8 @@ def _tailored_resume_blob(tailored: TailoredResume) -> str:
     parts.extend(tailored.certifications)
     parts.extend(tailored.education)
     parts.extend(tailored.coursework)
+    for proj in tailored.projects:
+        parts.extend([proj.name, *proj.stack, *proj.bullets])
     return "\n".join(parts).lower()
 
 
@@ -485,6 +513,21 @@ def _shrink_to_one_page(tailored: TailoredResume) -> None:
     if fits_one_page(tailored):
         return
 
+    # Projects rung (PB4b): trimmed AFTER coursework — projects are a
+    # differentiator, so they shrink late. First drop trailing bullets from the
+    # project with the most bullets (keep >= 1 per project, the JD-relevant
+    # lead), then drop whole projects from the end (the tailor ordered them by
+    # JD relevance, so the last is least relevant).
+    while not fits_one_page(tailored):
+        droppable = [p for p in tailored.projects if len(p.bullets) > 1]
+        if not droppable:
+            break
+        max(droppable, key=lambda p: len(p.bullets)).bullets.pop()
+    while not fits_one_page(tailored) and tailored.projects:
+        tailored.projects.pop()
+    if fits_one_page(tailored):
+        return
+
     raise PipelineError(
         "tailored resume still overflows one page after shrink pass; "
         "tighten verified.json bullets or summary"
@@ -528,6 +571,15 @@ def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
             education=list(raw.get("education") or []),
             coursework=list(raw.get("coursework") or []),
             model=model,
+            projects=[
+                TailoredProject(
+                    name=p["name"],
+                    url=str(p.get("url", "")).strip(),
+                    stack=list(p.get("stack") or []),
+                    bullets=list(p.get("bullets") or []),
+                )
+                for p in (raw.get("projects") or [])
+            ],
         )
     except (KeyError, TypeError) as e:
         # qwen3.5:9b sometimes returns a dict that parses as JSON but is
@@ -693,6 +745,31 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
         raise FabricationError(
             [FabricationViolation("role-divergence", detail)], msg
         )
+
+    # Projects: reject any tailored project that isn't a verified project, and
+    # any url that diverges from the verified one. Missing verified projects are
+    # NOT a fabrication (the one-page shrink in PB4b may legitimately drop a
+    # project), so only EXTRA / invented entries fail. Name match is
+    # case-insensitive so a capitalised "Jobhunt" against verified "jobhunt"
+    # passes. Project bullets are rewritten freely (same posture as role
+    # bullets); the skills check below still guards unverified skill claims.
+    verified_projects = {
+        str(p.get("name", "")).strip().lower(): str(p.get("url", "")).strip()
+        for p in verified.get("projects", [])
+    }
+    for tp in tailored.projects:
+        key = tp.name.strip().lower()
+        if key not in verified_projects:
+            raise FabricationError(
+                [FabricationViolation("unverified-project", tp.name)],
+                f"project not in verified facts: {tp.name!r}",
+            )
+        vurl = verified_projects[key]
+        if tp.url and vurl and tp.url != vurl:
+            raise FabricationError(
+                [FabricationViolation("project-url-divergence", f"{tp.name}: {tp.url}")],
+                f"project url diverged from verified: {tp.name!r} -> {tp.url!r}",
+            )
 
     verified_skills = [
         s

@@ -27,11 +27,11 @@ Use only the items below. If a job needs something not on this list, do not add 
 | Role | Employer | Dates |
 |---|---|---|
 | Web Developer (Contract) | Custom Jewelry Brand (NDA) | 2023 – Present |
-| Web Developer (Contract) | AI Agency (NDA) | 2026 – Present |
-| Web Developer (Contract) | Vintage Gaming Retailer (NDA) | 2024 |
+| Web Developer (Contract) | AI Agency (NDA) | Jan 2026 – Apr 2026 |
+| Web Developer (Contract) | Vintage Gaming Retailer (NDA) | Jan 2024 – May 2024 |
 | Sous Chef & Team Lead | Multiple Venues, Toronto | 2015 – 2024 |
 
-Two roles currently carry "Present". The shrink ladder's Present-role guard (see `pipeline.tailor._try_drop_weakest_bullet`) treats both as protected — older roles get trimmed first. Confirm with Casey if one of these has actually wrapped before tailoring.
+Only the Custom Jewelry Brand contract currently carries "Present". The shrink ladder's Present-role guard (see `pipeline.tailor._try_drop_weakest_bullet`) treats that one as protected, so older roles get trimmed first. The AI Agency and Vintage Gaming contracts have both wrapped, so they are eligible for trimming like any dated role. Confirm with Casey before tailoring if the current contract status has changed.
 
 Total professional dev experience: ~2.5–3 years. Do not stretch this.
 
@@ -279,7 +279,7 @@ When Casey asks for a cover note or a follow-up email to a recruiter, the same h
 
 ---
 
-*Last updated: May 20, 2026. Update Section 2 whenever Casey's experience changes.*
+*Last updated: June 1, 2026. Update Section 2 whenever Casey's experience changes.*
 
 *Related: see `AGENTS.md` for the broader CLI rules, including the `interview-prep` honesty checks that apply to interview prep docs (anchor authenticity, banned phrases, retry-on-violation). The same no-fabrication spirit governs both surfaces.*
 

@@ -281,6 +281,7 @@ def _verified_skill_blob(verified: dict[str, Any]) -> str:
         "skills_cms",
         "skills_data_devops",
         "skills_ai",
+        "skills_projects",
         "skills_familiar",
     ):
         for s in verified.get(key, []):
@@ -291,6 +292,16 @@ def _verified_skill_blob(verified: dict[str, Any]) -> str:
         parts.append(role.get("title", ""))
         parts.append(role.get("employer", ""))
         for b in role.get("bullets", []):
+            parts.append(b)
+    # Personal-project narrative (PB5): a cover may anchor on a verified
+    # project, so its name, stack, and bullet text must count as verified
+    # context — otherwise naming the project's tech (FastAPI, Redis) or
+    # describing its build would trip the fabrication watchlist.
+    for proj in verified.get("projects", []):
+        parts.append(proj.get("name", ""))
+        for s in proj.get("stack", []):
+            parts.append(s)
+        for b in proj.get("bullets", []):
             parts.append(b)
     return " ".join(parts).lower()
 

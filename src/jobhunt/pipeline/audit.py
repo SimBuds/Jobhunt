@@ -157,6 +157,10 @@ def _resume_text(tailored: TailoredResume) -> str:
     parts.extend(tailored.certifications)
     parts.extend(tailored.education)
     parts.extend(tailored.coursework)
+    for proj in tailored.projects:
+        parts.append(proj.name)
+        parts.extend(proj.stack)
+        parts.extend(proj.bullets)
     return "\n".join(parts).lower()
 
 

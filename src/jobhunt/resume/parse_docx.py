@@ -22,6 +22,7 @@ SECTION_HEADERS = {
     "TECHNICAL SKILLS",
     "PROFESSIONAL EXPERIENCE",
     "CERTIFICATIONS & EDUCATION",
+    "PROJECTS",
 }
 
 
@@ -30,6 +31,19 @@ class Role:
     title: str
     employer: str
     dates: str
+    bullets: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Project:
+    """A personal-project entry from the `PROJECTS` docx section. Distinct from
+    `Role` (employment): projects are genuine work but not employment, so the
+    tailor never renders employer-style metrics on them. See WORK.md Section 1
+    and `Resume_Tailoring_Instructions.md` Section 2."""
+
+    name: str
+    url: str
+    stack: list[str] = field(default_factory=list)
     bullets: list[str] = field(default_factory=list)
 
 
@@ -48,6 +62,7 @@ class VerifiedFacts:
     certifications: list[str]
     education: list[str]
     coursework_baseline: list[str]
+    projects: list[Project] = field(default_factory=list)
 
 
 _SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
@@ -72,6 +87,18 @@ _ROLE_LINE_RE = re.compile(
     rf"(?:\t\s*|\s{{2,}}|\s+(?=\(?(?:{_MONTH_RE}\s+)?\d{{4}}))"
     rf"(?P<dates>\(?(?:{_MONTH_RE}\s+)?\d{{4}}.*)$"
 )
+
+
+def _is_project_header(text: str) -> bool:
+    """A PROJECTS-section header is ``Name | url`` — a line containing ``|`` whose
+    right-hand side is a single whitespace-free token (the repo URL). Bullets are
+    prose: they rarely contain ``|``, and if they do the right side has spaces, so
+    they are not mistaken for headers. The ``Stack:`` line is handled separately."""
+    if "|" not in text:
+        return False
+    _, right = text.split("|", 1)
+    right = right.strip()
+    return bool(right) and " " not in right
 
 
 def _split_skills(value: str) -> list[str]:
@@ -209,6 +236,24 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         else:
             education.append(text)
 
+    projects: list[Project] = []
+    current_project: Project | None = None
+    for _, text in sections["PROJECTS"]:
+        if text.startswith("Stack:"):
+            if current_project is not None:
+                current_project.stack = _split_skills(text[len("Stack:") :].strip())
+            continue
+        if _is_project_header(text):
+            name_part, url_part = text.split("|", 1)
+            current_project = Project(name=name_part.strip(), url=url_part.strip())
+            projects.append(current_project)
+            continue
+        # Otherwise a bullet. Orphan bullets before any header are skipped rather
+        # than raising — projects are supplementary, a malformed line must not
+        # break `convert-resume`.
+        if current_project is not None:
+            current_project.bullets.append(text)
+
     return VerifiedFacts(
         name=name,
         contact_line=contact_line,
@@ -223,6 +268,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         certifications=certifications,
         education=education,
         coursework_baseline=coursework,
+        projects=projects,
     )
 
 
@@ -292,4 +338,24 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
         encoding="utf-8",
     )
     written.append(edu_md)
+
+    if facts.projects:
+        proj_lines = [
+            "# Projects\n",
+            "Personal projects (genuine work, not employment). No employer-style\n"
+            "metrics. See `WORK.md` Section 1 for the long form.\n",
+        ]
+        for p in facts.projects:
+            proj_lines.append(f"## {p.name}")
+            if p.url:
+                proj_lines.append(p.url)
+            if p.stack:
+                proj_lines.append(f"Stack: {', '.join(p.stack)}")
+            proj_lines.append("")
+            proj_lines.extend(f"- {b}" for b in p.bullets)
+            proj_lines.append("")
+        projects_md = profile / "projects.md"
+        projects_md.write_text("\n".join(proj_lines), encoding="utf-8")
+        written.append(projects_md)
+
     return written
