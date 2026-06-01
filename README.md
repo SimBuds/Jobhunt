@@ -321,8 +321,9 @@ promotion. Use `response-rate` after ~20 applications alongside
 ### `convert-resume`
 
 Parses `./Resume.docx` into `kb/profile/verified.json` plus markdown sidecars
-(`skills.md`, `work-history.md`, `education.md`). `Resume.docx` is the single
-source of truth. Re-run after editing it.
+(`resume.md`, `skills.md`, `work-history.md`, `education.md`, and `projects.md`
+when the resume has a PROJECTS section). `Resume.docx` is the single source of
+truth. Re-run after editing it.
 
 ```bash
 jobhunt convert-resume                 # parse ./Resume.docx

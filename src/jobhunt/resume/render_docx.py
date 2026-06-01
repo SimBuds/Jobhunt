@@ -72,6 +72,37 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
             br.font.size = BODY_SIZE
             _tighten(bp)
 
+    if tailored.projects:
+        _add_section_heading(doc, "PROJECTS")
+        for proj in tailored.projects:
+            p = doc.add_paragraph()
+            run_n = p.add_run(proj.name)
+            run_n.bold = True
+            run_n.font.name = BODY_FONT
+            run_n.font.size = BODY_SIZE
+            if proj.url:
+                run_u = p.add_run(f"\t{proj.url}")
+                run_u.font.name = BODY_FONT
+                run_u.font.size = BODY_SIZE
+                _add_right_tab_stop(p)
+            _tighten(p)
+            if proj.stack:
+                sp = doc.add_paragraph()
+                r_lbl = sp.add_run("Stack: ")
+                r_lbl.bold = True
+                r_lbl.font.name = BODY_FONT
+                r_lbl.font.size = BODY_SIZE
+                r_items = sp.add_run(", ".join(proj.stack))
+                r_items.font.name = BODY_FONT
+                r_items.font.size = BODY_SIZE
+                _tighten(sp)
+            for bullet in proj.bullets:
+                bp = doc.add_paragraph(style="List Bullet")
+                br = bp.add_run(bullet)
+                br.font.name = BODY_FONT
+                br.font.size = BODY_SIZE
+                _tighten(bp)
+
     _add_section_heading(doc, "CERTIFICATIONS & EDUCATION")
     for line in tailored.certifications:
         _add_paragraph(doc, line)
@@ -242,6 +273,15 @@ def estimate_lines(tailored: TailoredResume) -> int:
         lines += 1
         for b in role.bullets:
             lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
+    if tailored.projects:
+        lines += 1  # PROJECTS heading
+        for proj in tailored.projects:
+            lines += 1  # name + url header
+            if proj.stack:
+                stack_text = "Stack: " + ", ".join(proj.stack)
+                lines += _wrapped_lines(stack_text, SKILL_CHARS_PER_LINE)
+            for b in proj.bullets:
+                lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
     lines += 1 + len(tailored.certifications) + len(tailored.education)
     if tailored.coursework:
         deans_text = _DEANS_PREFIX + ", ".join(tailored.coursework) + "."

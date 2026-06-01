@@ -129,6 +129,7 @@ def run(
     )
     typer.echo(
         f"\n{len(facts.work_history)} role(s); "
+        f"{len(facts.projects)} project(s); "
         f"{core_count} core skills; "
         f"{len(facts.skills_projects)} project skills; "
         f"{len(facts.skills_familiar)} familiar."

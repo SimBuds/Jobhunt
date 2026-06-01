@@ -7,6 +7,7 @@ from docx import Document
 
 from jobhunt.pipeline.tailor import (
     TailoredCategory,
+    TailoredProject,
     TailoredResume,
     TailoredRole,
 )
@@ -97,3 +98,50 @@ def test_render_emits_single_deans_list_paragraph(tailored: TailoredResume, tmp_
     doc = Document(str(out))
     deans = [p for p in doc.paragraphs if p.text.startswith("Dean")]
     assert len(deans) == 1, [p.text for p in deans]
+
+
+def test_render_includes_projects_section(tailored: TailoredResume, tmp_path: Path):
+    """PB4b: a tailored resume with projects renders a PROJECTS section with the
+    project name, url, stack, and bullets."""
+    tailored.projects = [
+        TailoredProject(
+            name="jobhunt",
+            url="github.com/SimBuds/Jobhunt",
+            stack=["Python", "Ollama", "SQLite"],
+            bullets=["Built a local-first ATS CLI with a local LLM scorer."],
+        )
+    ]
+    out = render(
+        tailored,
+        contact_line="me@example.com | site.com",
+        name="Casey Hsu",
+        out_path=tmp_path / "out.docx",
+    )
+    text = "\n".join(p.text for p in Document(str(out)).paragraphs)
+    assert "PROJECTS" in text
+    assert "jobhunt" in text
+    assert "github.com/SimBuds/Jobhunt" in text
+    assert "Stack: Python, Ollama, SQLite" in text
+    assert "local-first ATS CLI" in text
+
+
+def test_render_omits_projects_section_when_empty(tailored: TailoredResume, tmp_path: Path):
+    """No projects → no PROJECTS heading (back-compat for project-less resumes)."""
+    out = render(
+        tailored,
+        contact_line="me@example.com | site.com",
+        name="Casey Hsu",
+        out_path=tmp_path / "out.docx",
+    )
+    text = "\n".join(p.text for p in Document(str(out)).paragraphs)
+    assert "PROJECTS" not in text
+
+
+def test_estimate_lines_counts_projects(tailored: TailoredResume):
+    """The page-fit estimate must grow when projects are added, or the shrink
+    ladder would never trim them."""
+    before = estimate_lines(tailored)
+    tailored.projects = [
+        TailoredProject("jobhunt", "github.com/SimBuds/Jobhunt", ["Python"], ["Built a CLI."]),
+    ]
+    assert estimate_lines(tailored) > before
