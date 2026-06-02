@@ -9,6 +9,395 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### Resume-parser format-robustness initiative (2026-06-02) — 5 phases, awaiting approval
+
+**Why:** `resume.parse_docx.parse_baseline` is tightly coupled to Casey's
+specific `Resume.docx` and fails silently when a resume diverges from that exact
+shape. This blocks the stated goal of ingesting differently-formatted resumes
+(the resume-parser-versatility goal). Three coupling points drop or misclassify
+data with no feedback, the only signal today is the post-parse count line, and a
+fourth point aborts the whole conversion on one bad line.
+
+Diagnostic evidence (captured at plan time, do not re-derive):
+- **Cert vs education classification is literal-string-coupled to Casey.**
+  `parse_docx.py:238` keys on `"contentful certified"` and `"skill badge"`,
+  `:240` on `startswith("Dean")` and `"Coursework"`. Any other resume's
+  AWS / PMP / CompTIA cert silently lands in `education`, not `certifications`.
+- **Skill-bucket labels are exact-match** (`:206-209`). A `Languages:` /
+  `Frameworks:` / `Databases:` line matches `_SKILL_LINE_RE` but equals no
+  bucket, so its skills fall through the loop and are dropped with no warning.
+  PLAN.md already documents the sibling `skills_ai` run-on that needs a manual
+  post-parse patch.
+- **Section headers are exact-match** against the frozen `SECTION_HEADERS` set
+  (`:184`). `WORK EXPERIENCE`, `EXPERIENCE`, or a bare `EDUCATION` produce an
+  empty section silently.
+- **Role parsing is fail-fast** (`:219` orphan bullet, `:223` unparseable
+  header) while the PROJECTS loop (`:260-264`) skips bad lines gracefully. The
+  two sections disagree on failure philosophy.
+
+**Cross-phase inherited decisions (set at plan time, confirm during approval):**
+- `parse_baseline` gains a warnings channel. Recommended shape: return a
+  `(VerifiedFacts, list[str])` tuple. Blast radius is one production caller
+  (`convert_resume_cmd.py:113`) plus the test file. **← confirm tuple vs a small
+  `ParseResult` dataclass.**
+- Unknown skill labels and ambiguous credential lines are WARNED and given a
+  documented default placement. They are never silently dropped and never
+  auto-invented into a new bucket. Casey relabels the docx if the default is
+  wrong. **← confirm warn-and-default vs auto-create-bucket.**
+- Role parsing switches from fail-fast to collect-and-report so a partially
+  malformed experience section still yields the roles it can parse (matches the
+  PROJECTS philosophy). **← confirm, or keep the hard raise.**
+- This is parser-only work. No tailor / score / audit / render change, no
+  `prompt_hash` impact, no config-schema change. Casey's own `Resume.docx` must
+  parse identically before and after every phase (a regression guard, not a
+  behavior change for him). The payoff is on OTHER resume shapes.
+
+**Reuse audit (initiative-level, per Reuse-First Rule):**
+- Search terms: `rg "parse_baseline"`,
+  `rg "warn|logger|structlog" src/jobhunt/resume src/jobhunt/commands/convert_resume_cmd.py`,
+  `rg "extract_certs|_KNOWN" src/jobhunt/analyze/certs.py`,
+  `rg "_REGION_EXPANSIONS|PEER_FAMILIES|alias"`.
+- Candidates found: `analyze.certs.extract_certs` / `extract_certs_split`
+  (curated `_KNOWN` cert vocabulary plus generic `Certified X` / `X
+  certification` patterns); `typer.echo(..., err=True)` (already the
+  convert-resume error surface at `:142`); the `_REGION_EXPANSIONS` dict in
+  `convert_resume_cmd` (an existing in-repo alias-map precedent).
+- Why reused / not: the warning surface reuses `typer.echo(err=True)` (no new
+  logging infra). The alias phases (RP3, RP4) reuse the `_REGION_EXPANSIONS`
+  dict-lookup shape, adding only data. `extract_certs` is the cert-vocabulary
+  candidate but is insufficient alone (no degree vocabulary, its `_KNOWN` omits
+  Casey's `Contentful Certified` and `skill badge`, and it is tuned for JD
+  prose, not terse credential lines), so RP2 proposes a small resume-tuned
+  classifier rather than a resume to analyze cross-layer import. Reusing
+  `extract_certs` is offered as an approval-time alternative. No existing
+  warning-collection or header-normalizer exists in `resume/`, so those small
+  helpers are genuinely new.
+
+**Sequencing:** RP1 is the walking skeleton and must land first (it threads the
+warnings channel end-to-end without changing what is parsed, so every later
+phase has a place to report). RP2 through RP5 are independent of each other and
+may be reordered or dropped during approval.
+
+---
+
+#### Phase RP1 — Surface parse warnings instead of silent drops
+
+**Goal:** `parse_baseline` collects a warnings list for every line it cannot
+classify and `convert-resume` prints it, with zero change to what gets parsed.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — `parse_baseline` accumulates a
+  `warnings: list[str]` at each current silent-skip site (a skill line not
+  matching `_SKILL_LINE_RE`, a skill label matching no bucket, an orphan
+  PROJECTS bullet) and returns `(VerifiedFacts, warnings)`.
+- `src/jobhunt/commands/convert_resume_cmd.py` — unpack the tuple at `:113`,
+  then after the count summary print each warning via `typer.echo(..., err=True)`
+  under a `parse warnings:` heading.
+- `tests/test_parse_docx.py` — update the 3 `parse_baseline` call sites to
+  unpack the tuple, and add `test_parse_warns_on_unknown_skill_label`.
+
+**Functions to add/change:**
+- `resume.parse_docx.parse_baseline` — change — new return type
+  `(VerifiedFacts, list[str])`, accumulate warnings at the skip sites.
+- `commands.convert_resume_cmd.run` — change — unpack and print warnings.
+
+**Reuse audit:** the warning surface reuses `typer.echo(err=True)` (the existing
+missing-fields error path at `convert_resume_cmd.py:142`). No new logging infra.
+The only new construct is the in-function list.
+
+**Verification (≤3 bullets):**
+- Unit: a docx whose skills section has a `Languages:` line returns a non-empty
+  warnings list naming that label, and the existing round-trip still passes with
+  an empty warnings list for Casey's resume.
+- `uv run pytest -q tests/test_parse_docx.py` green after the tuple-unpack update.
+- Operational: `jobhunt convert-resume` on the real `Resume.docx` prints 0
+  warnings (or only the known `skills_ai` run-on if present), proving no
+  regression.
+
+**Status:** [x] DONE (2026-06-02). `parse_baseline` now returns
+`(VerifiedFacts, list[str])` and accumulates a warning at each former
+silent-skip site: a TECHNICAL SKILLS line not in `Label: items` form, a skill
+label matching no bucket (items reported, not dropped), and a PROJECTS bullet
+before any project header. `convert_resume_cmd.run` unpacks the tuple and prints
+a `parse warnings (N):` block to stderr after the count summary via
+`typer.echo(err=True)`. Tests: updated the 2 returning `parse_baseline` call
+sites to unpack (the missing-file case still raises inside `pytest.raises`),
+added `test_parse_warns_on_unknown_skill_label` (a `Languages:` label warns and
+its items reach no bucket), and added `assert warnings == []` to the round-trip
+as a regression guard. Verification: `tests/test_parse_docx.py` 11 passed, full
+suite **801 passed** (was 800 + 1 new), and `jobhunt convert-resume` on the real
+`Resume.docx` printed 0 parse warnings (4 roles / 4 projects / 28 core / 6
+project / 8 familiar, unchanged). Lint/types: 0 new ruff, 0 new mypy on touched
+files; the 4 pre-existing convert_resume_cmd ruff errors (I001 + 3 E501 at
+:3/:15/:144/:148) and the pre-existing parse_docx:129 untyped-`p` mypy note are
+out of phase surface and left untouched. Docs: README `convert-resume` section
+gained a one-line note on the `parse warnings` stderr behavior; PLAN.md not
+touched (verified.json shape and the honesty model are unchanged, the warnings
+channel is parser-internal observability).
+
+---
+
+#### Phase RP2 — Generic certification vs education classification
+
+**Goal:** CERTIFICATIONS & EDUCATION lines split into cert vs education by
+generic credential keywords rather than Casey-specific literals.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — replace the `:237-246` literal block with
+  a `_classify_credential(line)` helper: degree keywords (bachelor, master,
+  b.sc, b.a, phd, diploma, associate degree, university, college, honours) imply
+  education; cert keywords (certified, certificate, certification, license,
+  credential, badge) imply cert; an unclassifiable line defaults to education
+  and emits an RP1 warning. The existing `Coursework:` extraction is preserved.
+- `tests/test_parse_docx.py` — add `test_classifies_generic_certs`
+  (AWS / PMP / CompTIA land in `certifications`) and `test_classifies_degrees`
+  (a B.Sc line lands in `education`), and keep a Contentful / skill-badge case
+  green.
+
+**Functions to add/change:**
+- `resume.parse_docx._classify_credential` — add.
+- `resume.parse_docx.parse_baseline` — change — call the classifier in the
+  CERTIFICATIONS & EDUCATION loop.
+
+**Reuse audit:**
+- Search terms: `rg "extract_certs|_KNOWN" src/jobhunt/analyze/certs.py`.
+- Candidate: `analyze.certs.extract_certs` (curated `_KNOWN` plus generic
+  `Certified X` / `X certification` patterns).
+- Why a local classifier instead: `extract_certs` has no degree vocabulary, its
+  `_KNOWN` omits Casey's `Contentful Certified` and `skill badge` (verified at
+  plan time), and it is tuned for mining JD prose rather than terse resume
+  credential lines. Reusing it would also couple `resume/` to `analyze/`.
+  Reusing `extract_certs` as the named-pro-cert signal is offered as an
+  approval-time alternative if the coupling is acceptable.
+
+**Verification (≤3 bullets):**
+- Unit: AWS / PMP / CompTIA lines classify as `certifications`, a
+  `Bachelor of Science` line classifies as `education`, and Casey's
+  `Contentful Certified` and `skill badge` still classify as `certifications`.
+- Unit: an unclassifiable credential line lands in `education` AND emits an RP1
+  warning.
+- `uv run pytest -q` green.
+
+**Status:** [x] DONE (2026-06-02). Replaced the Casey-specific literal block
+(`startswith("contentful certified")` / `"skill badge"` / `startswith("Dean")`)
+with `_classify_credential(text)` plus two module regexes: `_DEGREE_RE`
+(bachelor / master / doctorate / phd / msc / bsc / beng / meng / ba / associate
+degree / diploma / university / college / honours / dean's list / gpa / cum
+laude) and `_CERT_RE` (certified / certificate / certification / licen[cs]e /
+credential / badge). Degree vocabulary is checked first so a real degree wins,
+and the "Associate" cert tier is excluded from the degree match (it requires
+"associate degree") so an "AWS ... - Associate" cert is not mis-routed. The
+`Coursework:` line is handled before the classifier (it carries no credential
+keyword) and stays education. An unclassifiable line defaults to education and
+emits an RP1 warning. Tests: `test_classifies_generic_certs` (AWS / PMP /
+CompTIA / Contentful all land in `certifications`, the AWS Associate does not
+leak to education) and `test_classifies_degrees` (Bachelor + Advanced Diploma
+land in `education`). Verification: `tests/test_parse_docx.py` 13 passed, full
+suite **803 passed** (was 801 + 2 new), and `jobhunt convert-resume` on the real
+`Resume.docx` printed 0 warnings with certifications/education/coursework
+identical to before (1 Contentful cert, 2 education lines, 4 coursework items).
+Lint/types: ruff clean on touched files, 0 new mypy (the pre-existing
+`parse_docx` untyped-`p` note shifted to :158 as the helper block was added
+above it, untouched). Decision honored: local keyword classifier, no
+`resume` to `analyze` import. Docs: this file. PLAN.md / README.md not touched
+(no schema or user-facing-surface change beyond RP1's already-documented
+warnings).
+
+---
+
+#### Phase RP3 — Skill-label aliasing plus unknown-label warning
+
+**Goal:** Common alternate skill-section labels map onto the existing buckets,
+and unrecognized labels warn instead of dropping their skills.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — add a `_SKILL_LABEL_ALIASES` dict
+  (languages / frameworks / libraries to Core, databases / data / devops /
+  infrastructure / cloud to Data & DevOps, cms / e-commerce to CMS & E-Commerce,
+  ai / ml / tooling to AI & Tooling, project stack / projects to Project Stack,
+  familiar / exposure to Familiar). Resolve the parsed label through the aliases
+  before the exact-bucket match. On no match, emit an RP1 warning naming the
+  label and its items, with no drop and no auto-bucket.
+- `tests/test_parse_docx.py` — add `test_skill_label_aliases` (a `Frameworks:`
+  line lands in `skills_core`) and `test_unknown_skill_label_warns`.
+
+**Functions to add/change:**
+- `resume.parse_docx._SKILL_LABEL_ALIASES` — add.
+- `resume.parse_docx.parse_baseline` — change — alias-resolve the skill label.
+
+**Reuse audit:**
+- Search terms: `rg "_REGION_EXPANSIONS|alias|PEER_FAMILIES"`.
+- Candidate: `_REGION_EXPANSIONS` (convert_resume_cmd) is the in-repo alias-map
+  precedent (province abbreviation to full name). `PEER_FAMILIES`
+  (pipeline._keywords) is tech-synonym data, not label aliasing.
+- Why new data, not new mechanism: only a new alias dict is added; the
+  dict-lookup pattern matches `_REGION_EXPANSIONS`.
+
+**Verification (≤3 bullets):**
+- Unit: a `Frameworks:` skills line populates `skills_core`, and a `Databases:`
+  line populates `skills_data_devops`.
+- Unit: a `Hobbies:` label warns (RP1) and is not silently dropped.
+- `uv run pytest -q` green, and Casey's existing bucket labels still resolve
+  unchanged.
+
+**Status:** [x] DONE (2026-06-02). Added `_SKILL_LABEL_ALIASES` (lowercased
+alternate label to canonical bucket: languages / programming languages /
+frameworks / libraries / frontend to Core; databases / data / devops /
+infrastructure / cloud to Data & DevOps; cms / e-commerce to CMS & E-Commerce;
+ai / ml / tooling / tools to AI & Tooling; projects to Project Stack; exposure to
+Familiar). In `parse_baseline` the skill-label resolution now tries the exact
+bucket name first (so Casey's headings are unchanged) then the alias map, and
+warns only when neither resolves. Resolution is inline (no new helper) to stay
+within the planned surface. Tests: added `test_skill_label_aliases`
+(`Frameworks:` to `skills_core`, `Databases:` to `skills_data_devops`, no
+warnings); the RP1 `test_parse_warns_on_unknown_skill_label` was switched from
+`Languages:` to `Hobbies:` because RP3 promoted `Languages` to a recognized Core
+alias (this updated test now also serves the planned `test_unknown_skill_label_warns`
+rather than adding a redundant duplicate). Verification: `tests/test_parse_docx.py`
+14 passed, full suite **804 passed** (was 803 + 1 net new), and
+`jobhunt convert-resume` printed 0 warnings with buckets unchanged (28 core / 6
+project / 8 familiar). Lint/types: ruff clean on touched files, 0 new mypy (the
+pre-existing untyped-`p` note shifted to :189 as the alias block was added above
+it). Docs: this file. PLAN.md / README.md not touched (aliasing is parser
+internal; the warnings surface is already documented from RP1).
+
+---
+
+#### Phase RP4 — Section-header aliasing
+
+**Goal:** Alternate section-header spellings resolve to the canonical sections
+so a non-Casey resume does not yield empty sections.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — add a `_SECTION_ALIASES` dict (work
+  experience / experience / employment / work history to PROFESSIONAL
+  EXPERIENCE, skills / technical skills / tech stack / technologies to TECHNICAL
+  SKILLS, education / certifications / certs / licenses to CERTIFICATIONS &
+  EDUCATION, projects / personal projects / selected projects to PROJECTS,
+  summary / profile / objective / about to SUMMARY) and a
+  `_canonical_section(text)` helper. Use the helper in both the `_first_section`
+  detection and the section loop. Warn (RP1) if no recognized section header is
+  found at all.
+- `tests/test_parse_docx.py` — add `test_section_header_aliases` (a docx using
+  `WORK EXPERIENCE` and `SKILLS` parses roles and skills non-empty).
+
+**Functions to add/change:**
+- `resume.parse_docx._SECTION_ALIASES` plus `resume.parse_docx._canonical_section`
+  — add.
+- `resume.parse_docx.parse_baseline` — change — use `_canonical_section` in both
+  header checks.
+
+**Reuse audit:** reuses the `_REGION_EXPANSIONS` dict-lookup precedent;
+`_canonical_section` is a thin wrapper over the new dict. No existing header
+normalizer exists.
+
+**Verification (≤3 bullets):**
+- Unit: a synthetic docx with `WORK EXPERIENCE` / `SKILLS` / `EDUCATION` headers
+  parses roles, skills, and education non-empty.
+- Unit: Casey's exact headers still resolve (round-trip unchanged).
+- `uv run pytest -q` green.
+
+**Status:** [x] DONE (2026-06-02). Added `_SECTION_ALIASES` (whole-line
+lowercased alternate heading to canonical header: profile / professional summary
+/ objective / about to SUMMARY; skills / tech stack / technologies / technical
+proficiencies to TECHNICAL SKILLS; experience / work experience / employment /
+employment history / work history to PROFESSIONAL EXPERIENCE; education /
+certifications / certs / licenses (and the `& certifications` variants) to
+CERTIFICATIONS & EDUCATION; personal / selected / side projects to PROJECTS) and
+a `_canonical_section(text)` helper (exact case-insensitive match against
+`SECTION_HEADERS` first, then the alias map). `parse_baseline` uses the helper in
+both the `_first_section` contact-boundary detection and the section-collection
+loop, and warns (RP1) when no recognized section header is found at all. Aliases
+match the whole line, so a body line like "Experience with React" is not
+mistaken for a header. Test: `test_section_header_aliases` (a docx using PROFILE
+/ SKILLS / WORK EXPERIENCE / EDUCATION parses summary, skills, one role, and
+education, with no warnings). Verification: `tests/test_parse_docx.py` 15 passed,
+full suite **805 passed** (was 804 + 1 new), and `jobhunt convert-resume` printed
+0 warnings with output unchanged (4 roles / 4 projects / 28 core / 6 project / 8
+familiar). Lint/types: ruff clean on touched files, 0 new mypy (the pre-existing
+untyped-`p` note shifted to :231 as the alias/helper block was added above it).
+Docs: this file. PLAN.md / README.md not touched (section aliasing is parser
+internal; the warnings surface is already documented from RP1).
+
+---
+
+#### Phase RP5 — Collect-and-report role parsing
+
+**Goal:** An unparseable experience line is recorded as a warning instead of
+aborting the whole conversion.
+
+**Files to touch:**
+- `src/jobhunt/resume/parse_docx.py` — in the PROFESSIONAL EXPERIENCE loop,
+  replace the two `raise PipelineError(...)` calls (`:219` orphan bullet, `:223`
+  unparseable header) with RP1 warnings. An orphan bullet before any role is
+  warned and skipped, an unparseable non-bullet line is warned and skipped, and
+  roles that parse are still collected. The empty-file guard at `:162` stays a
+  hard raise.
+- `tests/test_parse_docx.py` — add `test_orphan_bullet_warns_not_raises` and
+  `test_unparseable_role_header_warns`, and keep a well-formed experience
+  section green.
+
+**Functions to add/change:**
+- `resume.parse_docx.parse_baseline` — change — role loop warns instead of
+  raising.
+
+**Reuse audit:** reuses RP1's warnings list; the PROJECTS loop at `:260-264` is
+the in-module precedent for lenient skip. No new mechanism.
+
+**Verification (≤3 bullets):**
+- Unit: a docx with an orphan bullet before any role header parses successfully
+  with a warning (previously raised).
+- Unit: a well-formed multi-role section parses all roles unchanged.
+- `uv run pytest -q` green.
+
+**Status:** [x] DONE (2026-06-02). Replaced the two `raise PipelineError(...)`
+calls in the PROFESSIONAL EXPERIENCE loop (orphan bullet before any role header,
+and a pipe-bearing line that does not match the role-header pattern) with RP1
+warnings plus a skip, so a partially malformed experience section now yields the
+roles it can parse instead of aborting the whole conversion (matches the
+PROJECTS loop's lenient philosophy). The missing-file and empty-file guards stay
+hard `PipelineError` raises, so `PipelineError` is still imported and used.
+Tests: `test_orphan_bullet_warns_not_raises` (an orphan bullet is warned and
+skipped, the following valid role still parses with its own bullet) and
+`test_unparseable_role_header_warns` (a "Title | No Date" line is warned and
+skipped, the valid role survives). Verification: `tests/test_parse_docx.py` 17
+passed, full suite **807 passed** (was 805 + 2 new), and `jobhunt convert-resume`
+printed 0 warnings with output unchanged (4 roles / 4 projects / 28 core / 6
+project / 8 familiar). Lint/types: ruff clean on touched files, 0 new mypy (the
+pre-existing untyped-`p` note unchanged at :231). Docs: this file. PLAN.md /
+README.md not touched (failure-mode change is parser internal; the warnings
+surface is already documented from RP1).
+
+---
+
+## Resume-parser format-robustness initiative — closing summary (2026-06-02)
+
+Goal: let `parse_docx` ingest differently-formatted resumes instead of only
+Casey's exact master. All five phases shipped, and Casey's own `Resume.docx`
+parses byte-identically before and after (regression guard held at every phase:
+4 roles / 4 projects / 28 core / 6 project / 8 familiar, 0 warnings).
+
+- **RP1** threaded a warnings channel through `parse_baseline` (now returns
+  `(VerifiedFacts, list[str])`) so every former silent drop is reported by
+  `convert-resume` on stderr.
+- **RP2** replaced the Casey-specific cert/education literals with a generic
+  keyword classifier (degree-first, with the "Associate" cert tier guarded).
+- **RP3** aliased alternate skill-section labels onto the canonical buckets and
+  warns on truly-unknown labels rather than dropping their skills.
+- **RP4** aliased alternate section headings (WORK EXPERIENCE, SKILLS, etc.) so
+  a non-Casey resume no longer yields empty sections.
+- **RP5** made role parsing collect-and-report instead of fail-fast, so one bad
+  line no longer aborts the whole conversion.
+
+Net: an unfamiliar resume now parses as much as it can and reports what it could
+not classify, instead of silently dropping data or crashing. Suite ended at 807
+passed. Parser-only: no tailor / score / audit / render / config / `prompt_hash`
+change. Possible follow-ups (not scheduled): fix the `skills_ai` run-on that
+PLAN.md still flags for manual patching, and add an `--strict` mode that exits
+non-zero when warnings are present.
+
+---
+
 ### SmartRecruiters empty-description fix (2026-06-01) — two phases, approved ("fix all")
 
 **Why:** A `scan --skip-ingest` showed every `smartrecruiters:universityhealthnetwork`

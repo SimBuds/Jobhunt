@@ -34,7 +34,7 @@ def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
     path = tmp_path / "r.docx"
     doc.save(path)
 
-    facts = parse_baseline(path)
+    facts, _ = parse_baseline(path)
     assert facts.name == "Jane Dev"
     assert "jane@example.com" in facts.contact_line
     assert "janedev.com" in facts.contact_line  # second paragraph captured
@@ -44,7 +44,8 @@ def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
 
 @pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
 def test_parse_baseline_round_trip(tmp_path: Path):
-    facts = parse_baseline(BASELINE)
+    facts, warnings = parse_baseline(BASELINE)
+    assert warnings == []  # the curated master parses cleanly (RP1 regression guard)
     assert facts.name
     assert "Toronto" in facts.contact_line
     # The master wraps contact info onto a second paragraph (links on line 2);
@@ -101,6 +102,170 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "FastAPI" in skills_md
     projects_md = (kb / "profile" / "projects.md").read_text()
     assert "## Auto-Agent" in projects_md
+
+
+def test_parse_warns_on_unknown_skill_label(tmp_path: Path):
+    """An unrecognized TECHNICAL SKILLS label is reported as a warning, not
+    silently dropped (RP1 + RP3). 'Hobbies' is neither a canonical bucket nor an
+    RP3 alias, so it stays unknown."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL SKILLS")
+    doc.add_paragraph("Core: Python, TypeScript")
+    doc.add_paragraph("Hobbies: Climbing, Chess")  # unknown label, no bucket / alias
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert "Python" in facts.skills_core
+    assert any("Hobbies" in w for w in warnings)
+    # The dropped items must not have leaked into any bucket.
+    all_skills = (
+        facts.skills_core
+        + facts.skills_cms
+        + facts.skills_data_devops
+        + facts.skills_ai
+        + facts.skills_projects
+        + facts.skills_familiar
+    )
+    assert "Climbing" not in all_skills
+
+
+def test_skill_label_aliases(tmp_path: Path):
+    """RP3: alternate skill-section labels map onto the canonical buckets so a
+    resume that does not use Casey's exact headings still populates them."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL SKILLS")
+    doc.add_paragraph("Frameworks: React, Vue")  # -> Core
+    doc.add_paragraph("Databases: Postgres, Redis")  # -> Data & DevOps
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert "React" in facts.skills_core
+    assert "Postgres" in facts.skills_data_devops
+    assert warnings == []
+
+
+def test_classifies_generic_certs(tmp_path: Path):
+    """RP2: certs are detected by generic keywords (certified / certification /
+    badge), not Casey-specific literals. The 'Associate' cert tier must not be
+    mistaken for an associate degree, and Casey's Contentful + Skill Badge line
+    still classifies as a cert (regression guard)."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("CERTIFICATIONS & EDUCATION")
+    doc.add_paragraph("AWS Certified Solutions Architect - Associate, Amazon (2024)")
+    doc.add_paragraph("PMP Certification, PMI (2023)")
+    doc.add_paragraph("CompTIA Security+ ce Certification (2023)")
+    doc.add_paragraph("Contentful Certified Professional + Personalization Skill Badge (2025)")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert len(facts.certifications) == 4  # all four routed to certifications
+    assert facts.education == []  # the AWS Associate cert did not leak to education
+    assert warnings == []
+
+
+def test_classifies_degrees(tmp_path: Path):
+    """RP2: degree lines route to education under the generic classifier."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("CERTIFICATIONS & EDUCATION")
+    doc.add_paragraph("Bachelor of Science in Computer Science, University of Toronto (2020)")
+    doc.add_paragraph("Computer Programming (Advanced Diploma), George Brown College (2024)")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert len(facts.education) == 2
+    assert facts.certifications == []
+    assert warnings == []
+
+
+def test_section_header_aliases(tmp_path: Path):
+    """RP4: alternate section headings (PROFILE / SKILLS / WORK EXPERIENCE /
+    EDUCATION) resolve to the canonical sections so a resume that does not use
+    Casey's exact headers still parses every section."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("PROFILE")
+    doc.add_paragraph("A frontend developer.")
+    doc.add_paragraph("SKILLS")
+    doc.add_paragraph("Core: Python, TypeScript")
+    doc.add_paragraph("WORK EXPERIENCE")
+    doc.add_paragraph("Frontend Developer | Acme Inc  2022 – 2024")
+    doc.add_paragraph("Built things.")
+    doc.add_paragraph("EDUCATION")
+    doc.add_paragraph("Bachelor of Science, University of Toronto (2020)")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert facts.summary == "A frontend developer."  # PROFILE -> SUMMARY
+    assert "Python" in facts.skills_core  # SKILLS -> TECHNICAL SKILLS
+    assert len(facts.work_history) == 1  # WORK EXPERIENCE -> PROFESSIONAL EXPERIENCE
+    assert facts.work_history[0].employer == "Acme Inc"
+    assert any("Bachelor" in e for e in facts.education)  # EDUCATION -> CERTS & EDU
+    assert warnings == []
+
+
+def test_orphan_bullet_warns_not_raises(tmp_path: Path):
+    """RP5: a bullet before any role header is warned and skipped, not raised
+    (previously a fatal PipelineError that aborted the whole conversion)."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("PROFESSIONAL EXPERIENCE")
+    doc.add_paragraph("Did some things before any role header.")  # orphan bullet
+    doc.add_paragraph("Frontend Developer | Acme Inc  2022 – 2024")
+    doc.add_paragraph("Built the thing.")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)  # must not raise
+    assert len(facts.work_history) == 1
+    assert facts.work_history[0].bullets == ["Built the thing."]
+    assert any("bullet before any role header" in w for w in warnings)
+
+
+def test_unparseable_role_header_warns(tmp_path: Path):
+    """RP5: a line with a pipe that does not match the role-header pattern (no
+    parseable date) is warned and skipped, not raised. The valid role survives."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("PROFESSIONAL EXPERIENCE")
+    doc.add_paragraph("Frontend Developer | Acme Inc  2022 – 2024")
+    doc.add_paragraph("Built the thing.")
+    doc.add_paragraph("Some Title | No Date Here")  # pipe but no parseable date
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)  # must not raise
+    assert len(facts.work_history) == 1  # only the valid role
+    assert any("unparseable role header" in w for w in warnings)
 
 
 def test_role_line_accepts_parenthesized_dates():
