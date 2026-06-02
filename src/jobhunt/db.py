@@ -89,7 +89,14 @@ def migrate(conn: sqlite3.Connection, migrations_dir: Path) -> MigrationResult:
 
 
 def upsert_job(conn: sqlite3.Connection, job: Job) -> bool:
-    """Insert a job, ignoring conflicts on (source, external_id). Returns True if inserted."""
+    """Insert a job, ignoring id / (source, external_id) conflicts. True if newly inserted.
+
+    On conflict the existing row is preserved, with one exception: a missing
+    description is backfilled when this fetch carries one. This makes a
+    re-ingest fill gaps left by an earlier fetch (e.g. an adapter that only
+    later learned to fetch the description, like SmartRecruiters' per-posting
+    detail endpoint) without clobbering data already present.
+    """
     cur = conn.execute(
         """
         INSERT OR IGNORE INTO jobs
@@ -111,7 +118,16 @@ def upsert_job(conn: sqlite3.Connection, job: Job) -> bool:
             job.raw_json,
         ),
     )
-    return cur.rowcount > 0
+    inserted = cur.rowcount > 0
+    if not inserted and job.description and job.description.strip():
+        conn.execute(
+            """
+            UPDATE jobs SET description = ?
+            WHERE id = ? AND (description IS NULL OR TRIM(description) = '')
+            """,
+            (job.description, job.id),
+        )
+    return inserted
 
 
 def unscored_jobs(conn: sqlite3.Connection, limit: int | None = None) -> list[sqlite3.Row]:

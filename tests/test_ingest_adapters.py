@@ -105,9 +105,10 @@ def test_smartrecruiters_format_location_remote() -> None:
 
 
 def test_smartrecruiters_extract_description() -> None:
-    raw = json.loads((FIXTURES / "smartrecruiters.json").read_text())
-    first = raw["content"][0]
-    desc = _extract_description(first)
+    # The description lives on the DETAIL endpoint (jobAd.sections), not the
+    # summary-only list item — so it's extracted from the detail fixture.
+    detail = json.loads((FIXTURES / "smartrecruiters_detail.json").read_text())
+    desc = _extract_description(detail)
     assert desc and "TypeScript" in desc
     assert desc and "Shopify" in desc
 
@@ -131,6 +132,63 @@ def test_smartrecruiters_gta_filter() -> None:
             eligible_titles.append(item["name"])
     assert "Backend Engineer" not in eligible_titles
     assert "Full-Stack Developer" in eligible_titles
+
+
+def test_smartrecruiters_fetch_detail_and_non_eng_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """fetch() detail-fetches GTA eng roles, skipping filtered + non-eng titles."""
+    from jobhunt.ingest import smartrecruiters
+
+    list_data = json.loads((FIXTURES / "smartrecruiters.json").read_text())
+    detail_data = json.loads((FIXTURES / "smartrecruiters_detail.json").read_text())
+    detail_calls: list[str] = []
+
+    async def fake_get_json(client: Any, url: str, limiter: Any, **kwargs: Any) -> Any:
+        if url.endswith("/postings"):
+            return list_data
+        detail_calls.append(url.rsplit("/", 1)[-1])
+        return detail_data
+
+    monkeypatch.setattr(smartrecruiters, "get_json", fake_get_json)
+    jobs = _drain(smartrecruiters.fetch(client=None, limiter=None, slug="smartco"))  # type: ignore[arg-type]
+
+    # The Toronto eng role got its description from the detail endpoint.
+    dev = next(j for j in jobs if j.title == "Full-Stack Developer")
+    assert dev.description and "TypeScript" in dev.description
+    # Detail fetched ONLY for the eng role — not the filtered-out Seattle role
+    # (GTA gate precedes the fetch), not the non-eng Toronto role (title gate).
+    assert detail_calls == ["abc-123"]
+    # The non-eng Toronto role is still yielded, but with no description, so
+    # scan_cmd's non-eng filter remains the single drop authority + counter.
+    psw = next(j for j in jobs if j.title == "Personal Support Worker")
+    assert psw.description is None
+
+
+def test_smartrecruiters_fetch_no_gate_when_drop_non_eng_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With drop_non_eng=False, every GTA-eligible posting is detail-fetched."""
+    from jobhunt.ingest import smartrecruiters
+
+    list_data = json.loads((FIXTURES / "smartrecruiters.json").read_text())
+    detail_data = json.loads((FIXTURES / "smartrecruiters_detail.json").read_text())
+    detail_calls: list[str] = []
+
+    async def fake_get_json(client: Any, url: str, limiter: Any, **kwargs: Any) -> Any:
+        if url.endswith("/postings"):
+            return list_data
+        detail_calls.append(url.rsplit("/", 1)[-1])
+        return detail_data
+
+    monkeypatch.setattr(smartrecruiters, "get_json", fake_get_json)
+    _drain(
+        smartrecruiters.fetch(  # type: ignore[arg-type]
+            client=None, limiter=None, slug="smartco", drop_non_eng=False
+        )
+    )
+    # Both GTA Toronto roles fetched; the Seattle role is still GTA-filtered.
+    assert set(detail_calls) == {"abc-123", "ghi-789"}
 
 
 # ---------------------------------------------------------------------------

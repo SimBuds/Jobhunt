@@ -1,5 +1,5 @@
 {
-  "totalFound": 2,
+  "totalFound": 3,
   "content": [
     {
       "id": "abc-123",
@@ -12,17 +12,7 @@
       },
       "company": {"name": "SmartCo Inc"},
       "releasedDate": "2026-05-04T09:00:00Z",
-      "applyUrl": "https://jobs.smartrecruiters.com/SmartCo/abc-123",
-      "jobAd": {
-        "sections": {
-          "jobDescription": {
-            "text": "We are looking for a Full-Stack Developer. TypeScript, React, and Node.js required."
-          },
-          "qualifications": {
-            "text": "2-4 years experience. Shopify or CMS experience a plus."
-          }
-        }
-      }
+      "applyUrl": "https://jobs.smartrecruiters.com/SmartCo/abc-123"
     },
     {
       "id": "def-456",
@@ -35,14 +25,20 @@
       },
       "company": {"name": "US Company"},
       "releasedDate": "2026-05-04T09:00:00Z",
-      "applyUrl": "https://jobs.smartrecruiters.com/USCo/def-456",
-      "jobAd": {
-        "sections": {
-          "jobDescription": {
-            "text": "Backend engineer in Seattle. Go, Kubernetes."
-          }
-        }
-      }
+      "applyUrl": "https://jobs.smartrecruiters.com/USCo/def-456"
+    },
+    {
+      "id": "ghi-789",
+      "name": "Personal Support Worker",
+      "location": {
+        "city": "Toronto",
+        "region": "Ontario",
+        "country": "Canada",
+        "remote": false
+      },
+      "company": {"name": "SmartCo Inc"},
+      "releasedDate": "2026-05-04T09:00:00Z",
+      "applyUrl": "https://jobs.smartrecruiters.com/SmartCo/ghi-789"
     }
   ]
 }

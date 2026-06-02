@@ -21,11 +21,36 @@ if not BASELINE.is_file() and LEGACY_BASELINE.is_file():
     BASELINE = LEGACY_BASELINE
 
 
+def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
+    """A contact block wrapped across two paragraphs is joined into one line."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com  |")
+    doc.add_paragraph("https://janedev.com  |  https://github.com/jane")
+    doc.add_paragraph("SUMMARY")
+    doc.add_paragraph("A developer.")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts = parse_baseline(path)
+    assert facts.name == "Jane Dev"
+    assert "jane@example.com" in facts.contact_line
+    assert "janedev.com" in facts.contact_line  # second paragraph captured
+    assert "github.com/jane" in facts.contact_line
+    assert facts.summary == "A developer."  # contact block didn't swallow the summary
+
+
 @pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
 def test_parse_baseline_round_trip(tmp_path: Path):
     facts = parse_baseline(BASELINE)
     assert facts.name
     assert "Toronto" in facts.contact_line
+    # The master wraps contact info onto a second paragraph (links on line 2);
+    # the whole block must be captured, not just the first line.
+    assert "github.com/SimBuds" in facts.contact_line
+    assert "caseyhsu.com" in facts.contact_line
     assert len(facts.work_history) == 4
 
     employers = {r.employer for r in facts.work_history}
@@ -49,7 +74,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # PB3: the PROJECTS narrative section parses into structured projects.
     assert len(facts.projects) == 4
     names = [p.name for p in facts.projects]
-    assert "jobhunt" in names
+    assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
     auto = next(p for p in facts.projects if p.name == "Auto-Agent")
     assert auto.url == "github.com/SimBuds/Auto-Agent"
     assert "FastAPI" in auto.stack

@@ -1,4 +1,4 @@
-# jobhunt — Design notes
+# Jobhunt — Design notes
 
 A CLI tool that ingests Toronto-area jobs from public ATS APIs, scores them
 against Casey's parsed baseline resume using local Ollama models, tailors

@@ -26,6 +26,21 @@ NON_ENG_TITLES = [
     "Senior Recruiter",
     "Warehouse Associate",
     "Delivery Driver",
+    # Healthcare-clinical roles (hospital tenants like UHN post these heavily).
+    "Personal Support Worker - Spinal Cord Rehab Program",
+    "Physiotherapist, Inpatient",
+    "Respiratory Therapist",
+    "Discipline Head, Respiratory Therapy",
+    "Radiation Therapist",
+    "Occupational Therapist",
+    "Social Worker",
+    "Registered Dietitian",
+    "Speech Language Pathologist - Toronto Rehab",
+    "Professor, Cardiovascular Perfusion",
+    "Medical Laboratory Technologist, Genetics",
+    "Technologist Assistant II, Computed Tomography (CT)",
+    "Client Care Attendant",
+    "SAI Ward Clerk - Temp Full time",
 ]
 
 # Engineering / dev titles that MUST be kept (guard wins).
@@ -42,6 +57,13 @@ ENG_TITLES = [
     "Senior Software Developer",
     "Associate QA - Contractor",
     "AI Systems Engineer",
+    # Eng guard must win even when a clinical/healthcare token co-occurs.
+    "Healthcare Software Engineer",
+    "Clinical Application Developer",
+    # Real UHN data/eng roles that must survive (no clinical token, or guarded).
+    "Bioinformatics Analyst",
+    "Machine Learning Specialist",
+    "Technical Specialist, Cybersecurity",
 ]
 
 

@@ -1,4 +1,4 @@
-# Job Hunt AI Buddy
+# Jobhunt AI Buddy
 
 A local-first CLI for Casey's Toronto-area job hunt. Pulls jobs from public
 ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable,
