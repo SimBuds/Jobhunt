@@ -376,7 +376,16 @@ async def _ingest_all(
             adapters.append(("ashby", slug, ashby.fetch(client, limiter, slug)))
         for slug in cfg.ingest.smartrecruiters:
             adapters.append(
-                ("smartrecruiters", slug, smartrecruiters.fetch(client, limiter, slug))
+                (
+                    "smartrecruiters",
+                    slug,
+                    smartrecruiters.fetch(
+                        client,
+                        limiter,
+                        slug,
+                        drop_non_eng=cfg.ingest.drop_non_engineering_titles,
+                    ),
+                )
             )
         for spec in cfg.ingest.workday:
             adapters.append(("workday", spec, workday.fetch(client, limiter, spec)))

@@ -177,8 +177,20 @@ _NON_ENG_TITLE_RE = re.compile(
     # food / health-safety (food context — NOT software QA)
     r"|food\s+safety|fsqa|butcher|baker|line\s+cook|dishwasher|barista"
     r"|bartender|food\s+service"
-    # healthcare
+    # healthcare — clinical roles (hospital tenants like UHN post these heavily).
+    # High-precision multi-word forms; the eng guard still wins so a "Clinical
+    # Software Engineer" / "Healthcare Software Developer" survives.
     r"|\bnurse\b|physician|pharmacist|phlebotomist|caregiver|veterinary"
+    r"|personal\s+support\s+worker|\bpsw\b|care\s+attendant|\bporter\b|orderly"
+    r"|ward\s+clerk"
+    r"|respiratory\s+therap(?:ist|y)|radiation\s+therapist"
+    r"|physiotherap(?:ist|y)|physical\s+therap(?:ist|y)"
+    r"|occupational\s+therap(?:ist|y)|speech[-\s]language\s+pathologist"
+    r"|social\s+worker|dietitian|perfusion(?:ist)?|sonographer|paramedic"
+    r"|midwife|audiologist|optometrist|kinesiologist|psychologist"
+    r"|dental\s+(?:hygienist|assistant)"
+    r"|medical\s+lab(?:oratory)?\s+technologist|pulmonary\s+function"
+    r"|computed\s+tomography|radiologic\s+technologist|mri\s+technologist"
     # security (physical) / retail / service
     r"|security\s+(?:guard|officer)|loss\s+prevention|event\s+security"
     r"|cashier|retail\s+associate|store\s+associate|stocker|delivery\s+driver|courier"

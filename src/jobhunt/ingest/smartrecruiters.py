@@ -1,9 +1,13 @@
 """SmartRecruiters public Posting API.
 
-    GET https://api.smartrecruiters.com/v1/companies/{slug}/postings
+    GET https://api.smartrecruiters.com/v1/companies/{slug}/postings        (list)
+    GET https://api.smartrecruiters.com/v1/companies/{slug}/postings/{id}   (detail)
 
-No auth required for public boards. Each posting has location.{city, country,
-remote}, name, ref, applyUrl, jobAd.sections.jobDescription.text.
+No auth required for public boards. The LIST endpoint returns only summary
+metadata per posting (id, name, location, company, applyUrl, releasedDate) and
+has NO `jobAd` field — the full description (`jobAd.sections.*.text`) lives only
+on the per-posting DETAIL endpoint. The adapter therefore fetches detail for
+each GTA-eligible posting that the non-engineering title gate doesn't drop.
 """
 
 from __future__ import annotations
@@ -14,15 +18,37 @@ from datetime import datetime
 
 import httpx
 
+from jobhunt.errors import IngestError
 from jobhunt.http import RateLimiter, get_json
-from jobhunt.ingest._filter import classify_remote_type, is_gta_eligible
+from jobhunt.ingest._filter import (
+    classify_remote_type,
+    is_gta_eligible,
+    is_non_engineering_title,
+)
 from jobhunt.models import Job
 
 API = "https://api.smartrecruiters.com/v1/companies/{slug}/postings"
+DETAIL_API = "https://api.smartrecruiters.com/v1/companies/{slug}/postings/{ext}"
 SOURCE = "smartrecruiters"
 
 
-async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> AsyncIterator[Job]:
+async def fetch(
+    client: httpx.AsyncClient,
+    limiter: RateLimiter,
+    slug: str,
+    *,
+    drop_non_eng: bool = True,
+) -> AsyncIterator[Job]:
+    """Yield GTA-eligible postings for a SmartRecruiters company board.
+
+    The list endpoint carries no description, so for each kept posting the
+    per-posting detail endpoint is fetched (see `_fetch_detail_description`).
+    When `drop_non_eng` is True the detail fetch is skipped for titles the
+    ingest non-engineering filter will drop anyway, so a hospital tenant like
+    UHN doesn't spend a request per clinical role. `scan_cmd` stays the single
+    drop authority, so those rows are still yielded (description=None) and
+    dropped + counted there.
+    """
     offset = 0
     page_size = 100
     while True:
@@ -40,13 +66,16 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
             ext = str(j.get("id") or j.get("uuid") or "")
             if not ext:
                 continue
+            title = j.get("name")
             description = _extract_description(j)
+            if description is None and not (drop_non_eng and is_non_engineering_title(title)):
+                description = await _fetch_detail_description(client, limiter, slug, ext)
             yield Job(
                 id=f"{SOURCE}:{slug}:{ext}",
                 source=SOURCE,
                 external_id=ext,
                 company=(j.get("company") or {}).get("name") or slug,
-                title=j.get("name"),
+                title=title,
                 location=location,
                 remote_type=classify_remote_type(location=location),
                 description=description,
@@ -58,6 +87,25 @@ async def fetch(client: httpx.AsyncClient, limiter: RateLimiter, slug: str) -> A
         offset += page_size
         if offset >= total:
             return
+
+
+async def _fetch_detail_description(
+    client: httpx.AsyncClient, limiter: RateLimiter, slug: str, ext: str
+) -> str | None:
+    """Fetch a posting's detail endpoint and return its description text.
+
+    The list endpoint omits `jobAd`; the description lives only on
+    `/postings/{id}`. Returns None on any `IngestError` (404 / transient) so a
+    single bad posting degrades gracefully instead of aborting the slug's
+    stream — a later scan re-fetches it on the next upsert.
+    """
+    try:
+        detail = await get_json(client, DETAIL_API.format(slug=slug, ext=ext), limiter)
+    except IngestError:
+        return None
+    if not isinstance(detail, dict):
+        return None
+    return _extract_description(detail)
 
 
 def _format_location(loc: object) -> str | None:

@@ -45,6 +45,40 @@ def test_upsert_job_is_idempotent(conn):
     assert len(rows) == 1
 
 
+def _job_desc(suffix: str, description: str | None) -> Job:
+    return Job(
+        id=f"smartrecruiters:uhn:{suffix}",
+        source="smartrecruiters",
+        external_id=suffix,
+        company="UHN",
+        title=f"Dev {suffix}",
+        location="Toronto, ON",
+        description=description,
+        url=f"https://example.com/{suffix}",
+    )
+
+
+def test_upsert_job_backfills_missing_description(conn):
+    # First insert with no description (the SmartRecruiters list-only case).
+    assert upsert_job(conn, _job_desc("bf", None)) is True
+    # A re-ingest carrying a description backfills the empty one (not a new row).
+    assert upsert_job(conn, _job_desc("bf", "Real JD text")) is False
+    (desc,) = conn.execute(
+        "SELECT description FROM jobs WHERE id='smartrecruiters:uhn:bf'"
+    ).fetchone()
+    assert desc == "Real JD text"
+
+
+def test_upsert_job_does_not_clobber_existing_description(conn):
+    assert upsert_job(conn, _job_desc("nc", "Original JD")) is True
+    # A later fetch with a different description must NOT overwrite a present one.
+    assert upsert_job(conn, _job_desc("nc", "Different JD")) is False
+    (desc,) = conn.execute(
+        "SELECT description FROM jobs WHERE id='smartrecruiters:uhn:nc'"
+    ).fetchone()
+    assert desc == "Original JD"
+
+
 def test_unscored_jobs_excludes_scored(conn):
     upsert_job(conn, _job("1"))
     upsert_job(conn, _job("2"))

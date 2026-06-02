@@ -9,6 +9,262 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### SmartRecruiters empty-description fix (2026-06-01) — two phases, approved ("fix all")
+
+**Why:** A `scan --skip-ingest` showed every `smartrecruiters:universityhealthnetwork`
+posting warning "has no description to score". Confirmed in the live DB: 48/48
+SmartRecruiters rows have an empty description while every other source has 0
+empty. Root cause: the SmartRecruiters public **list** endpoint
+(`/v1/companies/{slug}/postings`) returns only summary metadata, with no
+`jobAd` field. The description lives on the per-posting **detail** endpoint
+(`/v1/companies/{slug}/postings/{id}`), but `ingest/smartrecruiters.py`'s
+`_extract_description` reads `jobAd.sections` off the list item, so it returns
+`None` for every posting. The unit test passed only because
+`tests/fixtures/smartrecruiters.json` hand-inlined `jobAd` on each list item, a
+shape the real API never returns.
+
+**User decisions (2026-06-01):**
+- Fix path: fetch the detail endpoint per posting to populate the description
+  (chosen over dropping UHN or pre-filtering before the fetch).
+- Stale rows: re-ingest to backfill (a normal `scan` re-fetches + upserts the 48
+  rows with descriptions); no manual DB surgery.
+- Scope: "fix all" → also ship mitigations (a) pre-fetch non-eng gate AND
+  (c) extend the non-eng filter with healthcare-clinical titles. Mitigation
+  (b) "drop UHN" is EXCLUDED — it contradicts the keep-UHN/fetch-descriptions
+  decision and discards UHN's few real eng roles (Full-Stack Developer, Backend
+  Engineer, Software Developer, Cybersecurity). Surfaced for correction.
+
+**Discovered cost this addresses:** UHN is a Toronto hospital, so nearly every
+posting passes `is_gta_eligible`, and the detail fetch fires in the adapter
+*before* `scan_cmd`'s ingest-time non-eng/senior title filters. Without
+mitigations, a re-ingest would issue a 1-req/sec detail call for hundreds of
+clinical roles that get filtered/declined anyway, and even with descriptions the
+clinical roles (not in today's `_NON_ENG_TITLE_RE`) would flood the score queue.
+
+**Phase ordering rationale:** (c) lands first as a self-contained filter
+extension (helps every source, e.g. Workday hospital tenants, not just
+SmartRecruiters). The core detail-fetch (Phase 2) ships WITH gate (a) already
+referencing the extended filter, so the very first re-ingest after the work is
+already efficient — there is no intermediate state that fetches hundreds of
+clinical details.
+
+---
+
+#### Phase SR1 — Extend the non-eng filter with healthcare-clinical titles
+
+**Goal:** `is_non_engineering_title` recognizes hospital clinical-role titles so
+they are dropped at ingest across all sources.
+
+**Files to touch:**
+- `src/jobhunt/ingest/_filter.py` — extend the healthcare tier of
+  `_NON_ENG_TITLE_RE` with a curated clinical group (personal support worker /
+  PSW, respiratory + radiation therapist, occupational / physio / speech-language
+  pathologist, social worker, dietitian, perfusionist, sonographer, paramedic,
+  midwife, orderly, ward clerk, psychologist, optometrist, dental hygienist,
+  medical lab technologist, ...). High-precision multi-word forms; `_ENG_GUARD_RE`
+  still wins so a "Clinical Software Engineer" survives.
+- `tests/test_non_eng_title_filter.py` — add clinical-title True cases + an
+  eng-guard case (e.g. "Healthcare Software Engineer" → False).
+
+**Functions to add/change:**
+- `_filter._NON_ENG_TITLE_RE` — change — widen the healthcare alternation.
+
+**Reuse audit:** reuses the existing `is_non_engineering_title` /
+`_NON_ENG_TITLE_RE` / `_ENG_GUARD_RE` mechanism whole (G2). Only the regex
+alternation grows; no new function, no new public interface.
+
+**Verification (≤3 bullets):**
+- New cases: the observed UHN clinical titles → `is_non_engineering_title` True;
+  eng titles (incl. "Healthcare Software Engineer") → False.
+- Live-DB check: run the extended regex over all `jobs.title` and confirm 0
+  false positives among score ≥55 rows (mirror the G2 validation).
+- `uv run pytest -q` green.
+
+**Status:** [x] DONE (2026-06-01). Extended the healthcare tier of
+`_NON_ENG_TITLE_RE` with a curated clinical group (personal support worker / PSW,
+care attendant, porter, orderly, ward clerk, respiratory/radiation/occupational/
+physio/physical therapist, speech-language pathologist, social worker, dietitian,
+perfusionist, sonographer, paramedic, midwife, audiologist, optometrist,
+kinesiologist, psychologist, dental hygienist/assistant, medical lab technologist,
+pulmonary function, computed tomography, radiologic/MRI technologist). Added 19
+test cases to `test_non_eng_title_filter.py` (15 clinical True + Healthcare
+Software Engineer / Clinical Application Developer guard-wins + 3 real UHN
+data/eng KEEPs). Live-DB validation: **25/46 distinct UHN titles dropped, 0 false
+positives among score ≥55 rows** (Software Developer, Data Analyst, ML Specialist,
+Cybersecurity, Bioinformatics all correctly kept). Suite 795 green; `_filter.py`
+mypy clean, 0 new ruff (the pre-existing SIM103 in `is_gta_eligible` untouched).
+AGENTS.md rule 9 non-eng bullet updated with the clinical tier.
+
+---
+
+#### Phase SR2 — Detail-fetch the description, gated by the non-eng filter
+
+**Goal:** SmartRecruiters postings carry a real description by fetching the
+per-posting detail endpoint, skipping the fetch for titles the non-eng filter
+will drop.
+
+**Files to touch:**
+- `src/jobhunt/ingest/smartrecruiters.py` — add a `DETAIL_API` constant + a
+  `_fetch_detail_description(client, limiter, slug, ext)` helper; add a
+  `drop_non_eng: bool = True` keyword param to `fetch`; in the loop, when
+  `_extract_description(j)` is `None` (always, live) AND not
+  `(drop_non_eng and is_non_engineering_title(title))`, fetch the detail body and
+  extract from it. Detail fetch wrapped so an `IngestError` degrades to
+  `description=None` for that one posting (idempotent retry next scan), never
+  aborting the slug. Always yield the row so `scan_cmd` stays the single
+  drop authority + counter.
+- `src/jobhunt/commands/scan_cmd.py` — pass
+  `drop_non_eng=cfg.ingest.drop_non_engineering_titles` at the smartrecruiters
+  call site (~line 377-380).
+- `tests/fixtures/smartrecruiters.json` — strip `jobAd` from the list items so
+  the fixture matches the real list shape (removes the bug-masking inline).
+- `tests/fixtures/smartrecruiters_detail.json` — NEW: detail body for the
+  Toronto posting (`jobAd.sections` with the TypeScript/Shopify text).
+- `tests/test_ingest_adapters.py` — repoint `test_smartrecruiters_extract_description`
+  at the detail fixture; add a `fetch`-level test (monkeypatch `get_json` to
+  dispatch list-vs-detail by URL) asserting the Toronto Job gets a populated
+  description, the Seattle posting triggers no detail fetch (GTA gate precedes),
+  and a non-eng-titled Toronto posting triggers no detail fetch when
+  `drop_non_eng=True`.
+
+**Functions to add/change:**
+- `ingest.smartrecruiters.fetch` — change — `drop_non_eng` param, conditional
+  gated detail fetch, graceful per-posting failure.
+- `ingest.smartrecruiters._fetch_detail_description` — add.
+- `commands.scan_cmd._ingest_all` — change — one-line kwarg at the call site.
+- `_extract_description`, `_format_location`, `_parse_dt` — unchanged (reused;
+  `_extract_description` already reads the detail `jobAd.sections` shape).
+
+**Reuse audit (Reuse-First Rule):**
+- Search terms used: `rg "def get_json|def get_text" src/jobhunt/http.py`;
+  `rg "content=true|jobAd|/postings/" src/jobhunt/ingest`;
+  `rg "is_non_engineering_title|drop_non_eng" src/jobhunt`; `rg "_drain" tests/`.
+- Candidates found: `http.get_json` (JSON GET + backoff + shared limiter);
+  `greenhouse.fetch` (single-call `?content=true`); `_extract_description`
+  (parses `jobAd.sections`); `is_non_engineering_title` (G2 filter, already
+  imported in `scan_cmd`); the test-file `_drain` helper.
+- Why reused / not: `get_json` reused verbatim for the detail call (same host →
+  same limiter serialization). Greenhouse's one-call pattern can NOT be reused —
+  no list-time expand param exists. `_extract_description` + `is_non_engineering_title`
+  reused unchanged. Only new code: the detail URL helper + the gate condition.
+
+**Verification (≤3 bullets):**
+- `uv run pytest -q tests/test_ingest_adapters.py` — the new `fetch` test proves
+  a populated description + the non-eng/GTA fetch gates; no network.
+- `uv run pytest -q` — full suite green.
+- Operational (re-ingest backfill): `jobhunt scan` then `SELECT COUNT(*) FROM
+  jobs WHERE source='smartrecruiters' AND (description IS NULL OR
+  TRIM(description)='')` → toward 0; report the count + wall-time.
+
+**Status:** [x] DONE (2026-06-01). Shipped: corrected the `smartrecruiters.py`
+docstring (list endpoint is summary-only, no `jobAd`); added `DETAIL_API` + a
+`_fetch_detail_description` helper (`get_json` the `/postings/{id}` endpoint,
+`_extract_description` it, swallow `IngestError` → None so one bad posting
+degrades gracefully); `fetch` gained a `drop_non_eng: bool = True` keyword and a
+gated conditional detail fetch (skip when `is_non_engineering_title(title)` and
+the flag is on — rows are still yielded so `scan_cmd` stays the single drop
+authority + counter); `scan_cmd` passes
+`drop_non_eng=cfg.ingest.drop_non_engineering_titles` at the call site. Fixtures:
+`smartrecruiters.json` stripped of `jobAd` (now matches the real list shape) +
+a non-eng Toronto posting added; new `smartrecruiters_detail.json` detail body.
+Tested: repointed `test_smartrecruiters_extract_description` at the detail
+fixture; added `test_smartrecruiters_fetch_detail_and_non_eng_gate` (detail
+fetched only for the eng role — not the GTA-filtered Seattle role, not the
+non-eng Toronto role; non-eng row still yielded with description=None) and
+`test_smartrecruiters_fetch_no_gate_when_drop_non_eng_false` (both Toronto roles
+fetched with the gate off). Suite 797 green; both src files ruff + mypy clean
+(the pre-existing `scan_cmd.py:585` Progress.update + the pre-existing test-file
+E501/datetime lint were untouched). AGENTS.md ingestion rule 1 + the structure
+comment updated with the detail-fetch behavior.
+
+**Operational follow-up — re-ingest revealed a deeper bug (see Phase SR3).** The
+user ran `jobhunt scan` to backfill, but all 48 UHN rows stayed empty. Root
+cause: `db.upsert_job` was `INSERT OR IGNORE` (insert-only despite its name), so
+the freshly-fetched descriptions were silently discarded for existing rows.
+SR2's adapter code is correct (the detail endpoint was live-confirmed returning
+`jobAd.sections`); the gap was the DB layer. Fixed in SR3.
+
+---
+
+#### Phase SR3 — Make `upsert_job` backfill descriptions + clear stuck UHN orphans
+
+**Goal:** A re-ingest fills a missing description on an existing row, and the
+pre-existing empty UHN rows are resolved.
+
+**Why:** `db.upsert_job` used `INSERT OR IGNORE`, so re-ingest never updated
+existing rows — "re-ingest to backfill" (the SR2 plan) could not work. Two
+follow-on problems: (1) 20 eng/data UHN survivors had fetched-but-discarded
+descriptions; (2) 28 UHN clinical roles were dropped at ingest by SR1's filter,
+so they could never be refreshed AND never removed → permanent "no description
+to score" warnings. User chose (2026-06-01) "fix upsert + delete clinical".
+
+**Files touched:**
+- `src/jobhunt/db.py` — `upsert_job`: after the `INSERT OR IGNORE`, when the row
+  already existed AND this fetch carries a non-empty description, run a guarded
+  `UPDATE jobs SET description=? WHERE id=? AND (description IS NULL OR
+  TRIM(description)='')`. Backfills gaps only, never clobbers present data;
+  return value still "True iff newly inserted" (preserves the "N new" count).
+- `tests/test_db_writes.py` — `test_upsert_job_backfills_missing_description`
+  (fails without the fix) + `test_upsert_job_does_not_clobber_existing_description`.
+- `tests/test_parse_docx.py` — aligned the round-trip assertion to the "Jobhunt"
+  project name (was the stale lowercase "jobhunt"; the docx project name was
+  capitalized per the Jobhunt branding decision). Not caused by the db change;
+  surfaced by the full-suite run.
+
+**Operational (live DB, backed up to `data/jobhunt.db.bak`):**
+- Deleted the 28 clinical UHN orphans (empty-description + `is_non_engineering_title`).
+- Backfilled the 20 eng/data survivors' descriptions via the real detail-fetch
+  path (`_fetch_detail_description` + the guarded UPDATE), confirming the
+  end-to-end mechanism on live data.
+
+**Reuse audit:** reuses the existing `upsert_job` SQL path (one guarded UPDATE
+added); the operational backfill reuses `_fetch_detail_description` (SR2) +
+`is_non_engineering_title` (SR1). No new public interface.
+
+**Verification:**
+- `uv run pytest -q` — full suite **799 passed**; the two new upsert tests fail
+  pre-fix, pass post-fix. `db.py` ruff + mypy clean.
+- Live DB: UHN rows went 48 → 20 (28 clinical deleted); **0 empty-description
+  UHN rows remain** (20/20 survivors backfilled). The "no description to score"
+  warnings are resolved.
+
+**Status:** [x] DONE (2026-06-01).
+
+---
+
+### convert-resume: multi-paragraph contact block (2026-06-01) — DONE
+
+**Why:** Casey manually reworked `Resume.docx` and wrapped the contact info onto
+two paragraphs (links pushed to line 2). `parse_baseline` read only
+`non_empty[1]` (the first contact paragraph), so `convert-resume` dropped
+`https://caseyhsu.com` + `https://github.com/SimBuds` and kept a dangling
+trailing `|`. Everything else parsed correctly (the Contentful cert is in
+`certifications`, a separate field, not a drop).
+
+**Fix:** `parse_baseline` now treats every paragraph between the name and the
+first section header as the contact block and joins them (`"  "` separator),
+so a 1-line or N-line contact both parse. The section loop already skipped
+pre-`SUMMARY` paragraphs via its `current is None` guard, so no other change
+was needed.
+
+**Files touched:**
+- `src/jobhunt/resume/parse_docx.py` — `parse_baseline` contact extraction
+  (gather `non_empty[1:first_section]`, join).
+- `tests/test_parse_docx.py` — new `test_contact_block_spans_multiple_paragraphs`
+  (synthetic 2-paragraph docx, fails pre-fix); strengthened the round-trip
+  contact assertion to require `github.com/SimBuds` + `caseyhsu.com`.
+
+**Verification:**
+- `uv run pytest -q` — full suite **800 passed**. `parse_docx.py` ruff clean
+  (the line-129 untyped-param mypy note is pre-existing debt, untouched).
+- `jobhunt convert-resume` regenerated verified.json + 5 sidecars; the
+  `contact_line` now carries both URLs with no trailing `|`; 4 roles, 4
+  projects ("Jobhunt"), Contentful cert, 28/6/8 skills all present.
+
+**Status:** [x] DONE (2026-06-01).
+
+---
+
 ### Projects-into-profile initiative (2026-06-01) — Approach B, awaiting approval
 
 **Why:** Casey has four public, shipped AI / agentic projects (jobhunt,

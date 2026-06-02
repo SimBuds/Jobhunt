@@ -167,7 +167,16 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     ]
 
     name = non_empty[0].text.strip()
-    contact_line = _paragraph_text_with_links(non_empty[1])
+    # Contact block: every paragraph after the name up to the first section
+    # header. The master may wrap a long contact line onto a second paragraph
+    # (links pushed to line 2), so join them rather than reading only line 1.
+    _first_section = next(
+        (i for i in range(1, len(paras)) if paras[i][1].upper() in SECTION_HEADERS),
+        len(paras),
+    )
+    contact_line = "  ".join(
+        _paragraph_text_with_links(p) for p in non_empty[1:_first_section]
+    ).strip()
 
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
     current: str | None = None
