@@ -330,6 +330,11 @@ jobhunt convert-resume                 # parse ./Resume.docx
 jobhunt convert-resume --docx path/to/Resume.docx
 ```
 
+If a line cannot be classified (a skills line not in `Label: items` form, an
+unrecognized skill-section label, or a project bullet before any project
+header), `convert-resume` prints a `parse warnings` block to stderr and
+continues. The warned line is reported, not silently dropped.
+
 ### `setup`
 
 Guided first-run wizard. See [First run](#first-run) for the full step list. No

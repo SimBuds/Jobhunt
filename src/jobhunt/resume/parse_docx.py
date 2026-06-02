@@ -25,6 +25,48 @@ SECTION_HEADERS = {
     "PROJECTS",
 }
 
+# Alternate section headings (lowercased, whole-line) mapped onto the canonical
+# headers, so a resume that does not use Casey's exact headings still sections
+# correctly. The canonical names need no self-entry: `_canonical_section` checks
+# an exact (case-insensitive) match first. Whole-line match keeps a body line
+# like "Experience with React" from being mistaken for an "EXPERIENCE" header.
+_SECTION_ALIASES: dict[str, str] = {
+    "profile": "SUMMARY",
+    "professional summary": "SUMMARY",
+    "objective": "SUMMARY",
+    "about": "SUMMARY",
+    "about me": "SUMMARY",
+    "skills": "TECHNICAL SKILLS",
+    "tech stack": "TECHNICAL SKILLS",
+    "technologies": "TECHNICAL SKILLS",
+    "technical proficiencies": "TECHNICAL SKILLS",
+    "experience": "PROFESSIONAL EXPERIENCE",
+    "work experience": "PROFESSIONAL EXPERIENCE",
+    "employment": "PROFESSIONAL EXPERIENCE",
+    "employment history": "PROFESSIONAL EXPERIENCE",
+    "work history": "PROFESSIONAL EXPERIENCE",
+    "education": "CERTIFICATIONS & EDUCATION",
+    "education & certifications": "CERTIFICATIONS & EDUCATION",
+    "certifications": "CERTIFICATIONS & EDUCATION",
+    "certs": "CERTIFICATIONS & EDUCATION",
+    "licenses": "CERTIFICATIONS & EDUCATION",
+    "licenses & certifications": "CERTIFICATIONS & EDUCATION",
+    "personal projects": "PROJECTS",
+    "selected projects": "PROJECTS",
+    "side projects": "PROJECTS",
+}
+
+
+def _canonical_section(text: str) -> str | None:
+    """Return the canonical section header for *text* (an exact case-insensitive
+    match against `SECTION_HEADERS`, else a known alias), or None when *text* is
+    not a section header. Used by both the contact-block boundary detection and
+    the section-collection loop so alternate headings resolve consistently."""
+    upper = text.upper()
+    if upper in SECTION_HEADERS:
+        return upper
+    return _SECTION_ALIASES.get(text.strip().lower())
+
 
 @dataclass
 class Role:
@@ -66,6 +108,37 @@ class VerifiedFacts:
 
 
 _SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
+
+# Alternate skill-section labels (lowercased) mapped onto the canonical buckets,
+# so a resume that does not use Casey's exact headings still populates the right
+# bucket. The exact bucket-name match runs first, so the canonical names need no
+# self-entry here. Mirrors the `_REGION_EXPANSIONS` alias-map precedent in
+# `convert_resume_cmd`. An unrecognized label is warned, never silently dropped.
+_SKILL_LABEL_ALIASES: dict[str, str] = {
+    "languages": "Core",
+    "programming languages": "Core",
+    "frameworks": "Core",
+    "frameworks & libraries": "Core",
+    "libraries": "Core",
+    "frontend": "Core",
+    "front-end": "Core",
+    "databases": "Data & DevOps",
+    "data": "Data & DevOps",
+    "devops": "Data & DevOps",
+    "infrastructure": "Data & DevOps",
+    "cloud": "Data & DevOps",
+    "cms": "CMS & E-Commerce",
+    "e-commerce": "CMS & E-Commerce",
+    "ecommerce": "CMS & E-Commerce",
+    "ai": "AI & Tooling",
+    "ml": "AI & Tooling",
+    "ai & ml": "AI & Tooling",
+    "tooling": "AI & Tooling",
+    "tools": "AI & Tooling",
+    "projects": "Project Stack",
+    "exposure": "Familiar",
+}
+
 # Supports these formats:
 #   "Title | Employer\tDates"      (tab-separated — original)
 #   "Title | Employer  Dates"      (trailing date after employer, space-separated)
@@ -99,6 +172,35 @@ def _is_project_header(text: str) -> bool:
     _, right = text.split("|", 1)
     right = right.strip()
     return bool(right) and " " not in right
+
+
+# Generic credential classifier for the CERTIFICATIONS & EDUCATION section.
+# Degree vocabulary is checked first so a genuine degree (which never carries
+# cert words) wins; a line with cert words but no degree words is a cert. The
+# "Associate" cert tier is deliberately NOT matched here ("associate degree" is
+# required) so an "AWS ... - Associate" cert is not mis-routed to education.
+_DEGREE_RE = re.compile(
+    r"\b(?:bachelor|master|doctorate|ph\.?\s?d|m\.?\s?sc|b\.?\s?sc|b\.?\s?eng|"
+    r"m\.?\s?eng|b\.?\s?a|associate(?:['’]s)?\s+degree|diploma|university|"
+    r"college|honou?rs?|dean(?:['’]s)?\s+list|g\.?p\.?a\.?|cum\s+laude)\b",
+    re.IGNORECASE,
+)
+_CERT_RE = re.compile(
+    r"\b(?:certified|certificate|certification|licen[cs]e|credential|badge)\b",
+    re.IGNORECASE,
+)
+
+
+def _classify_credential(text: str) -> str | None:
+    """Classify a CERTIFICATIONS & EDUCATION line as ``"education"`` or
+    ``"cert"`` by generic credential keywords. Returns ``None`` when neither
+    vocabulary matches, so the caller defaults to education and warns. Degree
+    vocabulary wins when both appear."""
+    if _DEGREE_RE.search(text):
+        return "education"
+    if _CERT_RE.search(text):
+        return "cert"
+    return None
 
 
 def _split_skills(value: str) -> list[str]:
@@ -153,10 +255,11 @@ def _paragraph_text_with_links(p) -> str:
     return "".join(parts).strip()
 
 
-def parse_baseline(docx_path: Path) -> VerifiedFacts:
+def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     if not docx_path.is_file():
         raise PipelineError(f"baseline resume not found: {docx_path}")
 
+    warnings: list[str] = []
     doc = Document(str(docx_path))
     non_empty = [p for p in doc.paragraphs if p.text.strip()]
     if len(non_empty) < 2:
@@ -171,9 +274,15 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     # header. The master may wrap a long contact line onto a second paragraph
     # (links pushed to line 2), so join them rather than reading only line 1.
     _first_section = next(
-        (i for i in range(1, len(paras)) if paras[i][1].upper() in SECTION_HEADERS),
+        (i for i in range(1, len(paras)) if _canonical_section(paras[i][1]) is not None),
         len(paras),
     )
+    if _first_section == len(paras):
+        warnings.append(
+            "no recognized section header found (expected one of "
+            f"{sorted(SECTION_HEADERS)} or a known alias); nothing below the "
+            "contact block was parsed"
+        )
     contact_line = "  ".join(
         _paragraph_text_with_links(p) for p in non_empty[1:_first_section]
     ).strip()
@@ -181,8 +290,9 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
     current: str | None = None
     for style, text in paras[2:]:
-        if text.upper() in SECTION_HEADERS:
-            current = text.upper()
+        canon = _canonical_section(text)
+        if canon is not None:
+            current = canon
             continue
         if current is None:
             continue
@@ -201,12 +311,23 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     for _, text in sections["TECHNICAL SKILLS"]:
         m = _SKILL_LINE_RE.match(text)
         if not m:
+            warnings.append(
+                f"TECHNICAL SKILLS: line is not in 'Label: items' form, skipped: {text!r}"
+            )
             continue
         label, items = m.group(1).strip(), m.group(2).strip()
-        for bucket in skill_buckets:
-            if label.lower() == bucket.lower():
-                skill_buckets[bucket].extend(_split_skills(items))
-                break
+        low = label.lower()
+        # Exact bucket-name match wins; fall back to the alias map for resumes
+        # that use alternate skill-section labels.
+        bucket = next((b for b in skill_buckets if b.lower() == low), None)
+        if bucket is None:
+            bucket = _SKILL_LABEL_ALIASES.get(low)
+        if bucket is not None:
+            skill_buckets[bucket].extend(_split_skills(items))
+        else:
+            warnings.append(
+                f"TECHNICAL SKILLS: unrecognized skill label {label!r}, items dropped: {items!r}"
+            )
 
     work_history: list[Role] = []
     current_role: Role | None = None
@@ -216,11 +337,17 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
             # Treat as a bullet: either explicitly styled as one, or doesn't
             # match a role header (some resumes use 'normal' style throughout).
             if current_role is None:
-                raise PipelineError(f"orphan bullet before any role header: {text!r}")
+                warnings.append(
+                    f"PROFESSIONAL EXPERIENCE: bullet before any role header, skipped: {text!r}"
+                )
+                continue
             current_role.bullets.append(text)
             continue
         if not m:
-            raise PipelineError(f"unparseable role header: {text!r}")
+            warnings.append(
+                f"PROFESSIONAL EXPERIENCE: unparseable role header, skipped: {text!r}"
+            )
+            continue
         if current_role is not None:
             work_history.append(current_role)
         current_role = Role(
@@ -235,14 +362,24 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
     education: list[str] = []
     coursework: list[str] = []
     for _, text in sections["CERTIFICATIONS & EDUCATION"]:
-        if text.lower().startswith("contentful certified") or "skill badge" in text.lower():
+        # The coursework line is education and also seeds the baseline coursework
+        # list; handle it before the generic classifier (it carries no degree or
+        # cert keyword of its own).
+        if "Coursework:" in text:
+            _, after = text.split("Coursework:", 1)
+            coursework = [c.strip().rstrip(".") for c in after.split(",") if c.strip()]
+            education.append(text)
+            continue
+        kind = _classify_credential(text)
+        if kind == "cert":
             certifications.append(text)
-        elif text.startswith("Dean") or "Coursework" in text:
-            if "Coursework:" in text:
-                _, after = text.split("Coursework:", 1)
-                coursework = [c.strip().rstrip(".") for c in after.split(",") if c.strip()]
+        elif kind == "education":
             education.append(text)
         else:
+            warnings.append(
+                "CERTIFICATIONS & EDUCATION: could not classify as cert or "
+                f"education, defaulted to education: {text!r}"
+            )
             education.append(text)
 
     projects: list[Project] = []
@@ -262,8 +399,10 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         # break `convert-resume`.
         if current_project is not None:
             current_project.bullets.append(text)
+        else:
+            warnings.append(f"PROJECTS: bullet before any project header, skipped: {text!r}")
 
-    return VerifiedFacts(
+    facts = VerifiedFacts(
         name=name,
         contact_line=contact_line,
         summary=summary,
@@ -279,6 +418,7 @@ def parse_baseline(docx_path: Path) -> VerifiedFacts:
         coursework_baseline=coursework,
         projects=projects,
     )
+    return facts, warnings
 
 
 def write_verified_json(facts: VerifiedFacts, out_path: Path) -> None:

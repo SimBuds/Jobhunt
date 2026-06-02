@@ -110,7 +110,7 @@ def run(
     ),
 ) -> None:
     cfg = load_config()
-    facts = parse_baseline(docx)
+    facts, warnings = parse_baseline(docx)
 
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
     write_verified_json(facts, verified)
@@ -134,6 +134,11 @@ def run(
         f"{len(facts.skills_projects)} project skills; "
         f"{len(facts.skills_familiar)} familiar."
     )
+
+    if warnings:
+        typer.echo(f"\nparse warnings ({len(warnings)}):", err=True)
+        for w in warnings:
+            typer.echo(f"  - {w}", err=True)
 
     if filled:
         typer.echo(f"\napplicant: filled {len(filled)} empty field(s) in {config_path()}: {', '.join(filled)}")
