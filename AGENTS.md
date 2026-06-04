@@ -191,20 +191,20 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 ## Hardware context
 
-- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama and the active model lands at ~9.1 GB resident with comfortable headroom.
+- Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama. On Ollama 0.30.3 (new engine) bare `qwen3.5:9b` Q4_K_M lands at ~5.6 GB resident at `num_ctx=32768`, 100% GPU (measured 2026-06-04, was ~9.1 GB on the old engine). Disk size is no longer a footprint proxy: always confirm residency with `ollama ps` (look for `100% GPU`, not a CPU/GPU split). The `qwen3.5:9b-q8_0` build was evaluated and rejected: its ~10 GB weights spill to CPU at both 16k and 32k on this card, and the bench showed no quality gain over Q4_K_M.
 - Ollama at `http://localhost:11434`
-- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=16384`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is *not* set on this box — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx=16384` in the gateway is what makes bare `qwen3.5:9b` work (verified 2026-05-28: bare qwen + `num_ctx=16384` returns valid JSON). All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=16384` (keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work; the systemd default `OLLAMA_KEEP_ALIVE=10m` handles idle unload between scans) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=32768`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is deliberately *not* set on this box (Casey runs these models across projects that each pick their own context window, so context is owned only at the app level) — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx` in the gateway is what makes bare `qwen3.5:9b` work. It was raised from 16384 to 32768 on 2026-06-04 after the new Ollama engine kept Q4_K_M 100% GPU-resident at 32k (~5.6 GB), so the extra context is free headroom. All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=32768` (the score/tailor prompts still run ~6k tokens, so `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` need no change: 32k is headroom, not license to feed longer inputs) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work, matching the systemd `OLLAMA_KEEP_ALIVE=-1`) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q5_0"      # q5_0 KV cache cuts VRAM ~30% vs default; preferred over q8_0 to leave headroom alongside Q4_K_M weights on a 10 GB card
+  Environment="OLLAMA_KV_CACHE_TYPE=q8_0"      # q8_0 KV cache: higher-precision than q5_0, affordable now that Q4_K_M weights are ~5.6 GB resident (new-engine footprint), better long-context coherence on the ~6k-token prompts
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
-  Environment="OLLAMA_CONTEXT_LENGTH=16384"    # 16k context server-side fallback; the gateway ALSO pins num_ctx=16384 per call (app-owned, load-bearing — see LLM rules 4/5a). Keep the two aligned.
-  Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload after 10m; per-call keep_alive=-1 from gateway pins model during active scans
-  Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one model in VRAM at a time
+  Environment="OLLAMA_KEEP_ALIVE=-1"           # load forever; per-call keep_alive=-1 from gateway matches this
+  Environment="OLLAMA_MAX_LOADED_MODELS=2"     # up to two models resident — jobhunt uses one, but the box is shared across projects
+  Environment="OLLAMA_VULKAN=0"                # CUDA backend only
   ```
-  Changing any of these requires updating the matching gateway-level value (or vice versa) so JD truncation thresholds and the cold-start budget stay aligned.
-- One model hot in VRAM at a time. Single-model setup eliminates reload churn between task types; reload churn was a major source of scan freezes prior to the May 2026 consolidation.
+  Note: `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set. Context is owned only at the app level (the gateway's `num_ctx`) so each project sharing this box picks its own window. A context change is a one-knob gateway edit, not a paired systemd edit.
+- The box can hold two models (`OLLAMA_MAX_LOADED_MODELS=2`) for cross-project use, but jobhunt runs one hot model at a time. The single-model-per-scan design eliminates reload churn between task types, which was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
 
@@ -538,26 +538,32 @@ top-level commands that touch scoring/listing/applying must call it too.
    through as a per-call kwarg — don't flip the default.
 3. **Keep-alive + warm-up.** `keep_alive=-1` in the payload pins the model in
    VRAM for the duration of an active run. The systemd-level
-   `OLLAMA_KEEP_ALIVE=10m` is the idle-unload fallback between scans, but the
-   per-call value is what Ollama uses while a request is in flight, so the
-   model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
+   `OLLAMA_KEEP_ALIVE=-1` matches it, so the model stays resident between scans
+   too, and the per-call value is what Ollama uses while a request is in flight,
+   so the model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
    before the scoring loop so the first real call doesn't pay cold-load on
    top of the 240 s gateway timeout.
-4. **Context length is app-owned** (2026-05-28). The gateway pins
-   `num_ctx=16384` in `_DEFAULT_OPTIONS` and sends it on every call. This is
-   deliberate: `OLLAMA_CONTEXT_LENGTH` is not reliably set on this box, Ollama's
-   default is 4096, and the score/tailor prompts run ~6k+ tokens — so relying on
-   the server env silently truncated prompts to 4096 and the model emitted prose
-   instead of schema JSON. The score/tailor pipelines truncate description to
+4. **Context length is app-owned** (2026-05-28, raised to 32k 2026-06-04). The
+   gateway pins `num_ctx=32768` in `_DEFAULT_OPTIONS` and sends it on every call.
+   This is deliberate: `OLLAMA_CONTEXT_LENGTH` is intentionally not set on this
+   box (context is owned only at the app level so projects sharing the box pick
+   their own window), Ollama's default is 4096, and the score/tailor prompts run
+   ~6k+ tokens — so relying on the server env silently truncated prompts to 4096
+   and the model emitted prose instead of schema JSON. The 16384 to 32768 bump
+   was free: the new Ollama engine keeps Q4_K_M 100% GPU-resident at 32k
+   (~5.6 GB). The score/tailor pipelines truncate description to
    `MAX_DESC_CHARS=16000` and policy to `MAX_POLICY_CHARS=6000` — see
-   `pipeline.score`. If you change the pinned `num_ctx`, bump these in step so
-   the prompts use the room rather than overflowing it.
+   `pipeline.score`. Those caps were NOT raised with the context bump: the
+   prompts still run ~6k tokens, so 32k is headroom, not a reason to feed longer
+   inputs. If you ever raise them to exploit the headroom (see the scan/tailor
+   context-budget investigation), keep their token cost well under
+   `num_ctx - num_predict`.
 5. **Default temperatures** are set in prompt frontmatter: scoring 0.0, tailoring 0.3, cover letters 0.7 (the cover prompt is tuned around the wider creative latitude — don't drop it back to 0.5 without re-tuning the anti-pattern rules).
 5a. **Options are app-owned** (2026-05-28). The gateway pins
-   `gateway.client._DEFAULT_OPTIONS` (`num_ctx=16384, num_predict=4096,
+   `gateway.client._DEFAULT_OPTIONS` (`num_ctx=32768, num_predict=4096,
    top_p=0.95, top_k=20, min_p=0, presence_penalty=0`) on every call so
    structured-task behavior is defined in-repo, not by the model's Modelfile or
-   server env. `num_ctx=16384` is the load-bearing one (see item 4 — without it
+   server env. `num_ctx=32768` is the load-bearing one (see item 4 — without it
    prompts truncate to 4096 and the model emits prose). `presence_penalty=0`
    drops qwen3.5:9b's `1.5` chat/thinking anti-repeat default, which fights the
    repeated tokens structured JSON needs (field names, the verbatim JD keywords
@@ -566,9 +572,11 @@ top-level commands that touch scoring/listing/applying must call it too.
    the generation ceiling **and** the safety net for that dropped
    `presence_penalty`: on some thin JDs qwen ignores `think=false` and reasons
    **in-band**, opening a `reasons[]` JSON string and pouring a monologue into it
-   until it exhausts `num_ctx` (~16k tokens ≈ 210s) — that blows past the 240s
-   gateway timeout and hangs the whole `scan` (measured: 8000 tokens,
-   `done_reason=length`, 28 KB of unterminated JSON). 4096 sits above the largest
+   that, uncapped, runs until it exhausts `num_ctx` (measured 2026-05-31 at the
+   old 16k: ~16k tokens ≈ 210s, blowing past the 240s gateway timeout and hanging
+   the whole `scan` — 8000 tokens, `done_reason=length`, 28 KB of unterminated
+   JSON). `num_predict=4096` is what bounds this regardless of `num_ctx`, so the
+   32k bump does not reopen the hang. 4096 sits above the largest
    legitimate output (tailor at 700 words ≈ ~2.2k tokens) so it never truncates
    real work, while bounding each generation to ~50s; a pathological JD is
    abandoned in ~100s end-to-end (the cap × `complete_json`'s one invalid-JSON

@@ -382,6 +382,12 @@ def _research_urls(job_url: str) -> list[str]:
 # legitimate text fragments ("3-year roadmap").
 import re as _re
 
+# Per-source cap on a single stripped research page. Two pages (JD URL +
+# company root) at this cap fill pipeline.interview_prep._RESEARCH_MAX_CHARS
+# (18000) without the blob truncation dropping the second source (P2,
+# 2026-06-04, raised from 6000).
+_RESEARCH_PER_SOURCE_CHARS = 9000
+
 _NUMERIC_SCRUB_RE = _re.compile(
     r"(?<![A-Za-z_])"            # not after a word char (preserves q5_0, ES6, etc.)
     r"(?:"
@@ -423,7 +429,7 @@ def _strip_html(html: str) -> str:
     raw = "\n".join(part.strip() for part in p.parts if part.strip())
     # Scrub decimals / currency / thousands-separated counts before the cap.
     raw = _NUMERIC_SCRUB_RE.sub("[N]", raw)
-    return raw[:6000]
+    return raw[:_RESEARCH_PER_SOURCE_CHARS]
 
 
 def _save(cfg: Config, job_id: str, body: str) -> Path:

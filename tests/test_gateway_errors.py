@@ -119,7 +119,7 @@ def _capture_handler(captured: dict):
 
 @pytest.mark.asyncio
 async def test_payload_pins_default_options(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The app owns its options — every call ships num_ctx=16384 (prompts exceed
+    """The app owns its options — every call ships num_ctx=32768 (prompts exceed
     Ollama's 4096 default and would otherwise truncate to prose) plus
     presence_penalty=0 and the Qwen nucleus set, so structured output doesn't
     depend on the model's Modelfile or on server env."""
@@ -133,7 +133,7 @@ async def test_payload_pins_default_options(monkeypatch: pytest.MonkeyPatch) -> 
         schema={"type": "object"},
     )
     opts = captured.get("options") or {}
-    assert opts.get("num_ctx") == 16384
+    assert opts.get("num_ctx") == 32768
     # num_predict bounds in-band reasoning runaways (qwen reasons into a JSON
     # string until num_ctx is exhausted, hanging the scan past the 240s timeout).
     # 4096 > the largest legit output (tailor ~2.2k tokens) so it never truncates.
