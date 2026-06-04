@@ -9,6 +9,77 @@ conversational context alone; it lives here.
 
 ## Current state
 
+### Context-window bump to 32k (2026-06-04) — DONE
+
+Raised the gateway-pinned `num_ctx` from 16384 to 32768 after measuring that the
+new Ollama engine (0.30.3) keeps bare `qwen3.5:9b` Q4_K_M 100% GPU-resident at
+32k (~5.6 GB on the 10 GB card). The `qwen3.5:9b-q8_0` build was evaluated and
+rejected: ~10 GB weights spill to CPU at both 16k and 32k here, and the
+head-to-head bench showed no quality gain over Q4_K_M (and a CUDA-500 crash mid
+tailor).
+
+- Changed: `gateway.client._DEFAULT_OPTIONS["num_ctx"]` 16384 to 32768, plus its
+  comment block and docstring. `num_predict=4096` still bounds the in-band
+  reasoning runaway regardless of `num_ctx`, so 32k does not reopen the hang.
+- Test: `tests/test_gateway_errors.py::test_payload_pins_default_options`
+  updated to assert 32768. Full suite green (806 passed). Live smoke bench
+  (`bench_models.py --models qwen3.5:9b --runs 1`) at 32k: happy_fit ship 1/1 at
+  100% coverage, decline_senior declined, fabrication_pressure fab-safe, 0
+  errors. `ollama ps` confirmed CONTEXT 32768, 100% GPU.
+- Docs synced: AGENTS.md (hardware context + LLM rules 3/4/5a), README.md
+  (model + systemd blocks), PLAN.md (constraints + models tables). systemd env
+  reconciled to live: KV cache q8_0, MAX_LOADED_MODELS=2, KEEP_ALIVE=-1,
+  VULKAN=0, OLLAMA_CONTEXT_LENGTH removed (context is app-owned only).
+
+### Context-budget exploitation initiative (2026-06-04) — proposed, awaiting approval
+
+**Why:** The 32k bump gave ~28k input tokens (num_ctx − num_predict), but
+several pre-LLM truncation caps were sized for the old 16k window. A DB sweep
+(n=469 JDs: median 7,167 chars, p90 11,388, 63% > 6,000 chars, only 4% > 16,000)
+shows interview-prep and answer starve on a 6k JD cap that clips the majority of
+real JDs, while the scoring path already feeds up to 16k. This is an
+inconsistency the headroom now lets us fix.
+
+Diagnostic evidence (captured at plan time, do not re-derive):
+- `pipeline.interview_prep._JD_MAX_CHARS = 6000` and
+  `commands.answer_cmd.py:168 desc[:6000]` clip 63% of JDs. Score/tailor/cover
+  already use `MAX_DESC_CHARS=16000` (clips 4%).
+- `pipeline.interview_prep._RESEARCH_MAX_CHARS = 6000` and
+  `commands.interview_prep_cmd.py:426 raw[:6000]` clip fetched company/JD pages
+  in `--research` mode, where the content is additive (the strongest case for
+  going beyond 16k).
+- `MAX_POLICY_CHARS = 6000` is NOT a candidate: `tailoring-rules.md` is 4,898
+  chars, under the cap. `MAX_DESC_CHARS = 16000` already covers 96% of JDs;
+  raising it only helps outliers and invites boilerplate noise.
+
+**Proposed phases (priority order, each its own approval):**
+- P1 — DONE (2026-06-04): bound `interview_prep._JD_MAX_CHARS` and the
+  `answer_cmd._load_jd_context` JD cap to the shared `MAX_DESC_CHARS` (16000)
+  instead of a 6000 literal, so prep and answer see the same JD scope the
+  score/tailor/cover path does. Changed: `pipeline/interview_prep.py` (import +
+  constant + comment), `commands/answer_cmd.py` (import + truncation + comment).
+  Test: new `tests/test_jd_context_caps.py` asserts `_JD_MAX_CHARS ==
+  MAX_DESC_CHARS == 16000` and that a 10k-char JD survives `_load_jd_context`
+  untruncated (both fail at the old 6000). Full suite green (809 passed). No
+  ruff regressions (the 18 pre-existing E501/F401 are untouched, per
+  no-piggybacking). `_RESEARCH_MAX_CHARS` deliberately left at 6000 for P2.
+- P2 — DONE (2026-06-04): raised the `--research` caps so both fetched pages
+  (JD URL + company root) survive into the prompt. `_RESEARCH_MAX_CHARS` 6000 to
+  18000 (`pipeline/interview_prep.py`); the per-source `_strip_html` cap 6000 to
+  a named `_RESEARCH_PER_SOURCE_CHARS = 9000` (`commands/interview_prep_cmd.py`),
+  so 2 sources at 9000 fill the 18000 blob instead of the old cap dropping the
+  second source. ~4.5k tokens, well under the 32k budget. Test: new
+  `tests/test_research_caps.py` asserts the blob cap holds two sources and that
+  `_strip_html` retains >6000 chars (fails at the old cap). Full suite green
+  (811 passed); 0 ruff regressions on the two touched files (16 before, 16
+  after).
+- P3 — SKIPPED (2026-06-04, user decision): leaving `MAX_DESC_CHARS` at 16000.
+  It already covers 96% of JDs; raising it to ~28000 helps only the 4% outliers
+  and would invite more boilerplate noise into scoring. Revisit only if a real
+  long-JD truncation problem surfaces.
+
+**Initiative COMPLETE (2026-06-04): P1 + P2 done, P3 skipped.**
+
 ### Resume-parser format-robustness initiative (2026-06-02) — 5 phases, awaiting approval
 
 **Why:** `resume.parse_docx.parse_baseline` is tightly coupled to Casey's

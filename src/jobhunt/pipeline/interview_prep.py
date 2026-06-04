@@ -38,15 +38,23 @@ from jobhunt.pipeline.cover_validate import (
     _verified_numbers,
     _verified_skill_blob,
 )
+from jobhunt.pipeline.score import MAX_DESC_CHARS
 
 # Valid `--stage` values. Kept here (not in config) so the prompt and CLI
 # agree on the enum.
 VALID_STAGES: tuple[str, ...] = ("agency", "hiring_manager", "assessment")
 
-# JD body cap matches answer.py's truncation budget. Comfortably under the
-# 20k-token server context with room for verified.json + prompt template.
-_JD_MAX_CHARS = 6000
-_RESEARCH_MAX_CHARS = 6000
+# JD body cap is bound to the score/tailor/cover budget (MAX_DESC_CHARS) so prep
+# sees the same JD scope the scoring path does. A DB sweep (2026-06-04, n=469)
+# found 63% of JDs exceed 6000 chars, so the prior 6000 cap clipped most JDs'
+# requirements tail; 16000 clips only 4% and stays well under the 32k context
+# budget. _RESEARCH_MAX_CHARS stays 6000 pending its own phase.
+_JD_MAX_CHARS = MAX_DESC_CHARS
+# Research blob holds up to two fetched pages (JD URL + company root), each
+# capped at 9000 chars by interview_prep_cmd._strip_html, so 18000 lets both
+# survive instead of the old 6000 cap dropping the second source. At ~4.5k
+# tokens it sits comfortably under the 32k context budget (P2, 2026-06-04).
+_RESEARCH_MAX_CHARS = 18000
 
 
 @dataclass

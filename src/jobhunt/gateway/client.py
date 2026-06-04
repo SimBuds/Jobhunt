@@ -17,8 +17,13 @@ from jobhunt.errors import GatewayError
 #   an explicit num_ctx the prompt is silently truncated to 4096 — the schema
 #   instruction falls off the end and the model emits prose instead of JSON.
 #   (qwen-custom only worked because it baked num_ctx 16384.) Pinning it here is
-#   what lets jobhunt run bare qwen3.5:9b. Keep aligned with MAX_DESC_CHARS /
-#   MAX_POLICY_CHARS in pipeline.score.
+#   what lets jobhunt run bare qwen3.5:9b. Pinned at 32768 (2026-06-04): on
+#   Ollama 0.30.3 qwen3.5:9b Q4_K_M stays 100% GPU-resident at 32k (measured
+#   5.6 GB on the 10 GB card), so the extra headroom is free. The score/tailor
+#   prompts still run ~6k tokens, so MAX_DESC_CHARS / MAX_POLICY_CHARS in
+#   pipeline.score need no change — 32k is pure headroom, not a reason to feed
+#   longer inputs. The q8_0 build was rejected: it spills to CPU at both 16k and
+#   32k on this card and the bench showed no quality gain over Q4_K_M.
 #
 #   sampler params: qwen3.5:9b ships `presence_penalty 1.5` — Qwen's
 #   recommendation for *thinking/chat* mode, where it breaks reasoning-loop
@@ -44,7 +49,7 @@ from jobhunt.errors import GatewayError
 # Override any of these per call via the `options` kwarg; the `temperature`
 # kwarg always wins.
 _DEFAULT_OPTIONS: dict[str, Any] = {
-    "num_ctx": 16384,
+    "num_ctx": 32768,
     "num_predict": 4096,
     "top_p": 0.95,
     "top_k": 20,
@@ -72,7 +77,7 @@ async def complete_json(
 
     Options are app-owned: `_DEFAULT_OPTIONS` is sent on every call so
     structured-task behavior is defined in-repo, not by the model's Modelfile or
-    by server env. This includes `num_ctx=16384` (the prompts exceed Ollama's
+    by server env. This includes `num_ctx=32768` (the prompts exceed Ollama's
     4096 default; without it they truncate and the model emits prose) and
     `presence_penalty=0` (qwen's chat/thinking default fights structured JSON).
     Keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned with the

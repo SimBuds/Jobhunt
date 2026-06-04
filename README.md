@@ -45,12 +45,15 @@ ollama pull qwen3.5:9b           # base model: all LLM tasks
 ollama pull nomic-embed-text     # embeddings (reserved for future use)
 ```
 
-Default model in config is base `qwen3.5:9b`. The gateway supplies its own task
-prompt and its own options, notably `num_ctx=16384` and `presence_penalty=0`,
-so behavior is defined in-repo and no custom Modelfile is needed. The
-`num_ctx=16384` is essential: these prompts exceed Ollama's 4096 default, and
-without it they truncate and the model returns prose instead of JSON. See
-[AGENTS.md](AGENTS.md) Hardware context for the full rationale.
+Default model in config is base `qwen3.5:9b` (Q4_K_M). The gateway supplies its
+own task prompt and its own options, notably `num_ctx=32768` and
+`presence_penalty=0`, so behavior is defined in-repo and no custom Modelfile is
+needed. The `num_ctx` pin is essential: these prompts exceed Ollama's 4096
+default, and without it they truncate and the model returns prose instead of
+JSON. It is set to 32768 because the model stays 100% GPU-resident at 32k on
+this card (~5.6 GB), so the headroom is free. See [AGENTS.md](AGENTS.md)
+Hardware context for the full rationale, including why the q8_0 build was
+rejected (it spills to CPU here).
 
 ### Ollama systemd settings
 
@@ -59,15 +62,19 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q5_0"
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_KEEP_ALIVE=30m"
-Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_MAX_LOADED_MODELS=2"
+Environment="OLLAMA_VULKAN=0"
 ```
 
-Pair only with the per-call `keep_alive=-1` the gateway uses.
-Rationale and tuning notes live in [AGENTS.md](AGENTS.md) Hardware context.
+`OLLAMA_CONTEXT_LENGTH` is intentionally NOT set: context is owned at the app
+level (the gateway's `num_ctx`) so each project sharing this box picks its own
+window. The systemd `OLLAMA_KEEP_ALIVE=-1` matches the per-call `keep_alive=-1`
+the gateway uses. Rationale and tuning notes live in [AGENTS.md](AGENTS.md)
+Hardware context.
 
 ## Workflows
 

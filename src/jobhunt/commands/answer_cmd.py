@@ -30,6 +30,7 @@ from jobhunt.config import Config, load_config
 from jobhunt.db import connect
 from jobhunt.errors import JobHuntError, PipelineError
 from jobhunt.pipeline.answer import write_answer_with_retry
+from jobhunt.pipeline.score import MAX_DESC_CHARS
 
 app = typer.Typer(
     help="Draft a tailored response to an application form question.",
@@ -161,11 +162,13 @@ def _load_jd_context(cfg: Config, job_id: str) -> tuple[str, str]:
     if row["location"]:
         bits.append(f"Location: {row['location']}")
     if row["description"]:
-        # Truncate to ~6000 chars (well under the LLM context budget; same
-        # cap the score pipeline uses for policy text).
+        # Cap at MAX_DESC_CHARS so the answer pipeline sees the same JD scope the
+        # score/tailor path does. The prior 6000 cap clipped 63% of real JDs
+        # (DB sweep 2026-06-04); 16000 clips only 4% and stays well under the
+        # 32k context budget.
         desc = row["description"]
-        if len(desc) > 6000:
-            desc = desc[:6000] + "\n[truncated]"
+        if len(desc) > MAX_DESC_CHARS:
+            desc = desc[:MAX_DESC_CHARS] + "\n[truncated]"
         bits.append(f"\n{desc}")
     return ("\n".join(bits) if bits else ""), _safe_id(job_id)
 
