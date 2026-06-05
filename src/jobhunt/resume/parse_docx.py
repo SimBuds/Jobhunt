@@ -1,4 +1,4 @@
-"""Parse Resume.docx into structured `verified.json` + KB markdown.
+"""Parse Baseline_Resume.docx into structured `verified.json` + KB markdown.
 
 The output of this module is the single source of truth for tailoring. Downstream
 prompts must only use facts present in `verified.json` — that is the structural

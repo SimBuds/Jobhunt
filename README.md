@@ -79,7 +79,7 @@ Hardware context.
 ## Workflows
 
 The day-to-day is **scan → list → apply**. Everything else is occasional. Drop
-your baseline resume at `./Resume.docx` before the first run. Every command and
+your baseline resume at `./Baseline_Resume.docx` before the first run. Every command and
 flag is documented in full under [Commands](#commands). You shouldn't need to
 reach for `--help`.
 
@@ -90,7 +90,7 @@ jobhunt setup
 ```
 
 The wizard walks every first-run step in order: init the SQLite DB + run
-migrations → confirm `Resume.docx` is in place → parse it into
+migrations → confirm `Baseline_Resume.docx` is in place → parse it into
 `kb/profile/verified.json` + markdown sidecars → prompt for applicant defaults
 (`years_experience`, `include_senior_roles`, salary, work arrangements,
 employment types) → print the resolved config → preview the curated
@@ -102,7 +102,7 @@ Manual equivalent, if you'd rather not use the wizard:
 ```bash
 jobhunt config show            # writes a default config and prints it
 jobhunt db init                # creates SQLite schema at data/jobhunt.db
-jobhunt convert-resume         # generates kb/profile/* from Resume.docx
+jobhunt convert-resume         # generates kb/profile/* from Baseline_Resume.docx
 # hand-edit ~/.config/jobhunt/config.toml to fill [applicant] fields
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
@@ -327,14 +327,14 @@ promotion. Use `response-rate` after ~20 applications alongside
 
 ### `convert-resume`
 
-Parses `./Resume.docx` into `kb/profile/verified.json` plus markdown sidecars
+Parses `./Baseline_Resume.docx` into `kb/profile/verified.json` plus markdown sidecars
 (`resume.md`, `skills.md`, `work-history.md`, `education.md`, and `projects.md`
-when the resume has a PROJECTS section). `Resume.docx` is the single source of
+when the resume has a PROJECTS section). `Baseline_Resume.docx` is the single source of
 truth. Re-run after editing it.
 
 ```bash
-jobhunt convert-resume                 # parse ./Resume.docx
-jobhunt convert-resume --docx path/to/Resume.docx
+jobhunt convert-resume                 # parse ./Baseline_Resume.docx
+jobhunt convert-resume --docx path/to/Baseline_Resume.docx
 ```
 
 If a line cannot be classified (a skills line not in `Label: items` form, an
@@ -525,7 +525,7 @@ adzuna_app_key = "..."
 
 | Path | What lives there |
 |---|---|
-| `Resume.docx` | Source-of-truth resume. Hand-edited. |
+| `Baseline_Resume.docx` | Source-of-truth resume. Hand-edited. |
 | `Resume_Tailoring_Instructions.md` | Hard rules (no fabrication, ATS-safe, auto-decline). |
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
 | `kb/policies/tailoring-rules.md` | Prompt-injectable mirror of the tailoring rules. |

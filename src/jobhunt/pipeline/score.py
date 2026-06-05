@@ -67,7 +67,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         schema=prompt.schema,
         temperature=prompt.temperature,
     )
-    raw_score = int(result["score"])
+    raw_score = _coerce_score(result.get("score"), job.id)
     llm_matched = _coerce_phrase_list(result.get("matched_must_haves"))
     llm_gaps = _coerce_phrase_list(result.get("gaps"))
 
@@ -147,6 +147,27 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         ai_bonus_present=bool(result.get("ai_bonus_present")),
         model=model,
     )
+
+
+def _coerce_score(raw: object, job_id: str) -> int:
+    """Schema pins score to integer, but qwen3.5:9b occasionally emits ``null``
+    (or a numeric string) despite the grammar. Coerce defensively; an unusable
+    score is a model failure for this job, so raise PipelineError — the scan
+    loop catches JobHuntError and skips-and-continues, which retries next scan
+    rather than inventing a fake number that would pollute calibration."""
+    if isinstance(raw, bool):
+        # bool is an int subclass; a true/false score is never legitimate.
+        raise PipelineError(f"job {job_id}: model returned boolean score {raw!r}")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    if isinstance(raw, str):
+        try:
+            return int(float(raw.strip()))
+        except ValueError:
+            pass
+    raise PipelineError(f"job {job_id}: model returned no usable score (got {raw!r})")
 
 
 def _coerce_phrase_list(raw: object) -> list[str]:

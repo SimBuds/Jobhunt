@@ -1,7 +1,7 @@
 # WORK.md — Casey Hsu Projects and Education Knowledge Base
 
 *Purpose: this file is the canonical, honest record of Casey's personal projects
-and schooling. It exists to fill the gap that the one-page `Resume.docx` cannot
+and schooling. It exists to fill the gap that the one-page `Baseline_Resume.docx` cannot
 hold and to give depth behind Section 2 of
 [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md). When a job
 posting touches AI/LLM, local infra, Linux, automation, backend, or data, read
@@ -24,7 +24,7 @@ and agent reference behind it.
 - [AGENTS.md](AGENTS.md) — pipeline rules, including how project skills now flow
   through `verified.json` (the Projects-into-profile initiative in
   [IMPLEMENT.md](IMPLEMENT.md)).
-- `Resume.docx` — the one-page baseline. Carries a curated SUBSET of these
+- `Baseline_Resume.docx` — the one-page baseline. Carries a curated SUBSET of these
   projects, not all of them.
 
 ---
@@ -36,10 +36,10 @@ Most juniors have tutorials. Casey has shipped and deployed systems he can
 explain end to end. Each entry below gives the stack, what it is, what hiring
 signal it backs, and whether it is shipped or in progress.
 
-**Which projects are on the resume.** The one-page `Resume.docx` PROJECTS
+**Which projects are on the resume.** The one-page `Baseline_Resume.docx` PROJECTS
 section currently carries four (jobhunt, Auto-Agent, SEO-LLM, AI Context Stack).
 The rest live here only and surface in cover notes or tailored summaries when the
-JD warrants. The matching `Project Stack:` skills row in `Resume.docx` (FastAPI,
+JD warrants. The matching `Project Stack:` skills row in `Baseline_Resume.docx` (FastAPI,
 Redis, Claude API, Docker Compose, JSON-LD, Agentic Architecture) is what makes
 these skills creditable in scoring.
 
@@ -200,4 +200,4 @@ below when they map to a role.
 *This document is a reference for humans and tailoring agents. It does not itself
 feed the automated pipeline. Update it whenever Casey ships a project or his
 schooling record changes, and keep Section 1 in sync with the `Project Stack:`
-row and PROJECTS section of `Resume.docx`.*
+row and PROJECTS section of `Baseline_Resume.docx`.*

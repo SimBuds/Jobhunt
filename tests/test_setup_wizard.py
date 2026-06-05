@@ -44,17 +44,17 @@ def test_setup_wizard_writes_applicant_fields(
 ) -> None:
     cfg_path = _seed_minimal_config(tmp_config_dir)
 
-    # Work in a tmp cwd so the wizard finds Resume.docx in the expected spot.
+    # Work in a tmp cwd so the wizard finds Baseline_Resume.docx in the expected spot.
     workdir = tmp_path / "workdir"
     workdir.mkdir()
-    (workdir / "Resume.docx").write_bytes(b"")  # presence is enough
+    (workdir / "Baseline_Resume.docx").write_bytes(b"")  # presence is enough
     monkeypatch.chdir(workdir)
 
-    # Make verified.json newer than Resume.docx so the re-parse branch is
+    # Make verified.json newer than Baseline_Resume.docx so the re-parse branch is
     # skipped (and convert_resume_cmd.run is never called even if mocked).
     verified = tmp_config_dir / "kb" / "profile" / "verified.json"
     import os
-    now = (workdir / "Resume.docx").stat().st_mtime
+    now = (workdir / "Baseline_Resume.docx").stat().st_mtime
     os.utime(verified, (now + 10, now + 10))
 
     # Mock the heavyweight steps: DB migrate, convert-resume, config seed.

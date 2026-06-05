@@ -1,6 +1,6 @@
 # Resume Tailoring Instructions — Casey Hsu
 
-You are an agent helping Casey tailor his baseline resume (`Resume.docx`) for a specific job posting. This file is your operating manual. Read it fully before making any edits.
+You are an agent helping Casey tailor his baseline resume (`Baseline_Resume.docx`) for a specific job posting. This file is your operating manual. Read it fully before making any edits.
 
 The single most important rule: **Do not invent skills, tools, projects, dates, employers, metrics, or experience.** Tailoring means re-prioritizing, re-framing, and surfacing what is already true. Anything else is fabrication and will be caught at interview, reference check, or on the job.
 
@@ -11,7 +11,7 @@ The single most important rule: **Do not invent skills, tools, projects, dates, 
 Before producing a tailored resume, you should have:
 
 1. **The full job description** (URL, copy-paste, or attached file). Do not tailor from a job title alone.
-2. **The baseline resume** (`Resume.docx`).
+2. **The baseline resume** (`Baseline_Resume.docx`).
 3. Optionally: any updates Casey wants to make to his actual experience since the baseline was last edited.
 
 If Casey gives you a job title and asks you to "tailor a resume for a Senior React Developer role," ask for the specific posting first. Generic tailoring against a title produces a worse output than the baseline.
@@ -41,7 +41,7 @@ JavaScript (ES6+), TypeScript, React (Redux, React Native), Next.js, Node.js, Ex
 
 **React umbrella:** `React (Redux, React Native)` is one Core skill covering the React ecosystem. Render as just "React" by default; surface "Redux" or "React Native" as explicit items ONLY when the JD names them (they are Core-grade when surfaced, never a separate Redux item, never Familiar).
 
-The **AI & Tooling row in `Resume.docx`** is the canonical source of truth for the tools Casey uses daily. Keep it in sync with this list whenever you add or remove a daily-use tool. Deep implementation details (e.g. specific quantization names like `q5_0`) belong in project descriptions or cover notes, not the docx skills row — they over-specify for a recruiter glance.
+The **AI & Tooling row in `Baseline_Resume.docx`** is the canonical source of truth for the tools Casey uses daily. Keep it in sync with this list whenever you add or remove a daily-use tool. Deep implementation details (e.g. specific quantization names like `q5_0`) belong in project descriptions or cover notes, not the docx skills row — they over-specify for a recruiter glance.
 
 ### Skills Casey is "Familiar" with (academic / light use)
 
@@ -81,7 +81,7 @@ Do not invent new numbers. Do not change these numbers up or down to sound stron
 
 ### Personal projects (real, shippable — surface when JD touches AI/LLM, local infra, Linux, or automation)
 
-**Not in the baseline `Resume.docx` (one-page constraint). Surface only in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant; do not list them as professional experience or attach employer-style metrics.
+**Not in the baseline `Baseline_Resume.docx` (one-page constraint). Surface only in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant; do not list them as professional experience or attach employer-style metrics.
 
 The long form of this list, with full stacks, what each project proves, and the in-progress flags, lives in [WORK.md](WORK.md) Section 1. Read it when a JD touches AI/LLM, local infra, Linux, automation, backend, or data, and keep it in sync with this section.
 
