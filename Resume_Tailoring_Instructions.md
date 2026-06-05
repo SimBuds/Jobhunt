@@ -81,7 +81,7 @@ Do not invent new numbers. Do not change these numbers up or down to sound stron
 
 ### Personal projects (real, shippable — surface when JD touches AI/LLM, local infra, Linux, or automation)
 
-**Not in the baseline `Baseline_Resume.docx` (one-page constraint). Surface only in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant; do not list them as professional experience or attach employer-style metrics.
+**The baseline `Baseline_Resume.docx` carries a curated PROJECTS section. The entries below are the fuller set, so surface any not already on the baseline in cover notes or tailored summaries when the JD warrants.** These are Casey's own GitHub projects. They are genuine work, not employment. Reference them when relevant, do not list them as professional experience, and do not attach employer-style metrics.
 
 The long form of this list, with full stacks, what each project proves, and the in-progress flags, lives in [WORK.md](WORK.md) Section 1. Read it when a JD touches AI/LLM, local infra, Linux, automation, backend, or data, and keep it in sync with this section.
 
@@ -94,7 +94,7 @@ The long form of this list, with full stacks, what each project proves, and the 
 How to use these in tailoring:
 - They reinforce the baseline AI & Tooling skills row (the source of truth for what Casey uses daily) and back the AI/LLM differentiator line in the Summary — concrete proof that the Ollama / prompt-engineering / GPU-tuning claims are real.
 - Acceptable to mention by name in a tailored Summary or a cover note when the JD asks for AI tooling, local LLM, Linux/infra fluency, or automation maturity.
-- Surface in the cover-note lead paragraph when the JD asks for AI/LLM, local LLM hosting, Linux/infra, or automation — name the project by name so the AI-screener summarizer pulls it. Do not list under Professional Experience and do not add a Projects section to the baseline resume.
+- Surface in the cover-note lead paragraph when the JD asks for AI/LLM, local LLM hosting, Linux/infra, or automation — name the project by name so the AI-screener summarizer pulls it. Do not list these under Professional Experience. They are projects, not employment.
 - Do not invent metrics (users, stars, uptime). Describe what the project does, not how popular it is.
 
 ### What Casey has NOT done (common asks to refuse)

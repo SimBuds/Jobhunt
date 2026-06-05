@@ -1,8 +1,8 @@
 # WORK.md — Casey Hsu Projects and Education Knowledge Base
 
 *Purpose: this file is the canonical, honest record of Casey's personal projects
-and schooling. It exists to fill the gap that the one-page `Baseline_Resume.docx` cannot
-hold and to give depth behind Section 2 of
+and schooling. It exists to fill the gap that `Baseline_Resume.docx` does not
+carry and to give depth behind Section 2 of
 [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md). When a job
 posting touches AI/LLM, local infra, Linux, automation, backend, or data, read
 this file to pull the right project and the right coursework, then frame them per
@@ -24,8 +24,9 @@ and agent reference behind it.
 - [AGENTS.md](AGENTS.md) — pipeline rules, including how project skills now flow
   through `verified.json` (the Projects-into-profile initiative in
   [IMPLEMENT.md](IMPLEMENT.md)).
-- `Baseline_Resume.docx` — the one-page baseline. Carries a curated SUBSET of these
-  projects, not all of them.
+- `Baseline_Resume.docx` — the master baseline resume. It is not page-limited and
+  carries a curated subset of these projects, not all of them. The one-page
+  constraint applies only to the tailored output the pipeline generates per job.
 
 ---
 
@@ -36,7 +37,7 @@ Most juniors have tutorials. Casey has shipped and deployed systems he can
 explain end to end. Each entry below gives the stack, what it is, what hiring
 signal it backs, and whether it is shipped or in progress.
 
-**Which projects are on the resume.** The one-page `Baseline_Resume.docx` PROJECTS
+**Which projects are on the resume.** The `Baseline_Resume.docx` PROJECTS
 section currently carries four (jobhunt, Auto-Agent, SEO-LLM, AI Context Stack).
 The rest live here only and surface in cover notes or tailored summaries when the
 JD warrants. The matching `Project Stack:` skills row in `Baseline_Resume.docx` (FastAPI,
