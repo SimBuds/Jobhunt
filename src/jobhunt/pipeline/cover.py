@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -12,29 +13,37 @@ from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline.score import MAX_DESC_CHARS, truncate
 
-# Trailing sign-off pattern: an optional closer ("Best,", "Regards,",
-# "Sincerely,", etc.) followed optionally by Casey's name on its own line.
-# Matches at the end of a paragraph string (with or without a preceding newline).
-_TRAILING_SIGNOFF_RE = re.compile(
-    r"(?:\n+|\s+|^)"
+# Trailing sign-off closer ("Best,", "Regards,", "Sincerely,", etc.). The
+# optional name fragment is built per-call from the profile name so the strip
+# works for any candidate, not just a hard-coded one.
+_SIGNOFF_CLOSER = (
     r"(?:best|regards|sincerely|cheers|thanks|thank you|best regards|kind regards)"
-    r"\s*,?\s*"
-    r"(?:\n+\s*casey\s*hsu\s*)?"
-    r"\Z",
-    re.IGNORECASE,
 )
 
 
-def _strip_trailing_signoff(paragraph: str) -> str:
+def _signoff_name_pattern(name: str) -> str:
+    """Regex fragment matching the candidate's name on its own line, with
+    flexible inter-token spacing. Empty when no name is available."""
+    tokens = [re.escape(t) for t in name.split()]
+    if not tokens:
+        return ""
+    return r"(?:\n+\s*" + r"\s*".join(tokens) + r"\s*)?"
+
+
+def _strip_trailing_signoff(paragraph: str, name: str = "") -> str:
     """Remove a stray sign-off line from the end of a body paragraph.
 
     qwen3.5:9b habitually closes the last body paragraph with 'Best,' or
-    'Best,\\nCasey Hsu' even though the schema's sign_off field is rendered
-    separately. The validator catches this but the retry loop can't reliably
-    coax the model out of the habit, so we strip it deterministically.
+    'Best,\\n<candidate name>' even though the schema's sign_off field is
+    rendered separately. The validator catches this but the retry loop can't
+    reliably coax the model out of the habit, so we strip it deterministically.
+    The name is taken from the parsed profile so this is not candidate-specific.
     """
-    cleaned = _TRAILING_SIGNOFF_RE.sub("", paragraph).rstrip()
-    return cleaned
+    trailing_re = re.compile(
+        r"(?:\n+|\s+|^)" + _SIGNOFF_CLOSER + r"\s*,?\s*" + _signoff_name_pattern(name) + r"\Z",
+        re.IGNORECASE,
+    )
+    return trailing_re.sub("", paragraph).rstrip()
 
 
 @dataclass
@@ -58,9 +67,15 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
     if not verified_path.is_file():
         raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume`")
 
+    verified_raw = verified_path.read_text(encoding="utf-8")
+    try:
+        profile_name = str(json.loads(verified_raw).get("name") or "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        profile_name = ""
+
     prompt = load_prompt(cfg.paths.kb_dir, "cover")
     user = prompt.render_user(
-        verified_facts=verified_path.read_text(encoding="utf-8"),
+        verified_facts=verified_raw,
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
@@ -84,12 +99,13 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         )
     if isinstance(body, str):
         body = [body]
-    cleaned_body = [_strip_trailing_signoff(str(p).strip()) for p in body]
+    cleaned_body = [_strip_trailing_signoff(str(p).strip(), profile_name) for p in body]
     cleaned_body = [p for p in cleaned_body if p]
+    default_signoff = f"Best,\n{profile_name}" if profile_name else "Best,"
     return CoverLetter(
         salutation=str(raw.get("salutation") or "Dear Hiring Team,"),
         body=cleaned_body,
-        sign_off=str(raw.get("sign_off") or "Best,\nCasey Hsu"),
+        sign_off=str(raw.get("sign_off") or default_signoff),
         model=model,
     )
 

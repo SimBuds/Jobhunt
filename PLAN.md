@@ -25,7 +25,10 @@ guardrails, project structure). `README.md` is for end-users.
 4. **Honesty by construction.** Tailoring is constrained to facts in
    `verified.json`. Roles must match `(employer, dates)` exactly. "Familiar"
    skills can't be promoted into Core categories. The score prompt
-   auto-declines roles >2x Casey's experience or with senior titles.
+   auto-declines roles whose required years exceed the candidate's by more than
+   three (absent a transferable bridge), people-management titles (Manager /
+   Director / Head of / VP), and senior-band titles when the candidate is under
+   four years of experience.
 
 ## Design principles
 
@@ -135,10 +138,13 @@ in five places, not just the prompt:
    `bullets`) parsed from the resume's PROJECTS section; it renders as a PROJECTS
    section on the tailored resume, is credited by audit keyword coverage, and may
    anchor a cover letter's centerpiece paragraph. `skills_ai` in
-   particular must not be a single run-on string; the ATS keyword matchers and the
-   audit's keyword-coverage check tokenize against atomic items. If `parse_docx.py`
-   produces a run-on for any bucket (it currently does for `skills_ai` when the
-   resume puts the AI skills on one line), patch by hand after `convert-resume`.
+   particular must stay atomic, because the ATS keyword matchers and the audit's
+   keyword-coverage check tokenize against individual items. `parse_docx._split_skills`
+   is paren-aware (it splits on commas but treats commas inside parentheses as
+   literal), so a comma-separated AI line such as "Ollama (Local LLM hosting),
+   GPU optimization (cache, flash attention), ..." parses into atomic items with
+   no hand-editing. `tests/test_parse_docx.py::test_parse_baseline_positioning_and_atomic_skills`
+   locks this behavior.
 2. **Schema-constrained output.** `kb/prompts/tailor.md` declares a JSON
    schema. Ollama's `format=<schema>` enforces shape at decode time.
 3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`:
