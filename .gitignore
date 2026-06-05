@@ -28,6 +28,7 @@ kb/profile/
 *.docx
 *.pdf
 personal/
+WORK.md
 
 # --- Local runtime state ---
 data/

@@ -13,7 +13,16 @@ from jobhunt.pipeline.cover import _strip_trailing_signoff
 
 def test_strips_best_with_name() -> None:
     para = "I am ready to discuss this role. Best,\nCasey Hsu"
-    assert _strip_trailing_signoff(para) == "I am ready to discuss this role."
+    assert _strip_trailing_signoff(para, "Casey Hsu") == "I am ready to discuss this role."
+
+
+def test_strips_best_with_non_casey_name() -> None:
+    # Genericization guard: the name is data-driven, not hard-coded to Casey.
+    para = "I would welcome a conversation. Best,\nJane Q. Public"
+    assert (
+        _strip_trailing_signoff(para, "Jane Q. Public")
+        == "I would welcome a conversation."
+    )
 
 
 def test_strips_best_alone() -> None:
@@ -29,7 +38,7 @@ def test_strips_regards_kind_sincerely() -> None:
 
 def test_strips_signoff_on_new_line() -> None:
     para = "This closes the para.\n\nBest,\nCasey Hsu"
-    assert _strip_trailing_signoff(para) == "This closes the para."
+    assert _strip_trailing_signoff(para, "Casey Hsu") == "This closes the para."
 
 
 def test_passthrough_when_no_signoff() -> None:

@@ -2062,7 +2062,12 @@ pipeline runs on the new specialist positioning.
   retitled Shopify role, agency/gaming employers read "(Confidential)", Figma is
   in `skills_core`, "Dawn" is in the `skills_cms` Shopify entry.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). Resync clean, 0 parse warnings. Summary now
+"E-Commerce & Headless CMS...", roles retitled, agency/gaming employers
+"(Confidential)", Figma in `skills_core`, `skills_ai` atomic (5 items), 4
+projects parsed. Deviation: "Dawn" lands in the Atelier work-history bullet, not
+the `skills_cms` Shopify entry (the docx skills line reads "Shopify (Liquid,
+Custom Themes)"), so Dawn coverage holds via the bullet. Full suite 825 passed.
 
 ### Phase 2 — Verify honesty checks survive the resync
 
@@ -2077,7 +2082,11 @@ renamed employer field, so they should hold).
   (expect ship/revise, not a fabrication block) and that no `FabricationError`
   is raised.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). E2E on `manual:9229e8f962f7` (CBC Full Stack
+Web Developer): tailor 2 attempts clean, cover 3 attempts clean, audit
+verdict=ship, keyword_coverage=100%, 0 missing / 0 cover violations / 0
+alignment flags. No `FabricationError`. Employer renames and the new positioning
+tailor cleanly; hard-coded audit anchors still resolve.
 
 ### Phase 3 — Lane-align job_bank_ca queries
 
@@ -2090,7 +2099,11 @@ Shopify / Contentful / HubSpot / e-commerce lane.
 **Verification:**
 - `jobhunt config show` lists the new lane queries.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). `job_bank_ca` now queries shopify developer /
+e-commerce developer / web developer / front end developer / cms developer
+(dropped software + full stack, added shopify/e-commerce/cms). Config loads
+clean. Adzuna needs no change: its queries auto-derive from `verified.json`, so
+it already follows the new skill set.
 
 ### Phase 4 — Lock parser correctness with a regression test
 
@@ -2108,7 +2121,12 @@ yields atomic skill buckets, Figma in Core, Dawn captured, and parsed projects.
 **Verification:**
 - New test passes; it fails if `skills_ai` becomes a run-on or Figma/Dawn drop.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). Added
+`test_parse_baseline_positioning_and_atomic_skills` (skip-guarded on the
+gitignored docx, like the existing round-trip test). Asserts paren-aware atomic
+`skills_ai` ("GPU optimization (cache, flash attention)" intact + balanced
+parens), Figma in `skills_core` and not Familiar, "Dawn" present in a bullet, and
+the lead role retitled. Suite 826 passed, ruff clean.
 
 ### Phase 5 — Doc-truth pass
 
@@ -2121,7 +2139,14 @@ yields atomic skill buckets, Figma in Core, Dawn captured, and parsed projects.
 **Verification:**
 - grep shows no "patch by hand" / "2x" stale claims; prose matches code.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). PLAN.md: replaced the ">2x Casey's experience"
+auto-decline with the real rule (required years > YoE+3 absent a bridge,
+people-management titles always, senior-band when YoE < 4), and replaced the
+"skills_ai produces a run-on, patch by hand" caveat with the truth (`_split_skills`
+is paren-aware, atomic by construction, locked by the Phase 4 test). AGENTS.md:938
+"run by hand" left as-is (it correctly describes manual integration tests, not
+stale). One pre-existing semicolon between the edits left untouched (out of scope,
+no-piggybacking).
 
 ### Phase 6 — Data-drive the cover sign-off name from verified.json
 
@@ -2140,7 +2165,13 @@ name parsed from `verified.json`.
 **Verification:**
 - A test with a non-Casey name strips/detects the sign-off correctly.
 
-**Status:** [ ] not started
+**Status:** [x] done (2026-06-05). `cover.py`: replaced the hard-coded
+`_TRAILING_SIGNOFF_RE` (which baked in `casey\s*hsu`) with `_SIGNOFF_CLOSER` +
+`_signoff_name_pattern(name)` built per-call, and `_strip_trailing_signoff` now
+takes the name. `write_cover` parses `name` from `verified.json` once and feeds
+both the strip and the default sign-off (`Best,\n<name>`, or bare `Best,` if no
+name). Added `test_strips_best_with_non_casey_name` ("Jane Q. Public"). cover.py
+now has zero "Casey" references (behavioral or comment). Suite 827, ruff clean.
 
 ### Phase 7 — Data-drive audit alignment anchors from verified.json
 

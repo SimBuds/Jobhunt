@@ -104,6 +104,39 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "## Auto-Agent" in projects_md
 
 
+@pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
+def test_parse_baseline_positioning_and_atomic_skills():
+    """Regression guard for the 2026-06 specialist re-positioning (Initiative:
+    Positioning resync). Locks the things that were either hand-patched or newly
+    moved, so a future re-parse can't silently regress them:
+    - skills_ai stays ATOMIC and paren-aware (retires PLAN.md's stale "skills_ai
+      produces a run-on, patch by hand" caveat).
+    - Figma is Core (promoted from Familiar after the verified Atelier work).
+    - "Dawn" survives the parse (it lives in the Atelier bullet, not the skills
+      line).
+    - The lead role carries the JD-aligned retitle, not the old generic title.
+    """
+    facts, warnings = parse_baseline(BASELINE)
+    assert warnings == []
+
+    # Atomic + paren-aware: a naive comma split would shatter this entry into
+    # "GPU optimization (cache" + "flash attention)". The whole item must survive.
+    assert "GPU optimization (cache, flash attention)" in facts.skills_ai
+    # No item is a comma-split artifact (a stray dangling close-paren with no open).
+    for item in facts.skills_ai:
+        assert item.count("(") == item.count(")"), f"unbalanced parens: {item!r}"
+
+    # Figma promoted to Core, and not left in Familiar.
+    assert "Figma" in facts.skills_core
+    assert "Figma" not in facts.skills_familiar
+
+    # Dawn is captured somewhere in the verified facts (it lives in a bullet).
+    assert any("Dawn" in b for r in facts.work_history for b in r.bullets)
+
+    # The lead role is the JD-aligned specialist title, not "Web Developer".
+    assert facts.work_history[0].title.startswith("Shopify / E-Commerce Developer")
+
+
 def test_parse_warns_on_unknown_skill_label(tmp_path: Path):
     """An unrecognized TECHNICAL SKILLS label is reported as a warning, not
     silently dropped (RP1 + RP3). 'Hobbies' is neither a canonical bucket nor an
