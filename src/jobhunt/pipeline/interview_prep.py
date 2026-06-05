@@ -1012,7 +1012,7 @@ def render_prep_markdown(
     parts.extend(
         [
             "- [ ] Skim the company homepage; note one product or initiative by name",
-            "- [ ] Have Resume.docx and the tailored resume open in tabs",
+            "- [ ] Have Baseline_Resume.docx and the tailored resume open in tabs",
             "- [ ] Test the video link beforehand (camera, mic)",
             "- [ ] Quiet room, water, JD open in another tab",
             "- [ ] Confirm meeting time in your timezone",

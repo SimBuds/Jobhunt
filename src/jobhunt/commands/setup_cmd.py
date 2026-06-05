@@ -46,7 +46,7 @@ def _step_db_init() -> None:
 
 def _step_resume_present() -> Path | None:
     _header("Step 2/6: resume file")
-    docx = Path("Resume.docx")
+    docx = Path("Baseline_Resume.docx")
     if docx.exists():
         typer.echo(f"found {docx.resolve()}")
         return docx

@@ -20,11 +20,11 @@ from jobhunt.pipeline import score as score_mod
 from jobhunt.pipeline.score import (
     _all_matched_are_familiar,
     _clamp_by_coverage,
+    _coerce_score,
     _coverage_pct,
     _verify_against_profile,
     score_job,
 )
-
 
 # --- pure-function tests ---------------------------------------------------
 
@@ -44,6 +44,22 @@ VERIFIED_BLOB = json.dumps(
         "ai_tooling": "Local LLM hosting via Ollama; prompt engineering for code generation.",
     }
 )
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(40, 40), (0, 0), (87.0, 87), (72.6, 72), ("55", 55), (" 63 ", 63), ("70.0", 70)],
+)
+def test_coerce_score_accepts_numbers_and_numeric_strings(raw: Any, expected: int) -> None:
+    assert _coerce_score(raw, "job:1") == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "n/a", True, False, [], {}])
+def test_coerce_score_rejects_unusable_values(raw: Any) -> None:
+    from jobhunt.errors import PipelineError
+
+    with pytest.raises(PipelineError):
+        _coerce_score(raw, "job:1")
 
 
 def test_verify_credits_phrases_present_in_profile() -> None:
