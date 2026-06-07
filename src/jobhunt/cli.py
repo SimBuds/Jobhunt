@@ -23,7 +23,7 @@ from jobhunt.commands import (
 from jobhunt.errors import JobHuntError
 
 app = typer.Typer(
-    help="Local-first CLI for Casey's Toronto-area job hunt.",
+    help="Local-first CLI for a personal job search.",
     no_args_is_help=True,
 )
 

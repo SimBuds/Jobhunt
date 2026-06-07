@@ -9,7 +9,9 @@ import pytest
 
 from jobhunt.pipeline.audit import (
     AuditResult,
+    _derive_project_anchors,
     _extract_must_haves_from_jd,
+    _find_project_anchor,
     audit,
     keyword_coverage,
 )
@@ -420,10 +422,12 @@ def test_audit_alignment_flags_drift_between_resume_and_cover(verified: dict) ->
         bullets=["Built a custom 8-page HubSpot theme with HubL modules."],
     )
     cover = _good_cover()
-    # Cover middle paragraph names the jewellery client (Atelier Dacko anchor).
+    # Cover middle paragraph names the Atelier Dacko ring builder (atelier
+    # anchor). Uses verified-spelling terms now that anchors are derived from
+    # verified.json rather than a hard-coded variant list.
     cover.body[1] = (
-        "The centrepiece project is the 14+ page Shopify storefront I built "
-        "for a custom jewellery client over 2+ years."
+        "The centrepiece project is the Atelier Dacko ring builder, a 14+ "
+        "page Shopify storefront I built over 2+ years."
     )
     cover.body[2] = "A second project: bulk JSON data migrations."  # no hubspot
     result = audit(
@@ -466,6 +470,42 @@ def test_audit_alignment_passes_when_both_anchor_on_same_project(
         cover_max_words=280,
     )
     assert result.alignment_flags == []
+
+
+def test_derive_project_anchors_is_distinctive_and_data_driven() -> None:
+    """Anchors are derived from verified.json, not hard-coded. Distinct sources
+    get distinct keys, a shared platform (Shopify) is non-distinctive so it never
+    anchors, and a term that identifies one source resolves to that source."""
+    v = {
+        "work_history": [
+            {
+                "employer": "Custom Jewelry Brand (Atelier Dacko)",
+                "dates": "x",
+                "bullets": ["Built a Shopify storefront with an interactive ring builder."],
+            },
+            {
+                "employer": "Marketing Agency (Confidential)",
+                "dates": "y",
+                "bullets": ["Built a custom HubSpot theme with reusable HubL modules."],
+            },
+            {
+                "employer": "Vintage Gaming Retailer (Confidential)",
+                "dates": "z",
+                "bullets": ["Built custom Shopify layouts for a vintage gaming catalog."],
+            },
+        ],
+        "projects": [],
+    }
+    anchors = _derive_project_anchors(v)
+    keys = {k for k, _ in anchors}
+    assert "atelier_dacko" in keys  # key derived from the parenthetical name
+
+    atelier = _find_project_anchor("I designed the ring builder flow", anchors)
+    hubspot = _find_project_anchor("built a HubSpot theme with HubL", anchors)
+    assert atelier and hubspot and atelier != hubspot
+
+    # "Shopify" appears in two sources -> non-distinctive -> never an anchor term.
+    assert _find_project_anchor("a generic Shopify build", anchors) is None
 
 
 def test_audit_topics_categorisation(verified: dict) -> None:

@@ -21,6 +21,8 @@ under "Scoring audit needed".
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -62,49 +64,112 @@ class AuditResult:
         return json.dumps(asdict(self), indent=2)
 
 
-# Project anchors mined from verified.json work_history bullets. Detecting
-# these in both the cover's body and the resume's lead bullet lets us flag
-# drift — when the cover centers on Atelier Dacko but the resume's lead
-# role's first bullet is about HubSpot, the artifact pair reads inconsistent
-# to an AI-screener reading both.
-#
-# Anchor design rules:
-# - Each anchor names a distinct verified project, NOT a generic platform.
-#   Bare "Shopify" is intentionally NOT an anchor because both Atelier Dacko
-#   and Vintage Gaming are Shopify projects — using "shopify" alone would
-#   conflate them and create false alignment-flag positives.
-# - Terms inside an anchor must be specific enough to identify ONE verified
-#   project. "atelier dacko", "ring builder", "custom jewellery client" all
-#   identify the same contract; "8-page hubspot", "hubl" identify the AI
-#   agency contract; etc.
-_PROJECT_ANCHORS: tuple[tuple[str, frozenset[str]], ...] = (
-    ("atelier_dacko", frozenset({
-        "atelier dacko", "ring builder", "custom jewelry", "custom jewellery",
-        "jewelry brand", "jewellery brand", "jewellery client", "jewelry client",
-    })),
-    ("vintage_gaming", frozenset({
-        "vintage gaming", "400+ item", "vintage gaming retailer", "gaming catalog",
-    })),
-    ("hubspot", frozenset({
-        "hubspot", "hubl", "8-page hubspot",
-    })),
-    ("ollama", frozenset({
-        "ollama", "local llm", "gpu optimization",
-    })),
-)
+# Project anchors are DERIVED from verified.json at audit time, not hard-coded,
+# so the alignment check works for any candidate's profile. Each work-history
+# role and each project is a "source"; a term (unigram or bigram mined from the
+# employer/name + bullets) anchors a source only when it is DISTINCTIVE, i.e. it
+# appears in exactly one source. This automatically drops shared platforms like
+# "Shopify" (in two roles) and shared tech like "Ollama" (in several projects),
+# enforcing the original rule that an anchor must identify ONE verified project,
+# with no curated term list to maintain.
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+# Generic resume/employer filler that should never become an anchor term even
+# when it lands in a single source. Cross-source words are already dropped by
+# the distinctiveness filter; this list only guards single-source noise.
+_ANCHOR_STOPWORDS: frozenset[str] = frozenset({
+    "built", "build", "maintained", "designed", "shipped", "developed", "created",
+    "page", "pages", "item", "items", "skus", "monthly", "visitors", "serving",
+    "custom", "brand", "agency", "retailer", "confidential", "company", "group",
+    "studio", "solutions", "technologies", "labs", "venue", "venues", "multiple",
+    "toronto", "client", "clients", "project", "projects", "team", "teams",
+    "stack", "developer", "development", "theme", "themes", "module", "modules",
+    "layouts", "storefront", "years", "year", "shopify",
+})
 
 
-def _find_project_anchor(text: str) -> str | None:
-    """Return the first project anchor key found in `text` (case-insensitive).
-    None if no anchor matches. Used by the alignment check."""
-    low = text.lower()
-    for anchor_key, terms in _PROJECT_ANCHORS:
-        if any(term in low for term in terms):
+def _anchor_terms(text: str) -> set[str]:
+    """Mine candidate anchor terms (unigrams >= 4 chars + adjacent bigrams) from
+    one source's text, lowercased and normalized to alnum tokens."""
+    toks = _TOKEN_RE.findall(text.lower())
+    terms: set[str] = set()
+    for tok in toks:
+        if len(tok) >= 4 and not tok.isdigit() and tok not in _ANCHOR_STOPWORDS:
+            terms.add(tok)
+    for a, b in zip(toks, toks[1:], strict=False):
+        if a in _ANCHOR_STOPWORDS and b in _ANCHOR_STOPWORDS:
+            continue
+        if len(a) < 2 or len(b) < 2:
+            continue
+        terms.add(f"{a} {b}")
+    return terms
+
+
+def _anchor_key(name: str) -> str:
+    """Stable, readable key for an anchor source. Prefers a non-generic
+    parenthetical proper name (e.g. 'Atelier Dacko'), else the leading words."""
+    inner_match = re.search(r"\(([^)]+)\)", name)
+    inner = inner_match.group(1) if inner_match else ""
+    base = (
+        inner
+        if inner and inner.lower() not in {"confidential", "nda"}
+        else re.sub(r"\([^)]*\)", "", name)
+    )
+    toks = _TOKEN_RE.findall(base.lower())
+    return "_".join(toks[:3]) or "source"
+
+
+def _derive_project_anchors(
+    verified: dict[str, Any],
+) -> tuple[tuple[str, frozenset[str]], ...]:
+    """Build per-project anchors from verified.json. A term anchors a source
+    only if it is distinctive (document frequency 1 across all sources)."""
+    sources: list[tuple[str, str]] = []
+    for role in verified.get("work_history", []):
+        text = role.get("employer", "") + " " + " ".join(role.get("bullets", []))
+        sources.append((_anchor_key(role.get("employer", "")), text))
+    for proj in verified.get("projects", []):
+        text = " ".join(
+            [
+                proj.get("name", ""),
+                " ".join(proj.get("bullets", [])),
+                " ".join(proj.get("stack", [])),
+            ]
+        )
+        sources.append((_anchor_key(proj.get("name", "")), text))
+
+    per_source = [_anchor_terms(text) for _, text in sources]
+    df: Counter[str] = Counter()
+    for terms in per_source:
+        df.update(terms)
+
+    anchors: list[tuple[str, frozenset[str]]] = []
+    used_keys: set[str] = set()
+    for (key, _), terms in zip(sources, per_source, strict=True):
+        distinctive = frozenset(t for t in terms if df[t] == 1)
+        if distinctive and key not in used_keys:
+            anchors.append((key, distinctive))
+            used_keys.add(key)
+    return tuple(anchors)
+
+
+def _find_project_anchor(
+    text: str, anchors: tuple[tuple[str, frozenset[str]], ...]
+) -> str | None:
+    """Return the first anchor key whose terms appear in `text` (token-boundary,
+    case-insensitive). None if no anchor matches. Used by the alignment check."""
+    low = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
+    for anchor_key, terms in anchors:
+        if any(f" {term} " in low for term in terms):
             return anchor_key
     return None
 
 
-def _alignment_flags(tailored: TailoredResume, cover: CoverLetter) -> list[str]:
+def _alignment_flags(
+    tailored: TailoredResume,
+    cover: CoverLetter,
+    anchors: tuple[tuple[str, frozenset[str]], ...],
+) -> list[str]:
     """Detect resume↔cover project drift.
 
     The cover's middle paragraph(s) typically anchor on one centerpiece
@@ -122,13 +187,13 @@ def _alignment_flags(tailored: TailoredResume, cover: CoverLetter) -> list[str]:
     # Use paragraphs 2+ of the cover (middle/closing) as the cover-side anchor
     # source. The lead paragraph is hook+company-naming, not project-deep.
     cover_mid = "\n\n".join(cover.body[1:]) if len(cover.body) > 1 else cover.body[0]
-    cover_anchor = _find_project_anchor(cover_mid)
+    cover_anchor = _find_project_anchor(cover_mid, anchors)
     if cover_anchor is None:
         return []
     first_role = tailored.roles[0]
     if not first_role.bullets:
         return []
-    resume_lead_anchor = _find_project_anchor(first_role.bullets[0])
+    resume_lead_anchor = _find_project_anchor(first_role.bullets[0], anchors)
     if resume_lead_anchor is None:
         # Resume's lead bullet doesn't name a tracked project; can't compare.
         return []
@@ -299,7 +364,7 @@ def audit(
         cover, verified=verified, company=company, max_words=cover_max_words
     )
 
-    alignment = _alignment_flags(tailored, cover)
+    alignment = _alignment_flags(tailored, cover, _derive_project_anchors(verified))
 
     if fabrication_flags:
         verdict = "block"
