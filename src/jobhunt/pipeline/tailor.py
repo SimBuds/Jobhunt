@@ -128,7 +128,7 @@ async def tailor_resume_with_retry(
     job: Job,
     *,
     max_attempts: int = 3,
-) -> tuple[TailoredResume, list["FabricationViolation"], int]:
+) -> tuple[TailoredResume, list[FabricationViolation], int]:
     """Tailor a resume with deterministic retry on fabrication violations.
 
     Mirrors `pipeline.cover.write_cover_with_retry`. On each attempt:
@@ -147,13 +147,16 @@ async def tailor_resume_with_retry(
     last_violations: list[FabricationViolation] = []
     last_error: FabricationError | None = None
     revisions = ""
+    candidate_name = _verified_candidate_name(cfg)
     for attempt in range(1, attempts + 1):
         try:
             tailored = await _tailor_once(cfg, job, revisions=revisions)
         except FabricationError as e:
             last_violations = list(e.violations)
             last_error = e
-            revisions = _format_tailor_revision_hint(last_violations, attempt)
+            revisions = _format_tailor_revision_hint(
+                last_violations, attempt, candidate_name=candidate_name
+            )
             continue
         return tailored, [], attempt
     # Final attempt failed — re-raise the last error so apply_cmd skips this
@@ -163,14 +166,17 @@ async def tailor_resume_with_retry(
 
 
 def _format_tailor_revision_hint(
-    violations: list["FabricationViolation"], attempt: int
+    violations: list[FabricationViolation],
+    attempt: int,
+    *,
+    candidate_name: str | None = None,
 ) -> str:
     """Build the `{revisions}` block injected at the end of the next attempt's
     user prompt. Names each violation concretely so the model can fix it
     rather than re-guessing. Mirrors `cover._format_revision_hint`."""
     lines = ["", "## Previous attempt was rejected by the fabrication check. Fix these:"]
     for v in violations:
-        lines.append(_violation_hint_line(v))
+        lines.append(_violation_hint_line(v, candidate_name=candidate_name))
     lines.append(
         f"Rewrite the resume from scratch. This is retry {attempt + 1}; "
         "do not reuse skills_categories items, summary phrasing, or role "
@@ -179,7 +185,21 @@ def _format_tailor_revision_hint(
     return "\n".join(lines)
 
 
-def _violation_hint_line(v: "FabricationViolation") -> str:
+def _verified_candidate_name(cfg: Config) -> str | None:
+    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    if not verified_path.is_file():
+        return None
+    try:
+        verified = json.loads(verified_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    name = verified.get("name")
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def _violation_hint_line(
+    v: FabricationViolation, *, candidate_name: str | None = None
+) -> str:
     """One bullet describing how to remediate a single violation. Kind-driven
     so the model gets the right corrective rule, not a generic 'try again'."""
     if v.kind == "unverified-skill":
@@ -202,10 +222,12 @@ def _violation_hint_line(v: "FabricationViolation") -> str:
             "same `employer` and `dates` — no invented roles, no missing ones."
         )
     if v.kind == "summary-seniority":
+        subject = candidate_name or "The candidate"
         return (
             f"- The summary contains seniority token {v.detail!r} that is not "
-            "in verified_facts.summary. Remove the seniority qualifier — "
-            "Casey is an IC engineer; do not prepend Senior/Lead/Staff/etc."
+            "in verified_facts.summary. Remove the seniority qualifier. "
+            f"{subject}'s verified profile does not support prepending "
+            "Senior/Lead/Staff/etc."
         )
     if v.kind == "summary-culinary":
         return (
@@ -676,7 +698,9 @@ class FabricationViolation:
     (skill name, summary token, role tuple repr).
     """
 
-    kind: str   # unverified-skill | familiar-promoted | role-divergence | summary-seniority | summary-culinary
+    # unverified-skill | familiar-promoted | role-divergence |
+    # summary-seniority | summary-culinary
+    kind: str
     detail: str
 
 

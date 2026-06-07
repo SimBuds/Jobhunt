@@ -280,10 +280,14 @@ def test_format_revision_hint_role_divergence() -> None:
 
 def test_format_revision_hint_summary_seniority() -> None:
     hint = _format_tailor_revision_hint(
-        [FabricationViolation("summary-seniority", "senior")], attempt=1
+        [FabricationViolation("summary-seniority", "senior")],
+        attempt=1,
+        candidate_name="Jane Q. Public",
     )
     assert "seniority token" in hint
     assert "'senior'" in hint
+    assert "Jane Q. Public's verified profile" in hint
+    assert "Casey" not in hint
 
 
 # --- backward compatibility ------------------------------------------------
