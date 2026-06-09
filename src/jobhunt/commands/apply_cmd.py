@@ -17,9 +17,9 @@ Per selected job:
 from __future__ import annotations
 
 import asyncio
-import sys
 import re
 import sqlite3
+import sys
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -27,19 +27,21 @@ from pathlib import Path
 import typer
 
 from jobhunt.browser import autofill
+from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
     connect,
     mark_interview_scheduled,
     mark_response_received,
     set_decline_reason,
-    set_outcome as db_set_outcome,
     upsert_application,
     upsert_job,
     write_score,
 )
-from jobhunt.errors import BrowserError, IngestError, JobHuntError, PipelineError
-from jobhunt.ingest.manual import build_job_from_text, fetch_url_as_job, robots_allowed
+from jobhunt.db import (
+    set_outcome as db_set_outcome,
+)
+from jobhunt.errors import BrowserError, JobHuntError, PipelineError
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
@@ -382,50 +384,23 @@ async def _resolve_manual(
 ) -> list[sqlite3.Row]:
     """Build a Job from --url, upsert it, optionally score it, and return a
     row-list matching the shape `_apply_each` expects."""
+    description: str | None = None
     if description_from_stdin:
         assert title and company  # caller validated
-        import sys
         typer.echo("  reading JD body from stdin (Ctrl-D to finish)...")
         description = sys.stdin.read()
-        try:
-            job = build_job_from_text(
-                description=description,
-                title=title,
-                company=company,
-                url=url,
-            )
-        except IngestError as e:
-            typer.echo(f"error: {e}", err=True)
-            raise typer.Exit(code=1) from e
-    else:
-        if not force_robots and not robots_allowed(url, cfg.ingest.user_agent):
-            typer.echo(
-                f"error: robots.txt disallows {url}; re-run with --force-robots to override.",
-                err=True,
-            )
-            raise typer.Exit(code=2)
-        typer.echo("  fetching job page...")
-        try:
-            job = await fetch_url_as_job(
-                url,
-                user_agent=cfg.ingest.user_agent,
-                title_override=title,
-                company_override=company,
-            )
-        except IngestError as e:
-            typer.echo(f"error: {e}", err=True)
-            raise typer.Exit(code=1) from e
-    if not job.title or not job.company:
-        typer.echo(
-            "error: could not auto-detect title/company from the page. "
-            "Re-run with --title and --company.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
+
+    job = await synth_manual_job(
+        cfg,
+        url=url,
+        title=title,
+        company=company,
+        force_robots=force_robots,
+        description=description,
+    )
 
     conn = connect(cfg.paths.db_path)
     try:
-        upsert_job(conn, job)
         if not no_score:
             typer.echo("  scoring...")
             try:
@@ -708,7 +683,7 @@ async def _apply_llm_phase(
     job: Job,
     *,
     verified: dict[str, object],
-    echo: "callable[..., None]" = _default_echo,
+    echo: callable[..., None] = _default_echo,
 ) -> _LLMPhaseResult | None:
     """LLM-bound work for one job: tailor + cover + audit + write artifacts.
 
