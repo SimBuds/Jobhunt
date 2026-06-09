@@ -12,13 +12,15 @@
 # acquire by pasting the URL into `jobhunt add` than by curating here.
 
 greenhouse = [
-    "konradgroup", "appnovation",
-    "clutch", "geotab", "hootsuite", "instacart", "mejuri",
+    "appnovation", "konradgroup", "valtech",
+    "contentful", "storyblok",
+    "instacart", "mejuri", "faire", "ritual", "shakepay",
+    "geotab", "hootsuite", "clutch", "thinkific",
 ]
 lever = ["achievers", "deepgenomics", "knix", "waabi", "wattpad"]
 ashby = [
-    "1password", "clearco", "docebo", "float",
-    "hopper", "loopio", "procurify", "wealthsimple",
+    "1password", "clearco", "docebo", "float", "hopper",
+    "loopio", "procurify", "wealthsimple", "sanity", "klue",
 ]
 smartrecruiters = []
 workday = []

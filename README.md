@@ -62,19 +62,17 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_KEEP_ALIVE=10m"
 Environment="OLLAMA_MAX_LOADED_MODELS=2"
 Environment="OLLAMA_VULKAN=0"
 ```
 
 `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set: context is owned at the app
 level (the gateway's `num_ctx`) so each project sharing this box picks its own
-window. The systemd `OLLAMA_KEEP_ALIVE=-1` matches the per-call `keep_alive=-1`
-the gateway uses. Rationale and tuning notes live in [AGENTS.md](AGENTS.md)
-Hardware context.
+window.
 
 ## Workflows
 
