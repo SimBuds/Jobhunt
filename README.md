@@ -291,7 +291,19 @@ jobhunt interview-prep <job-id> --research --refresh-research   # ignore cached 
 jobhunt interview-prep <job-id> --research --force-robots
 jobhunt interview-prep <job-id> --recruiter-type external_agency   # tune emphasis
 jobhunt interview-prep <job-id> --no-llm               # skeleton-only (debug)
+jobhunt interview-prep --url <jd-url>                  # prep a job not yet in the DB
+jobhunt interview-prep --description-from-stdin --title "Role" --company "Co"
+                                                       # paste the JD body (e.g. a
+                                                       # LinkedIn-found posting)
 ```
+
+For a posting that isn't in your jobs DB yet (e.g. one you found on LinkedIn),
+pass `--url` to fetch the JD, or `--description-from-stdin` to paste the body
+when the page won't render or the source is restricted (requires `--title` and
+`--company`). Either intake synthesizes a `manual:` job, upserts it into the
+same jobs DB, then runs prep, so the posting is tracked alongside ATS-sourced
+jobs. No LinkedIn/Indeed/Glassdoor scraping. paste-the-JD is the sanctioned
+path.
 
 Output: `data/interview-prep/<job-id-safe>.md` (re-runs overwrite). Hybrid
 generation: a deterministic skeleton (header, comp heads-up, pre-call

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -44,9 +45,36 @@ app = typer.Typer(
 
 @app.callback(invoke_without_command=True)
 def run(
-    job_id: str = typer.Argument(
-        ...,
-        help="Job ID (e.g. `manual:89f772b92cf1` or `adzuna_ca:5730918359`).",
+    job_id: str | None = typer.Argument(
+        None,
+        help=(
+            "Job ID (e.g. `manual:89f772b92cf1` or `adzuna_ca:5730918359`). "
+            "Omit when using --url or --description-from-stdin to bring in a "
+            "job that isn't in the DB yet (e.g. a LinkedIn-found posting)."
+        ),
+    ),
+    url: str | None = typer.Option(
+        None,
+        "--url",
+        help=(
+            "Fetch a single JD from this URL, synth a manual: job, then prep "
+            "it. Quote the URL if it contains & characters."
+        ),
+    ),
+    title: str | None = typer.Option(
+        None, "--title", help="Override/supply the job title (with --url or paste)."
+    ),
+    company: str | None = typer.Option(
+        None, "--company", help="Override/supply the company (with --url or paste)."
+    ),
+    description_from_stdin: bool = typer.Option(
+        False,
+        "--description-from-stdin",
+        help=(
+            "Paste the JD body from stdin instead of fetching (use when "
+            "force-robots fails or the source is restricted, e.g. LinkedIn). "
+            "Requires --title and --company."
+        ),
     ),
     stage: str = typer.Option(
         "agency",
@@ -100,6 +128,16 @@ def run(
             err=True,
         )
         raise typer.Exit(code=2)
+
+    job_id = _resolve_job_id(
+        cfg,
+        job_id=job_id,
+        url=url,
+        title=title,
+        company=company,
+        description_from_stdin=description_from_stdin,
+        force_robots=force_robots,
+    )
 
     job_row = _load_job(cfg, job_id)
     audit_summary, cover_summary = _load_application_context(cfg, job_id)
@@ -179,6 +217,72 @@ def run(
 def _normalize_stage(stage: str) -> str:
     """Accept human spellings while storing the prompt-friendly enum."""
     return stage.strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _resolve_job_id(
+    cfg: Config,
+    *,
+    job_id: str | None,
+    url: str | None,
+    title: str | None,
+    company: str | None,
+    description_from_stdin: bool,
+    force_robots: bool,
+) -> str:
+    """Resolve the prep target to a job id present in the DB.
+
+    Three intakes (mutually exclusive with the positional id):
+    - positional `job_id` → must already exist in `jobs` (validated by
+      `_load_job` downstream).
+    - `--url` → fetch + synth a `manual:` job, upsert, return its id.
+    - `--description-from-stdin` → paste the JD body, synth + upsert.
+
+    The synth path reuses `commands._manual_intake.synth_manual_job`, so a
+    manually-found posting (e.g. from LinkedIn) lands in the same jobs DB and
+    shows up in `jobhunt list`.
+    """
+    from jobhunt.commands._manual_intake import synth_manual_job
+
+    intake = bool(url) or description_from_stdin
+    if job_id and intake:
+        typer.echo(
+            "error: pass either a job-id OR --url/--description-from-stdin, "
+            "not both.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if not job_id and not intake:
+        typer.echo(
+            "error: provide a job-id, --url <link>, or --description-from-stdin.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if job_id:
+        return job_id
+
+    description: str | None = None
+    if description_from_stdin:
+        if not title or not company:
+            typer.echo(
+                "error: --description-from-stdin requires --title and --company.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        typer.echo("  reading JD body from stdin (Ctrl-D to finish)...")
+        description = sys.stdin.read()
+
+    job = asyncio.run(
+        synth_manual_job(
+            cfg,
+            url=url,
+            title=title,
+            company=company,
+            force_robots=force_robots,
+            description=description,
+        )
+    )
+    typer.echo(f"  intake: {job.id} ({job.company} — {job.title})")
+    return job.id
 
 
 def _load_job(cfg: Config, job_id: str) -> dict[str, str]:

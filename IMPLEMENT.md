@@ -85,3 +85,35 @@ strategy context.
 **Outcome (2026-06-08):** verified live and added in-lane boards — valtech (126), contentful (51), storyblok (8) on greenhouse; sanity (30) on ashby. Generic-AI shops the verifier surfaced (cohere/harvey/mercor/sentry) deliberately excluded per the action plan's defer-AI-roles rule. `config seed --apply` wrote +5 greenhouse / +1 ashby to live config (backup at config.toml.bak; inline comments dropped on write).
 
 **Status:** [x] done
+
+## Interview-Prep Expansion — "Job Interview Buddy" (2026-06-09)
+
+Plan: `~/.claude/plans/what-are-some-ways-fuzzy-meadow.md`. Expand
+`interview-prep` into the source-of-truth prep surface: flexible intake
+(job-id / URL / pasted JD), its own configurable model slot, an accumulating
+multi-round doc (agency -> company -> company_leader), deeper robots-safe
+research, and tunable prep-only validators. Honesty/no-fabrication stays hard;
+no LinkedIn/Indeed/Glassdoor scraping.
+
+### Phase 1 — Flexible intake (walking skeleton)
+
+**Goal:** `interview-prep` accepts a job-id, `--url`, or pasted JD and produces a prep doc end-to-end.
+
+**Files touched:**
+- src/jobhunt/commands/_manual_intake.py — NEW: `synth_manual_job` (build/fetch + robots-check + upsert), extracted from `apply_cmd._resolve_manual`.
+- src/jobhunt/commands/apply_cmd.py — `_resolve_manual` now delegates synth+upsert to the shared helper; dropped now-unused manual imports.
+- src/jobhunt/commands/interview_prep_cmd.py — `job_id` now optional; added `--url`, `--title`, `--company`, `--description-from-stdin`; new `_resolve_job_id` resolves intake to a DB job id.
+- tests/test_manual_intake.py — NEW: paste happy-path (synth+upsert+commit) + `_resolve_job_id` validation branches.
+- README.md — documented the new intake flags + paste-the-JD guardrail.
+
+**Reuse audit:**
+- Search terms: `grep -n "build_job_from_text\|fetch_url_as_job\|robots_allowed\|upsert_job" src/jobhunt/commands/`.
+- Candidates found: `ingest.manual.{build_job_from_text,fetch_url_as_job,robots_allowed}`, `db.upsert_job`, and the synth+upsert body inside `apply_cmd._resolve_manual`.
+- Why reused: extracted the duplicated synth+upsert into `_manual_intake.synth_manual_job` so apply and prep share one code path rather than duplicating it.
+
+**Verification:**
+- `uv run pytest tests/test_manual_intake.py tests/test_manual_ingest.py tests/test_apply_picks.py -q` — 24 passed.
+- Full suite: 833 passed, 1 pre-existing unrelated failure (`test_parse_docx::test_parse_baseline_round_trip`, github-url prefix; fails on clean HEAD too).
+- Manual E2E: piped a JD to `interview-prep --description-from-stdin --title ... --company ... --no-llm` -> synthesized `manual:51f4076dcb81`, upserted into jobs DB (verified via direct query), wrote the skeleton doc. Smoke row + doc cleaned up.
+
+**Status:** [x] done

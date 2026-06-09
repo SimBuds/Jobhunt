@@ -29,6 +29,7 @@ kb/profile/
 *.pdf
 personal/
 WORK.md
+tailored/
 
 # --- Local runtime state ---
 data/
