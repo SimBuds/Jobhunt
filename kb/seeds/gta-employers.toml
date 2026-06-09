@@ -19,20 +19,26 @@
 # scripts/verify_seeds.py first) as Casey identifies live targets.
 #
 # 2026-06-01: re-expanded for maximum GTA exposure. The earlier prune
-# pre-dated the ingest filters that now neutralize Senior+/Staff noise
-# (include_senior_roles=False senior-title drop + non-engineering-title
-# drop + score-prompt YoE auto-declines), so configuring a board no longer
-# floods the queue with off-target roles — the filters gate them. The boards
-# below were all verified live with ≥1 GTA-eligible posting via
-# scripts/verify_seeds.py on 2026-06-01. Dropped lever/benchsci (404).
+# pre-dated the ingest filters that now neutralize Senior+/Staff noise.
+#
+# 2026-06-08: re-curated toward Casey's specialist lane (E-Commerce /
+# Headless CMS + Solutions/Implementation Engineer). Added live in-lane
+# boards: valtech + appnovation + konradgroup (digital agencies),
+# contentful + storyblok + sanity (headless-CMS vendors). Deliberately did
+# NOT add the live generic-AI shops the verifier surfaced (cohere, harvey,
+# mercor, sentry) — they post Senior/Staff AI roles overwhelmingly and the
+# action plan defers AI-engineer-titled roles. All slugs below re-probed
+# live via scripts/verify_seeds.py on 2026-06-08.
 greenhouse = [
-    "konradgroup", "appnovation",
-    "clutch", "geotab", "hootsuite", "instacart", "mejuri",
+    "appnovation", "konradgroup", "valtech",
+    "contentful", "storyblok",
+    "instacart", "mejuri", "faire", "ritual", "shakepay",
+    "geotab", "hootsuite", "clutch", "thinkific",
 ]
 lever = ["achievers", "deepgenomics", "knix", "waabi", "wattpad"]
 ashby = [
-    "1password", "clearco", "docebo", "float",
-    "hopper", "loopio", "procurify", "wealthsimple",
+    "1password", "clearco", "docebo", "float", "hopper",
+    "loopio", "procurify", "wealthsimple", "sanity", "klue",
 ]
 smartrecruiters = []
 workday = []

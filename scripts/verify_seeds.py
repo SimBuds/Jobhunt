@@ -61,6 +61,18 @@ CANDIDATES: dict[str, list[str]] = {
         "geotab",
         "instacart",
         "mejuri",
+        # In-lane candidates to vet 2026-06-08 (Shopify-agency / headless-CMS /
+        # commerce SaaS — the specialist lane):
+        "rangle",
+        "myplanet",
+        "valtech",
+        "coveo",
+        "contentful",
+        "sanity",
+        "storyblok",
+        "shogun",
+        "nacelle",
+        "swiftype",
     ],
     "lever": [
         # benchsci removed 2026-06-01 — 404 (stale).
@@ -74,6 +86,11 @@ CANDIDATES: dict[str, list[str]] = {
         "knix",
         "waabi",
         "wattpad",
+        # In-lane candidates to vet 2026-06-08:
+        "rangle",
+        "myplanet",
+        "diff",
+        "shopify",
     ],
     "ashby": [
         "cohere",
@@ -90,6 +107,12 @@ CANDIDATES: dict[str, list[str]] = {
         "loopio",
         "procurify",
         "wealthsimple",
+        # In-lane candidates to vet 2026-06-08:
+        "contentful",
+        "sanity",
+        "storyblok",
+        "vercel",
+        "netlify",
     ],
     "smartrecruiters": [
         # Hand-add after `jobhunt discover slugs` confirms — SmartRecruiters

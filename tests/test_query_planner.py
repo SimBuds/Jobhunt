@@ -34,10 +34,12 @@ def test_derive_from_current_baseline() -> None:
     """
     verified = json.loads(VERIFIED_PATH.read_text(encoding="utf-8"))
     qs = derive_adzuna_queries(verified)
-    assert len(qs) <= 10
+    assert len(qs) <= 12
     # Umbrella signals the user explicitly called out.
     for required in (
         "cms developer",
+        "solutions engineer",
+        "implementation specialist",
         "ai engineer",
         "technical seo developer",
         "javascript developer",
@@ -89,6 +91,21 @@ def test_cms_trigger_only_when_skills_cms_present() -> None:
     assert "cms developer" not in qs
     qs = derive_adzuna_queries({"skills_cms": ["Shopify"]})
     assert "cms developer" in qs
+
+
+def test_solutions_eng_queries_gated_on_skills_cms() -> None:
+    """Solutions/Implementation Engineer queries surface only for CMS profiles.
+
+    These cover the second job family in the specialist lane (client-facing
+    solutions/implementation roles). They are gated on skills_cms presence, same
+    as 'cms developer', so a CMS-less profile never sees them.
+    """
+    cms_less = derive_adzuna_queries({"skills_core": ["Java"]})
+    assert "solutions engineer" not in cms_less
+    assert "implementation specialist" not in cms_less
+    with_cms = derive_adzuna_queries({"skills_cms": ["Shopify"]})
+    assert "solutions engineer" in with_cms
+    assert "implementation specialist" in with_cms
 
 
 def test_no_location_suffix_appended() -> None:

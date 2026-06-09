@@ -78,6 +78,13 @@ def _has_seo_signal(verified: dict[str, Any]) -> bool:
 
 _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     (lambda v: bool(v.get("skills_cms")), ["cms developer"]),
+    # CMS / e-commerce implementers are the natural pool for client-facing
+    # Solutions / Implementation Engineer roles — the second job family in the
+    # specialist lane. Gated on skills_cms like the cms-developer trigger, and
+    # placed early so the cap doesn't truncate it. The downstream
+    # non-engineering-title drop + score-prompt YoE auto-declines gate any
+    # pre-sales/SE roles that aren't a fit, so surfacing them is safe.
+    (lambda v: bool(v.get("skills_cms")), ["solutions engineer", "implementation specialist"]),
     (_has_ai_signal,                       ["ai engineer"]),
     # Casey's SEO experience is technical (audits + security hardening), not
     # marketing/content. `seo specialist` returned 5/5 declines on the first
@@ -100,7 +107,7 @@ _BASELINE_QUERIES = ["full stack developer"]
 # queries.
 
 
-def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 10) -> list[str]:
+def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 12) -> list[str]:
     """Walk verified.json skills + bullets, return up to `cap` Adzuna queries.
 
     Order is tuned so the cap doesn't truncate high-signal queries:
@@ -111,7 +118,7 @@ def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 10) -> list[st
       4. Direct skill matches from `skills_familiar` / `skills_data_devops`.
 
     Dedupe is insertion-ordered (case-insensitive); platform-specific
-    queries (wordpress/contentful) may fall off the end at cap=10 but
+    queries (wordpress/contentful) may fall off the end at cap=12 but
     are absorbed by the broader "cms developer".
     """
     out: list[str] = []
