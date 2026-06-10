@@ -33,3 +33,7 @@ tailored/
 
 # --- Local runtime state ---
 data/
+# Personal strategy / application artifacts — local only, never public
+IMPLEMENT.md
+tailored/
+Resume_Tailoring_Instructions.md
