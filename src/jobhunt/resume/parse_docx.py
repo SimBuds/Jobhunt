@@ -391,7 +391,15 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             continue
         if _is_project_header(text):
             name_part, url_part = text.split("|", 1)
-            current_project = Project(name=name_part.strip(), url=url_part.strip())
+            # Project urls keep the docx's visible bare-domain form; the
+            # hyperlink-target substitution upstream may have swapped in a
+            # scheme-prefixed target, so strip the scheme back off here.
+            url = url_part.strip()
+            for scheme in ("https://", "http://"):
+                if url.lower().startswith(scheme):
+                    url = url[len(scheme) :]
+                    break
+            current_project = Project(name=name_part.strip(), url=url)
             projects.append(current_project)
             continue
         # Otherwise a bullet. Orphan bullets before any header are skipped rather

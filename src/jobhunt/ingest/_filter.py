@@ -42,6 +42,29 @@ GTA_CITIES = (
 _NON_CANADA_REMOTE = re.compile(
     r"\b(us(a)?|united states|emea|europe|uk|asia|latam|anywhere)\b", re.IGNORECASE
 )
+# GTA city match, word-boundaried so a city name can't fire inside a longer
+# word. Multi-word entries ("richmond hill") still match as phrases.
+_GTA_CITY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(c) for c in GTA_CITIES) + r")\b"
+)
+# Non-Canada anchor veto for the city branch (June 2026): GTA city names are
+# not globally unique — Cambridge MA, Burlington VT, Richmond Hill NY,
+# Hamilton NZ, Markham IL, Waterloo Belgium, Milton Keynes UK all passed the
+# bare substring match. A GTA city only accepts when no non-Canada anchor
+# appears in the same string. Two tiers: country/region names (sibling of
+# _NON_CANADA_REMOTE, which stays remote-branch-only), and comma-delimited
+# US state codes. "ON" is excluded (Ontario). "CA" is excluded too —
+# aggregators emit "Toronto, CA" meaning the country code, so treating it as
+# California would veto real GTA rows.
+_NON_CANADA_ANCHOR = re.compile(
+    r"\b(?:us(?:a)?|united states|u\.s\.(?:a\.)?|uk|united kingdom|england|"
+    r"scotland|wales|new zealand|australia|belgium|ireland|germany|france|"
+    r"netherlands|emea|europe|asia|latam|milton keynes)\b"
+    r"|,\s*(?:al|ak|az|ar|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|"
+    r"mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|"
+    r"ut|vt|va|wa|wv|wi|wy|dc)\b",
+    re.IGNORECASE,
+)
 # Strong Canada hints — any one of these is sufficient.
 _CANADA_STRONG = re.compile(
     r"\b(?:canada|canadian|ontario|toronto|gta)\b", re.IGNORECASE
@@ -63,8 +86,10 @@ def is_gta_eligible(location: str | None) -> bool:
     if not location:
         return False
     loc = location.lower()
-    if any(city in loc for city in GTA_CITIES):
-        return True
+    if _GTA_CITY_RE.search(loc):
+        # Homonym guard: the city name only counts when nothing in the same
+        # string anchors it outside Canada ("Cambridge, MA" is not ours).
+        return not _NON_CANADA_ANCHOR.search(loc)
     if "remote" not in loc:
         return False
     # Strong Canada hint — accept.

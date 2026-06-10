@@ -130,6 +130,11 @@ def upsert_job(conn: sqlite3.Connection, job: Job) -> bool:
     return inserted
 
 
+def update_job_url(conn: sqlite3.Connection, job_id: str, url: str) -> None:
+    """Persist a resolved/canonical posting URL onto an existing job row."""
+    conn.execute("UPDATE jobs SET url = ? WHERE id = ?", (url, job_id))
+
+
 def unscored_jobs(conn: sqlite3.Connection, limit: int | None = None) -> list[sqlite3.Row]:
     sql = (
         "SELECT j.* FROM jobs j "

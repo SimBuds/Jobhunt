@@ -200,7 +200,9 @@ def test_dedup_key_greenhouse_uses_job_id() -> None:
     from jobhunt.commands.scan_cmd import _dedup_key
 
     job = Job(id="greenhouse:shopify:abc", source="greenhouse", external_id="abc", title="Dev")
-    assert _dedup_key(job) == "greenhouse:shopify:abc"
+    # Direct sources carry their id as identity plus the title:company shadow.
+    assert _dedup_key(job)[0] == "greenhouse:shopify:abc"
+    assert len(_dedup_key(job)) == 2
 
 
 def test_dedup_key_adzuna_normalises() -> None:

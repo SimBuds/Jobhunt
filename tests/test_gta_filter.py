@@ -42,6 +42,20 @@ from jobhunt.ingest._filter import is_gta_eligible
         ("New York, NY", False),
         ("", False),
         (None, False),
+        # June 2026: GTA-homonym cities abroad must not pass via the bare
+        # city-name match — a non-Canada anchor in the same string vetoes.
+        ("Cambridge, MA", False),
+        ("Burlington, VT", False),
+        ("Richmond Hill, NY", False),
+        ("Hamilton, New Zealand", False),
+        ("Markham, IL", False),
+        ("Waterloo, Belgium", False),
+        ("Milton Keynes, UK", False),
+        # Regressions: the real GTA forms still pass under the anchor veto.
+        ("Cambridge, ON", True),
+        ("Hamilton, Ontario", True),
+        ("Toronto, CA", True),  # aggregator country-code form, CA is not California here
+        ("Remote - Canada", True),
     ],
 )
 def test_is_gta_eligible(loc, expected):
