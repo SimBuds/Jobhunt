@@ -1,0 +1,37 @@
+AI Integrations Developer
+Quill & Query Inc.
+
+About the position
+
+Quill & Query builds internal tooling and customer-facing features powered by large language models for mid-size Canadian companies. We are hiring an AI Integrations Developer in Toronto (hybrid) to turn LLM capabilities into reliable product features.
+
+What you will build
+
+- Web applications and internal tools that wrap LLM workflows (TypeScript/JavaScript and Python)
+- Integrations with LLM APIs and local model runtimes (OpenAI-compatible endpoints, Ollama)
+- Prompt pipelines with structured (JSON-schema) outputs, retries, and deterministic validation layers
+- Retrieval features: document ingestion, chunking, embeddings, and search
+- Evaluation harnesses that measure output quality before prompt or model changes ship
+- Browser automation for workflow assistants (Playwright)
+- Dashboards and admin UIs (React)
+
+Requirements
+
+- 2+ years of professional software development in JavaScript/TypeScript or Python
+- Hands-on experience integrating LLM APIs into real applications (not just notebooks)
+- Understanding of prompt design, context-window budgeting, and structured output enforcement
+- Experience with REST APIs, webhooks, and async programming
+- SQL fundamentals (SQLite or Postgres)
+- Git, code review, and CI familiarity
+- Pragmatic quality mindset: tests and deterministic guards over vibes
+
+Nice to have
+
+- Experience running local models (Ollama, llama.cpp) and sizing quantizations to VRAM
+- Experience with agentic patterns: tool use, multi-step workflows, human-in-the-loop design
+- Vector database exposure (pgvector, Qdrant, Chroma)
+- E-commerce or CMS platform experience (Shopify, HubSpot, WordPress)
+
+Offer
+
+$85,000-$105,000 CAD, hybrid Toronto, hardware budget, four weeks vacation.

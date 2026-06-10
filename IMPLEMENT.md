@@ -420,7 +420,23 @@ manual). It mirrors the existing `scripts/bench_models.py` pattern.
 - `uv run python scripts/eval_tailor.py` produces the report against live Ollama (manual)
 - `uv run pytest -q` unaffected (script imports only, no test-time network)
 
-**Status:** [ ] not started
+**Outcome (2026-06-10):** `scripts/eval_tailor.py` added, mirroring the
+bench_models shape: argparse (`--only <stem>`), sequential async runner over
+`tests/fixtures/golden/*.txt`, per-JD row with score (or decline), tailor and
+cover retry attempts, audit coverage pct, verdict, fired validator rule_ids
+(via `cover_validate.categorize_violation`), and wall seconds. Read-only with
+respect to the DB. Six golden fixtures written (line 1 title, line 2 company,
+blank line, body — all bodies > 800 chars so the thin-JD cap never distorts
+the eval): shopify-developer, cms-hubspot-developer, solutions-engineer,
+wordpress-ecommerce, ai-integrations-developer, and the deliberate off-lane
+control offlane-embedded-firmware (senior, 7+ years, C/C++ RTOS — must
+decline at score; a run where it ships is itself a regression). README gained
+a Quality harnesses subsection under For maintainers. Verified: script
+imports cleanly with no network at import, all six fixtures parse, full suite
+861 passed, ruff clean on the script. The live-Ollama run itself is manual by
+design — Casey runs it to capture the first baseline.
+
+**Status:** [x] done
 
 ## Feature: Documentation reconciliation
 
@@ -438,7 +454,18 @@ manual). It mirrors the existing `scripts/bench_models.py` pattern.
 **Verification:**
 - Re-read diff against AGENTS.md statements, no remaining contradictions on redirects, Job Bank, or context ownership
 
-**Status:** [ ] not started (run after C1)
+**Outcome (2026-06-10):** (1) the Adzuna redirect sentence was already
+corrected in C1. (2) The Job Bank bullet now describes the HTML-scrape
+carve-out (RSS dead, robots-clean, crawl-delay honored, does not generalize)
+and points at AGENTS.md rule 1. (3) Spot-check results: the Hardware and
+Models sections were already current (app-owned num_ctx=32768, bare
+qwen3.5:9b, no stale 16384 or OLLAMA_CONTEXT_LENGTH claims), but the Database
+section stopped at migration 0003 — added bullets for 0004 slug_probes, 0005
+response tracking, 0006 recruiter_type rename, 0007 decline_category, 0008
+answers index, each verified against the actual SQL. No remaining
+contradictions found on redirects, Job Bank, or context ownership.
+
+**Status:** [x] done
 
 ## Feature: Claude Code integration (decision gate, no runtime change)
 
@@ -453,7 +480,24 @@ manual). It mirrors the existing `scripts/bench_models.py` pattern.
 
 Decision (2026-06-10): (a) now. Revisit (b) only if D1 evidence shows local tailoring is the bottleneck rather than JD thinness (C2 may close most of the gap on its own).
 
-**Status:** [ ] not started (option a approved 2026-06-10)
+**Outcome (2026-06-10):** `.claude/commands/review-application.md` added.
+Takes a job id, maps it to `data/applications/<safe-id>/` (the `_safe_id`
+underscore transform, verified against live artifact dirs), reads
+tailored-resume.json / cover-letter.md / audit.json / tailor-diff.md plus the
+JD and score rows from the DB and `kb/profile/verified.json`, then critiques
+along four axes: honesty against verified.json (hard constraint, highest
+priority), JD fit and keyword surface forms, cover quality and
+resume-cover anchor alignment, and concrete fixes for each audit violation.
+Output is suggestions-only with quoted current/proposed text, plus an
+explicit "do not do" list for anything that would require fabrication. The
+command instructs the agent never to edit artifacts, re-run the pipeline, or
+add cloud-LLM runtime code — AGENTS.md's local-only runtime rule stands
+unamended, as decided. README documents the command under For maintainers.
+Verified: command file frontmatter + body lint by inspection, artifact
+filenames match `_render_artifacts` output, full suite still 861 passed (no
+code touched).
+
+**Status:** [x] done
 
 ## Execution order
 

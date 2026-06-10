@@ -1,0 +1,37 @@
+CMS Developer (HubSpot)
+Beacon Digital Group
+
+The opportunity
+
+Beacon Digital Group is a Toronto marketing-technology agency. Our development team ships HubSpot CMS sites, landing-page systems, and CRM-integrated tooling for B2B clients. We need a CMS Developer who can take a design system and turn it into clean, maintainable HubL themes and modules.
+
+Responsibilities
+
+- Develop HubSpot CMS themes, templates, and custom modules using HubL, JavaScript, HTML, and CSS
+- Build reusable drag-and-drop modules marketers can safely compose without developer help
+- Integrate HubSpot CRM data into site experiences (smart content, membership, HubDB)
+- Connect HubSpot to external systems via REST APIs, webhooks, and serverless functions
+- Migrate client sites from WordPress and other platforms into HubSpot CMS
+- Implement on-page SEO: structured data, semantic markup, page-speed optimization
+- Set up and maintain forms, workflows, and lifecycle tracking with the marketing team
+- Participate in sprint planning, estimation, and client demos
+
+Requirements
+
+- 2-4 years of web development experience with at least one CMS platform in production (HubSpot, WordPress, Contentful, or similar)
+- Strong HTML, CSS, and JavaScript fundamentals
+- Experience consuming and debugging REST APIs
+- Understanding of responsive design and cross-browser compatibility
+- Experience with Git-based workflows
+- Strong attention to design detail; you can match a Figma file without supervision
+
+Assets
+
+- HubSpot CMS certification or HubSpot developer experience specifically
+- Experience with email template development
+- Familiarity with GA4, Google Tag Manager, and conversion tracking
+- Exposure to TypeScript or a modern framework (React, Vue)
+
+Details
+
+Hybrid in downtown Toronto, $65,000-$85,000 CAD depending on experience, three weeks vacation, benefits from day one.

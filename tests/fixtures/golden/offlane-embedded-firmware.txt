@@ -1,0 +1,36 @@
+Senior Embedded Firmware Engineer
+Kestrel Avionics Systems
+
+Role summary
+
+Kestrel Avionics designs flight-control and sensor systems for unmanned aerial platforms. We are seeking a Senior Embedded Firmware Engineer in Waterloo to own firmware for our next-generation flight controller.
+
+Responsibilities
+
+- Architect, implement, and maintain real-time firmware in C and C++ on ARM Cortex-M microcontrollers
+- Develop and tune RTOS-based task scheduling (FreeRTOS or Zephyr)
+- Write and debug device drivers: SPI, I2C, UART, CAN bus, PWM
+- Implement sensor-fusion pipelines (IMU, barometer, GNSS) with hard real-time constraints
+- Own the bootloader, OTA update path, and flash-memory management
+- Bring up new hardware with the EE team: schematic review, logic analyzers, oscilloscopes
+- Lead DO-178C-aligned documentation and code-review practices; mentor two junior firmware engineers
+- Define the firmware roadmap with the VP of Engineering
+
+Required qualifications
+
+- 7+ years of professional embedded firmware development in C/C++
+- Strong production experience with ARM Cortex-M, RTOS internals, and interrupt-driven design
+- Hands-on hardware bring-up and debugging with JTAG/SWD tooling
+- Deep understanding of memory-constrained, hard real-time systems
+- Experience with safety-critical development processes (DO-178C, ISO 26262, or IEC 61508)
+- Bachelor's degree in Electrical/Computer Engineering or equivalent
+
+Nice to have
+
+- Control-systems theory background (PID, Kalman filtering)
+- Rust on embedded targets
+- Experience managing offshore contractor teams
+
+Compensation
+
+$140,000-$170,000 CAD, on-site in Waterloo (lab access required), relocation support available.

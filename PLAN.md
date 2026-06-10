@@ -83,7 +83,12 @@ All overridable in `~/.config/jobhunt/config.toml`. Per-call override via
   BMO, CIBC, Scotia), telcos (Telus, Bell, Rogers), Manulife, Sun Life,
   Loblaw Digital, Thomson Reuters. Tenants configured explicitly in
   `config.toml` as `tenant:host:site`.
-- **Job Bank Canada** RSS — federal government feed.
+- **Job Bank Canada**: HTML search-results scraper (sanctioned carve-out,
+  2026-06). The public RSS is dead, so the adapter parses the search page.
+  Job Bank is a Government of Canada public job-search service, its
+  robots.txt has no Disallow (only `Crawl-delay: 5`, honored via a dedicated
+  5 s limiter), and this carve-out does not generalize to any other site.
+  See AGENTS.md ingestion rule 1 for the full rationale.
 - **Generic employer career RSS / Atom** — opt-in per employer in
   `config.toml`.
 - **Adzuna CA** — `country=ca&where=Toronto&distance=100`. Aggregates broadly;
@@ -122,6 +127,17 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
   weekly rollups.
 - `0003_outcomes.sql` — adds outcome-tracking columns to `applications` for
   the `config calibrate` interview-rate-by-score-band rollup.
+- `0004_slug_probes.sql` — adds the `slug_probes` cache table (90-day TTL on
+  misses) backing `discover slugs` and scan auto-discovery.
+- `0005_response_tracking.sql` — adds `response_received_at`, `interview_at`,
+  `outcome`, and recruiter columns to `applications` for the
+  `analyze response-rate` and `list --no-reply` surfaces.
+- `0006_recruiter_type.sql` — renames `recruiter_handle` to `recruiter_type`
+  (enum-style: internal_recruiter, hiring_manager, external_agency, unknown).
+- `0007_decline_category.sql` — adds `jobs.decline_category` plus its index
+  for cheap decline-pattern rollups.
+- `0008_answer_index.sql` — adds the `answers` table indexing saved
+  `jobhunt answer` artifacts for `--recall` lookup.
 
 ## Honesty enforcement (the structural part)
 

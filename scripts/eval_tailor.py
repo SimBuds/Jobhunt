@@ -123,7 +123,10 @@ async def main() -> int:
         print(f"… {job.external_id} ({job.title} @ {job.company})", flush=True)
         rows.append(await _run_one(cfg, verified, job))
 
-    header = f"{'fixture':<26} {'score':>5} {'outcome':<13} {'cov%':>4} {'t/c att':>7} {'secs':>4}  detail"
+    header = (
+        f"{'fixture':<26} {'score':>5} {'outcome':<13} {'cov%':>4} "
+        f"{'t/c att':>7} {'secs':>4}  detail"
+    )
     print("\n" + header)
     print("-" * len(header))
     for r in rows:

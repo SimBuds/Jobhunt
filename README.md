@@ -562,6 +562,33 @@ adzuna_app_key = "..."
 
 ## For maintainers
 
+### Quality harnesses
+
+Two manual, live-Ollama scripts live in `scripts/` and stay out of CI.
+`scripts/bench_models.py` compares candidate models head-to-head across the
+LLM task slots. `scripts/eval_tailor.py` runs the production score, tailor,
+cover, and audit pipeline over the fixed golden JD set in
+`tests/fixtures/golden/` and prints per-JD score, retry attempts, audit
+coverage, verdict, and fired validator rule ids. Run it before and after any
+prompt or model change so tailoring quality is measured instead of guessed.
+The `offlane-embedded-firmware` fixture is a control: it should decline at
+the score step, and a run where it ships is itself a regression signal.
+
+```bash
+uv run python scripts/eval_tailor.py                       # full golden set
+uv run python scripts/eval_tailor.py --only shopify-developer
+```
+
+### Claude Code application review
+
+`/review-application <job-id>` (a Claude Code slash command defined in
+`.claude/commands/review-application.md`) reads a drafted application's
+artifacts plus the JD and `verified.json`, and produces a critique with
+concrete edit suggestions you apply by hand. It is tooling-side only. The
+runtime pipeline stays local-Ollama, and the deterministic honesty checks
+remain the gate of record. Suggestions that would require fabrication are
+called out as "do not do".
+
 This repo carries four agent-facing docs. Edit them in this order. They
 cite each other and stay in sync via the cross-tool `AGENTS.md` convention.
 
