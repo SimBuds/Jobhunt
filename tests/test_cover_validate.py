@@ -22,12 +22,12 @@ def verified() -> dict:
         "work_history": [
             {
                 "bullets": [
-                    "Built and maintained a 14+ page Shopify storefront with 200+ product SKUs serving 500+ monthly visitors.",
+                    "Built and maintained a 14+ page Shopify storefront with 200+ product SKUs.",
                     "Cut page load time by 30%.",
                 ]
             }
         ],
-        "summary": "Full-stack developer with 2+ years experience.",
+        "summary": "Full-stack developer with 3+ years experience.",
     }
 
 
@@ -35,8 +35,8 @@ def _good_cover(company: str = "Acme Corp") -> CoverLetter:
     return CoverLetter(
         salutation="Dear Hiring Team,",
         body=[
-            f"I applied to {company} after reading the job description for the Full-Stack Developer role. The emphasis on TypeScript and Shopify maps cleanly onto my contract work over the past two years.",
-            "The centrepiece project is the 14+ page Shopify storefront I built for a custom jewellery client. I migrated them from WordPress across three phases, wrote all the Liquid templates, and integrated Stripe payments — the store now serves 500+ monthly visitors with 200+ SKUs.",
+            f"I applied to {company} after reading the job description for the Full-Stack Developer role. The emphasis on TypeScript and Shopify maps cleanly onto my contract work over the past three years.",
+            "The centrepiece project is the 14+ page Shopify storefront I built for a custom jewellery client. I migrated them from WordPress, wrote all the Liquid templates, and integrated a third-party ring-builder app — the store now carries 200+ SKUs.",
             "A second relevant project: I built a custom HubSpot theme from scratch for an AI agency, cut page load time by 30%, and set up GitHub Actions CI before handing off to their team.",
             "I'd like to talk through how this work fits the role.",
         ],
@@ -67,7 +67,7 @@ def test_form_letter_opener_flagged(verified: dict) -> None:
 
 def test_word_count_exceeded(verified: dict) -> None:
     cover = _good_cover()
-    cover.body[0] = cover.body[0] + (" extra words" * 80)
+    cover.body[0] = cover.body[0] + (" extra words" * 100)
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("words" in v for v in violations)
 
