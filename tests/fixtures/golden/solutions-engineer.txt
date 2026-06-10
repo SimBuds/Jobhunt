@@ -1,0 +1,35 @@
+Solutions Engineer
+Relay Commerce Platform
+
+About us
+
+Relay is a Canadian SaaS company whose platform powers product catalogs, checkout, and order workflows for wholesale brands. Our Solutions Engineering team sits between sales, customers, and product: scoping integrations, building proof-of-concepts, and making technical evaluations succeed.
+
+What you will do
+
+- Partner with account executives on technical discovery calls and demos
+- Build proof-of-concept integrations against the Relay REST and GraphQL APIs
+- Write integration guides, sample code (JavaScript/TypeScript, Python), and Postman collections
+- Debug customer implementations: webhooks, authentication, data mapping, rate limits
+- Translate customer feedback into clear product requirements for engineering
+- Configure sandbox environments and lead hands-on onboarding workshops
+- Respond to RFP technical sections and security questionnaires
+
+What you bring
+
+- 2+ years in a customer-facing technical role (solutions engineering, implementation, support engineering) OR full-stack development experience with strong communication skills
+- Working proficiency in JavaScript or Python; you can write and explain real code, not pseudocode
+- Hands-on experience with REST APIs, webhooks, JSON, and OAuth flows
+- Experience with e-commerce or CRM platforms (Shopify, BigCommerce, HubSpot, Salesforce) is a strong asset
+- Ability to run a technical demo for a mixed technical/business audience
+- Excellent written English; you will write docs customers actually read
+
+Nice to have
+
+- SQL fluency for data-mapping conversations
+- Experience with browser automation or QA tooling
+- Familiarity with AI/LLM-powered features and prompt-based configuration
+
+Logistics
+
+Remote within Canada (EST overlap required). $80,000-$100,000 CAD base plus variable. Travel under 10%.

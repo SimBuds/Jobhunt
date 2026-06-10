@@ -1,0 +1,37 @@
+Web Developer (WordPress / E-Commerce)
+Harbourview Studio
+
+Who we are
+
+Harbourview Studio is a boutique web agency in Mississauga serving retail, hospitality, and professional-services clients across the GTA. We design, build, and maintain WordPress and WooCommerce sites, plus the occasional Shopify build.
+
+The role
+
+- Build custom WordPress themes from scratch (PHP, HTML, CSS, JavaScript) — no page-builder-only work
+- Develop and extend WooCommerce stores: product types, checkout customization, payment and shipping integrations
+- Maintain a portfolio of ~30 client sites: updates, security patches, performance tuning
+- Implement technical SEO improvements and Core Web Vitals fixes
+- Build landing pages and email templates for client campaigns
+- Scope small projects directly with clients and estimate your own work
+- Occasional Shopify theme work (Liquid) for our e-commerce clients
+
+Must have
+
+- 2+ years of professional WordPress development experience
+- Solid PHP fundamentals and comfort reading plugin source code
+- Strong JavaScript, HTML5, and CSS3 skills
+- Experience with WooCommerce or another e-commerce platform in production
+- Experience with responsive design and cross-browser testing
+- Git version control in a team setting
+- Ability to communicate clearly with non-technical clients
+
+Bonus points
+
+- Shopify/Liquid experience
+- Figma-to-code workflow experience
+- Basic Linux server administration (cPanel, nginx)
+- Google Analytics and Search Console experience
+
+Compensation
+
+$60,000-$78,000 CAD, hybrid (Mississauga office 1-2 days/week), benefits after 3 months, profit-share after year one.

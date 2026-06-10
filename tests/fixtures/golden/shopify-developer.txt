@@ -1,0 +1,38 @@
+Shopify Developer
+Northbound Commerce
+
+About the role
+
+Northbound Commerce builds and maintains Shopify and Shopify Plus storefronts for mid-market retail brands across Canada. We are hiring a Shopify Developer to join our Toronto delivery team (hybrid, 2 days/week in office).
+
+What you will do
+
+- Build and customize Shopify themes using Liquid, JavaScript, HTML, and CSS
+- Implement responsive, accessible storefront features from Figma designs
+- Integrate third-party apps and APIs (reviews, subscriptions, shipping, ERP connectors)
+- Use the Shopify Storefront API and Admin API to extend store functionality
+- Optimize storefront performance (Core Web Vitals, image pipelines, script audits)
+- Implement SEO best practices: structured data, metafields, canonical handling
+- Collaborate with designers and project managers in an agile delivery process
+- Maintain version control discipline with Git and participate in code reviews
+
+What we are looking for
+
+- 2+ years of professional experience building Shopify themes in production
+- Strong Liquid templating skills and deep familiarity with theme architecture
+- Solid JavaScript fundamentals (ES6+); experience with React is an asset for embedded app work
+- Experience with HTML/CSS at a pixel-precision level
+- Comfort working with REST APIs and webhooks
+- Experience with performance and SEO optimization on e-commerce storefronts
+- Clear written communication with non-technical clients
+
+Nice to have
+
+- Shopify app development experience (Node.js, Express)
+- Experience with headless storefronts (Hydrogen, Storefront API)
+- Klaviyo, HubSpot, or other marketing platform integrations
+- Google Analytics / GA4 and Search Console fluency
+
+Why Northbound
+
+Salary band $70,000-$90,000 CAD, extended health benefits, education budget. You will own client storefronts end-to-end and see your work ship weekly.
