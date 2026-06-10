@@ -499,6 +499,36 @@ code touched).
 
 **Status:** [x] done
 
+## Profile KB Sync (2026-06-10)
+
+A source-data review of the baseline resume corrected several details (the
+claim-by-claim ledger lives in the private action plan, which is not part of
+this repo). This phase re-syncs the pipeline's source of truth. The profile
+data files themselves (Baseline_Resume.docx, kb/profile/, WORK.md) are
+gitignored by design, so only the test update lands in version control.
+
+### Phase TA1 — Regenerate the profile KB from the corrected baseline resume
+
+**Goal:** Keep tailored output aligned with the corrected baseline-resume source data.
+
+**Files touched:**
+- Baseline_Resume.docx (untracked) — text corrections per the private audit ledger; local backup kept.
+- kb/profile/verified.json + kb/profile/*.md (untracked) — regenerated via `jobhunt convert-resume`, no hand edits.
+- WORK.md (untracked) — synced with the canonical personal copy (project stack/status details, cert validity, baseline/working-copy relationship).
+- tests/test_cover_validate.py — the `_good_cover` fixture cited a figure no longer present in verified.json and `validate_cover` correctly flagged it (the no-fabrication gate working as designed); fixture updated to currently-verified claims only, and the word-count filler bumped 80 → 100 so `test_word_count_exceeded` still clears the 280-word threshold with the shorter fixture body.
+
+**Reuse audit:**
+- Search terms: `grep -rn "convert-resume\|parse_baseline\|write_verified_json" src/`
+- Candidates found: `jobhunt convert-resume` (the canonical docx → verified.json path).
+- Why reused: hand-editing verified.json would desync it from its source docx; all data changes flowed through the existing command.
+
+**Verification:**
+- `uv run pytest -q` — 861 passed, 0 failed.
+- Post-regen spot-assertions on verified.json confirmed every corrected field landed.
+- `derive_adzuna_queries` output unaffected (skills_cms unchanged; solutions-eng queries still emitted).
+
+**Status:** [x] done
+
 ## Execution order
 
 1. A1 (suite green) then A2 (hygiene)
