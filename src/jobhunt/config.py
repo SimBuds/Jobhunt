@@ -92,7 +92,7 @@ class GatewayConfig(BaseModel):
             # Base qwen3.5:9b. The gateway sends its own task prompt (overriding
             # any Modelfile SYSTEM) and its own options (gateway _DEFAULT_OPTIONS),
             # so behavior is fully defined in-repo — no custom Modelfile needed.
-            # The critical app-owned option is num_ctx=16384: these prompts run
+            # The critical app-owned option is num_ctx=32768: these prompts run
             # ~6k+ tokens and Ollama's 4096 default would truncate them into prose
             # (qwen-custom only worked by baking num_ctx). Single hot model across
             # all slots; no intra-scan reload churn. Quality backed by
@@ -108,7 +108,6 @@ class GatewayConfig(BaseModel):
 
 
 class PipelineConfig(BaseModel):
-    score_concurrency: int = 2
     tailor_max_words: int = 700
     cover_max_words: int = 280
     cover_retry_attempts: int = 3

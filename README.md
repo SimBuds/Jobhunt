@@ -231,6 +231,16 @@ After a batch run the tool prints a one-line summary (drafted / revised /
 blocked + top warning categories). `--set-status interviewing` prints a nudge
 pointing at `interview-prep`.
 
+Adzuna rows get two automatic enrichments at apply time. The tracking
+redirect is chased once so the browser and fill-plan land on the employer's
+real posting URL. And when the stored description is a snippet (shorter than
+`[pipeline] thin_jd_chars`), the employer page is fetched for the full JD
+before tailoring, the enriched description is persisted, and the snippet-based
+score is invalidated so the next scan re-scores it. The deep fetch honors
+robots.txt and there is no override on this path (`--force-robots` only
+applies to the explicit `apply --url` fetch). On robots denial or any fetch
+failure the apply continues with the snippet.
+
 ### `answer`
 
 Drafts a response to a free-form application-form question against your verified
@@ -484,7 +494,6 @@ cover  = "qwen3.5:9b"
 embed  = "nomic-embed-text"
 
 [pipeline]
-score_concurrency     = 2
 tailor_max_words      = 700
 cover_max_words       = 280
 cover_retry_attempts  = 3

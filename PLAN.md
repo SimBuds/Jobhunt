@@ -87,9 +87,10 @@ All overridable in `~/.config/jobhunt/config.toml`. Per-call override via
 - **Generic employer career RSS / Atom** — opt-in per employer in
   `config.toml`.
 - **Adzuna CA** — `country=ca&where=Toronto&distance=100`. Aggregates broadly;
-  needs a free API key. `redirect_url` is resolved at ingest time to the
-  employer's actual posting page so apply-time autofill lands on the form,
-  not Adzuna's listing redirect.
+  needs a free API key. `redirect_url` is stored as-is at ingest and resolved
+  at apply time (one chase per application, not per ingested row) to the
+  employer's actual posting page so autofill lands on the form, not Adzuna's
+  listing redirect.
 
 Filter pipeline: each adapter checks `is_gta_eligible(location)` before
 yielding a job. The allowlist covers Toronto + 16 surrounding municipalities

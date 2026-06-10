@@ -513,6 +513,10 @@ async def _ingest_all(
             drop_non_eng = cfg.ingest.drop_non_engineering_titles
             drop_senior = not cfg.applicant.include_senior_roles
             seen_dedup: set[str] = set()
+            # shadow key -> job id, for aggregator rows INSERTED this scan.
+            # A direct-ATS row arriving later with the same shadow replaces
+            # the (unscored — scoring runs after ingest) aggregator copy.
+            agg_shadow: dict[str, str] = {}
             while True:
                 item = await queue.get()
                 if item is None:
@@ -538,13 +542,23 @@ async def _ingest_all(
                 if not is_within_age_window(item.posted_at, max_age_days):
                     filtered["stale"] += 1
                     continue
-                dedup_key = _dedup_key(item)
-                if dedup_key in seen_dedup:
+                skip, stale_agg_id, shadow_claim = _dedup_decision(
+                    item, seen_dedup, agg_shadow
+                )
+                if skip:
                     continue
-                seen_dedup.add(dedup_key)
                 with conn:
+                    if stale_agg_id is not None:
+                        # Direct row supersedes the thinner aggregator copy
+                        # inserted earlier this scan (still unscored).
+                        conn.execute(
+                            "DELETE FROM jobs WHERE id = ?", (stale_agg_id,)
+                        )
+                        inserted -= 1
                     if upsert_job(conn, item):
                         inserted += 1
+                        if shadow_claim is not None:
+                            agg_shadow[shadow_claim] = item.id
             await closer_task
             per_source = [
                 (source, label, results.get((source, label), (0, None))[0],
@@ -557,20 +571,48 @@ async def _ingest_all(
 _DEDUP_RE = __import__("re").compile(r"[^a-z0-9]+")
 
 
-def _dedup_key(job: Job) -> str:
-    """Stable cross-source dedupe key. Same role at the same company from two
-    different sources (e.g. Greenhouse + Adzuna) hashes to the same key so we
-    don't score the same posting twice. Uses already-stored external_id when the
-    source is Greenhouse/Lever/Ashby/SmartRecruiters (unique per company posting),
-    falls back to normalised (title, company) for aggregators like Adzuna/RSS."""
+def _dedup_key(job: Job) -> tuple[str, ...]:
+    """Stable cross-source dedupe keys. Same role at the same company from two
+    different sources (e.g. Greenhouse + Adzuna) shares the normalised
+    (title, company) shadow key so we don't score the same posting twice.
+    Direct ATS sources (Greenhouse/Lever/Ashby/SmartRecruiters/Workday/
+    Workable/Recruitee) return (job.id, shadow): the id is their identity key
+    and the shadow blocks later aggregator copies. Aggregators (Adzuna/RSS/
+    Job Bank) return (shadow,) — the shadow IS their identity, so they drop
+    when any earlier row (direct or aggregator) claimed it."""
+    title_norm = _DEDUP_RE.sub("", (job.title or "").lower())
+    company_norm = _DEDUP_RE.sub("", (job.company or "").lower())
+    shadow = f"{title_norm}:{company_norm}"
     if job.source in {
         "greenhouse", "lever", "ashby", "smartrecruiters", "workday",
         "workable", "recruitee",
     }:
-        return job.id  # already source-specific unique
-    title_norm = _DEDUP_RE.sub("", (job.title or "").lower())
-    company_norm = _DEDUP_RE.sub("", (job.company or "").lower())
-    return f"{title_norm}:{company_norm}"
+        return (job.id, shadow)
+    return (shadow,)
+
+
+def _dedup_decision(
+    job: Job, seen: set[str], agg_shadow: dict[str, str]
+) -> tuple[bool, str | None, str | None]:
+    """Drain-loop dedupe decision. Mutates `seen` (claims this job's keys).
+
+    Returns (skip, stale_aggregator_job_id, shadow_claim):
+    - skip: drop the job — its identity key (keys[0]) was already claimed.
+      A direct row is only blocked by its own id; a shadow claimed earlier
+      never blocks a direct row (direct wins ties, richer JD).
+    - stale_aggregator_job_id: when a direct row's shadow was claimed by an
+      aggregator row inserted earlier this scan, that row's id, so the caller
+      deletes the thinner unscored copy. Cross-scan copies are untouched (B3).
+    - shadow_claim: for aggregator rows, the shadow key the caller records in
+      `agg_shadow` after a successful insert.
+    """
+    keys = _dedup_key(job)
+    if keys[0] in seen:
+        return True, None, None
+    seen.update(keys)
+    if len(keys) == 1:
+        return False, None, keys[0]
+    return False, agg_shadow.pop(keys[1], None), None
 
 
 def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID],

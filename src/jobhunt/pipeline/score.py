@@ -12,11 +12,12 @@ from jobhunt.ingest._filter import is_explicit_junior_title
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
 
-# Cap inputs to keep prompts within the Ollama server's configured context
-# (`OLLAMA_CONTEXT_LENGTH`, currently 16384 tokens). Rule of thumb: ~4 chars/
-# token. Combined desc + policy + verified + prompt bodies should leave
-# headroom for the model's structured-JSON output. If you change the server
-# env, adjust these in step.
+# Cap inputs to keep prompts within the app-owned context window the gateway
+# pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
+# OLLAMA_CONTEXT_LENGTH is deliberately unset on this box). Rule of thumb:
+# ~4 chars/token. Combined desc + policy + verified + prompt bodies should
+# leave headroom for the model's structured-JSON output. If you change the
+# gateway num_ctx, adjust these in step.
 MAX_DESC_CHARS = 16000
 MAX_POLICY_CHARS = 6000
 

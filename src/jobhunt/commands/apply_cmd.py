@@ -21,6 +21,7 @@ import re
 import sqlite3
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from jobhunt.db import (
     mark_interview_scheduled,
     mark_response_received,
     set_decline_reason,
+    update_job_url,
     upsert_application,
     upsert_job,
     write_score,
@@ -42,6 +44,8 @@ from jobhunt.db import (
     set_outcome as db_set_outcome,
 )
 from jobhunt.errors import BrowserError, JobHuntError, PipelineError
+from jobhunt.http import RateLimiter, resolve_redirect, with_client
+from jobhunt.ingest.manual import fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
 from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
@@ -695,6 +699,7 @@ async def _apply_llm_phase(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
+    job = await _deepen_thin_adzuna(cfg, job, echo=echo)
     echo("    … tailoring resume (LLM, ~30–60s)")
     try:
         tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
@@ -770,6 +775,85 @@ async def _apply_llm_phase(
     )
 
 
+async def _deepen_thin_adzuna(
+    cfg: Config,
+    job: Job,
+    *,
+    echo: Callable[..., None] = _default_echo,
+) -> Job:
+    """Pre-tailor enrichment for snippet-length Adzuna rows. The tailor, audit
+    keyword coverage, and cover anchors all degrade on Adzuna's ~500-char
+    snippets, so when the description is under `cfg.pipeline.thin_jd_chars`
+    this resolves the tracking redirect, robots-checks the employer page, and
+    fetches the full JD. The enriched description is persisted and the stale
+    snippet-based score row deleted — prompt_hash is unchanged, so deletion is
+    what makes the next scan re-score against the full JD. Best-effort: robots
+    denial or any fetch failure keeps the snippet and continues the apply."""
+    if job.source != "adzuna_ca" or not job.url:
+        return job
+    if len(job.description or "") >= cfg.pipeline.thin_jd_chars:
+        return job
+    job = await _resolve_adzuna_url(cfg, job)
+    url = job.url
+    assert url is not None  # guarded above; resolve never drops it
+    if not robots_allowed(url, cfg.ingest.user_agent):
+        echo(
+            "    thin JD: robots.txt disallows fetching the employer page; "
+            "keeping the snippet",
+            err=True,
+        )
+        return job
+    echo("    thin JD: fetching full posting from employer page …")
+    try:
+        fetched = await fetch_url_as_job(url, user_agent=cfg.ingest.user_agent)
+    except Exception as e:  # noqa: BLE001 — enrichment must never break apply
+        echo(f"    thin JD: fetch failed ({e}); keeping the snippet", err=True)
+        return job
+    old_len = len(job.description or "")
+    if not fetched.description or len(fetched.description) <= old_len:
+        echo("    thin JD: employer page yielded nothing longer; keeping the snippet")
+        return job
+    conn = connect(cfg.paths.db_path)
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE jobs SET description = ? WHERE id = ?",
+                (fetched.description, job.id),
+            )
+            conn.execute("DELETE FROM scores WHERE job_id = ?", (job.id,))
+    finally:
+        conn.close()
+    echo(
+        f"    thin JD: enriched {old_len} -> {len(fetched.description)} chars; "
+        "snippet-based score invalidated (re-scored on next scan)"
+    )
+    return job.model_copy(update={"description": fetched.description})
+
+
+async def _resolve_adzuna_url(cfg: Config, job: Job) -> Job:
+    """Chase Adzuna's tracking redirect once per application so the browser,
+    fill-plan, and `add` suggestion land on the employer's real posting URL.
+    One HEAD chase per applied job (not per ingested row). Never raises:
+    `resolve_redirect` falls back to the original URL on any error."""
+    if job.source != "adzuna_ca" or not job.url:
+        return job
+    url = job.url
+    final = await with_client(
+        lambda client: resolve_redirect(client, url, RateLimiter(1.0)),
+        user_agent=cfg.ingest.user_agent,
+    )
+    if final == url:
+        return job
+    conn = connect(cfg.paths.db_path)
+    try:
+        with conn:
+            update_job_url(conn, job.id, final)
+    finally:
+        conn.close()
+    typer.echo(f"    resolved adzuna redirect -> {final}")
+    return job.model_copy(update={"url": final})
+
+
 async def _apply_io_phase(
     cfg: Config,
     job: Job,
@@ -779,6 +863,7 @@ async def _apply_io_phase(
 ) -> tuple[str, list[str]]:
     """IO-bound finish for one job: print revise warnings, render docx,
     optional browser autofill, prompt submission status, record."""
+    job = await _resolve_adzuna_url(cfg, job)
     audit_result = phase.audit_result
     if audit_result.verdict == "revise":
         for v in audit_result.cover_letter_violations:
