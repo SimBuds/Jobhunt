@@ -320,6 +320,17 @@ def _verified_numbers(verified: dict[str, Any]) -> set[str]:
     for key in ("certifications", "education", "coursework_baseline"):
         for line in verified.get(key, []):
             blob_parts.append(line)
+    # Personal-project narrative: a cover may cite a number verified in a
+    # project bullet ("10 GB GPU"), mirroring _verified_skill_blob's PB5
+    # projects fold. Without this, every project-sourced number flags as
+    # unverified (8 of 13 revise verdicts in the June 2026 backlog were the
+    # same spurious `unverified number: '10'`).
+    for proj in verified.get("projects", []):
+        blob_parts.append(proj.get("name", ""))
+        for s in proj.get("stack", []):
+            blob_parts.append(s)
+        for b in proj.get("bullets", []):
+            blob_parts.append(b)
     blob = " ".join(blob_parts)
     return set(_DIGIT_CLUSTER_RE.findall(blob))
 
