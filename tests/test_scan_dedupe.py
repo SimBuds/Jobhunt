@@ -99,6 +99,47 @@ def test_distinct_postings_both_kept(conn) -> None:
     assert inserted == 2
 
 
+def test_same_board_double_post_skipped(conn) -> None:
+    # Boards double-post the same role under two posting ids (observed:
+    # Speechify, byte-identical Greenhouse JDs 13 minutes apart). The second
+    # direct copy must skip on the shadow claimed by the first.
+    second = _gh_job().model_copy(
+        update={"id": "greenhouse:acme:43", "external_id": "43"}
+    )
+    inserted = _drain(conn, [_gh_job(), second])
+    rows = [r[0] for r in conn.execute("SELECT id FROM jobs")]
+    assert rows == ["greenhouse:acme:42"]
+    assert inserted == 1
+
+
+def test_cross_board_direct_dup_skipped(conn) -> None:
+    # Same company, same title on two different direct ATS boards — score once.
+    ashby_copy = _gh_job().model_copy(
+        update={
+            "id": "ashby:acme:abc",
+            "source": "ashby",
+            "external_id": "abc",
+            "url": "https://jobs.ashbyhq.com/acme/abc",
+        }
+    )
+    inserted = _drain(conn, [_gh_job(), ashby_copy])
+    rows = [r[0] for r in conn.execute("SELECT id FROM jobs")]
+    assert rows == ["greenhouse:acme:42"]
+    assert inserted == 1
+
+
+def test_aggregator_then_two_directs_one_survives(conn) -> None:
+    # Aggregator copy is superseded by the first direct row; the second
+    # direct copy then skips on the direct-claimed shadow.
+    second = _gh_job().model_copy(
+        update={"id": "greenhouse:acme:43", "external_id": "43"}
+    )
+    inserted = _drain(conn, [_adzuna_job(), _gh_job(), second])
+    rows = [r[0] for r in conn.execute("SELECT id FROM jobs")]
+    assert rows == ["greenhouse:acme:42"]
+    assert inserted == 1
+
+
 def test_preexisting_aggregator_row_not_deleted(conn) -> None:
     # Cross-scan case (B3, deferred): the aggregator row landed in an earlier
     # scan, so this scan's agg_shadow never claims it and the direct row must

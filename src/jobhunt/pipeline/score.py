@@ -172,7 +172,17 @@ def _coerce_score(raw: object, job_id: str) -> int:
 
 
 def _coerce_phrase_list(raw: object) -> list[str]:
-    """Schema says items are strings, but qwen sometimes returns dicts. Coerce defensively."""
+    """Schema says items are strings, but qwen sometimes returns dicts. Coerce defensively.
+
+    The dict key set varies per call (observed live 2026-06-11:
+    ``{"requirement": ..., "match_status": ...}`` on one JD,
+    ``{"tech": ..., "match_type": ...}`` on the next), so after the known-key
+    chain, fall back to the first non-empty string value — JSON object order
+    is preserved by the parser and the phrase leads in every observed shape,
+    with the match-status vocabulary ("exact", "transferable (...)") second.
+    Dropping these items instead used to empty both lists, zero out
+    must_have_count, and let raw long-JD scores bypass the coverage clamp.
+    """
     if not isinstance(raw, list):
         return []
     out: list[str] = []
@@ -186,7 +196,10 @@ def _coerce_phrase_list(raw: object) -> list[str]:
                 or item.get("skill")
                 or item.get("text")
                 or item.get("must_have")
-                or ""
+                or next(
+                    (v for v in item.values() if isinstance(v, str) and v.strip()),
+                    "",
+                )
             )
         else:
             s = str(item) if item is not None else ""

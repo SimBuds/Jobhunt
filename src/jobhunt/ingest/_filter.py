@@ -216,6 +216,12 @@ _NON_ENG_TITLE_RE = re.compile(
     r"|dental\s+(?:hygienist|assistant)"
     r"|medical\s+lab(?:oratory)?\s+technologist|pulmonary\s+function"
     r"|computed\s+tomography|radiologic\s+technologist|mri\s+technologist"
+    # healthcare — research/coordination layer (2026-06-11: UHN leaked 14 of
+    # these past the treatment-profession tier above). Multi-word forms only;
+    # bare `coordinator` stays excluded per the ambiguous-token policy.
+    r"|clinical\s+research|patient\s+(?:flow|care)\s+coordinator"
+    r"|research\s+technician|postdoctoral|interventional\s+radiology"
+    r"|staffing\s+representative|counsell?or\b"
     # security (physical) / retail / service
     r"|security\s+(?:guard|officer)|loss\s+prevention|event\s+security"
     r"|cashier|retail\s+associate|store\s+associate|stocker|delivery\s+driver|courier"

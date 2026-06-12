@@ -1,4 +1,4 @@
-# --- Tooling & editors ---
+# Tooling & editors
 node_modules/
 package-lock.json
 .vscode/
@@ -6,7 +6,7 @@ package-lock.json
 .cursor/
 CLAUDE.md
 
-# --- Python ---
+# Python
 .venv/
 __pycache__/
 *.pyc
@@ -17,13 +17,13 @@ __pycache__/
 dist/
 build/
 
-# --- Secrets (never commit — see AGENTS.md) ---
+# Secrets
 secrets.toml
 *.secret.*
 .env
 .env.*
 
-# --- Personal & PII ---
+# Personal & PII
 kb/profile/
 *.docx
 *.pdf
@@ -31,9 +31,10 @@ personal/
 WORK.md
 tailored/
 
-# --- Local runtime state ---
+# Local Runtime
 data/
-# Personal strategy / application artifacts — local only, never public
+
+# Personal artifacts
 IMPLEMENT.md
 tailored/
 Resume_Tailoring_Instructions.md

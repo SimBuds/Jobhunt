@@ -62,6 +62,37 @@ def test_coerce_score_rejects_unusable_values(raw: Any) -> None:
         _coerce_score(raw, "job:1")
 
 
+def test_coerce_phrase_list_known_keys() -> None:
+    from jobhunt.pipeline.score import _coerce_phrase_list
+
+    assert _coerce_phrase_list(
+        ["React", {"phrase": "Node.js"}, {"skill": "TypeScript"}]
+    ) == ["React", "Node.js", "TypeScript"]
+
+
+def test_coerce_phrase_list_recovers_unknown_dict_keys() -> None:
+    # Live-captured shapes from the 2026-06-11 scan: qwen invents a new key
+    # set per call. The phrase is the first string value; the match-status
+    # vocabulary comes second and must NOT be picked up.
+    from jobhunt.pipeline.score import _coerce_phrase_list
+
+    assert _coerce_phrase_list(
+        [
+            {
+                "requirement": "2-5 years of professional experience",
+                "match_status": "exact",
+            },
+            {"tech": "React", "match_type": "transferable (Vue)"},
+        ]
+    ) == ["2-5 years of professional experience", "React"]
+
+
+def test_coerce_phrase_list_drops_dicts_without_string_values() -> None:
+    from jobhunt.pipeline.score import _coerce_phrase_list
+
+    assert _coerce_phrase_list([{"count": 3}, {}, {"flag": True}]) == []
+
+
 def test_verify_credits_phrases_present_in_profile() -> None:
     matched, gaps = _verify_against_profile(
         ["TypeScript", "React"], ["Vue.js"], VERIFIED_BLOB
