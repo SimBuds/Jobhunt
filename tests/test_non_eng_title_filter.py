@@ -41,6 +41,17 @@ NON_ENG_TITLES = [
     "Technologist Assistant II, Computed Tomography (CT)",
     "Client Care Attendant",
     "SAI Ward Clerk - Temp Full time",
+    # Healthcare research/coordination layer (UHN leak, 2026-06-11 scan).
+    "Patient Flow Coordinator",
+    "Patient Care Coordinator",
+    "Clinical Research Coordinator III (PK)",
+    "Clinical Research Coordinator III (Leukemia/BMT)",
+    "Clinical Research Student (Nursing)",
+    "Research Technician I",
+    "Postdoctoral Researcher",
+    "Supervisor, Interventional Radiology",
+    "Counsellor to Students",
+    "Staffing Representative",
 ]
 
 # Engineering / dev titles that MUST be kept (guard wins).
@@ -60,6 +71,8 @@ ENG_TITLES = [
     # Eng guard must win even when a clinical/healthcare token co-occurs.
     "Healthcare Software Engineer",
     "Clinical Application Developer",
+    "Clinical Research Platform Engineer",
+    "Software Developer, Clinical Research Systems",
     # Real UHN data/eng roles that must survive (no clinical token, or guarded).
     "Bioinformatics Analyst",
     "Machine Learning Specialist",

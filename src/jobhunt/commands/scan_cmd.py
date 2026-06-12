@@ -149,6 +149,8 @@ async def _run(
                     parts.append(f"{filtered['non_eng']} non-engineering-title")
                 if filtered.get("senior"):
                     parts.append(f"{filtered['senior']} senior-title (YoE)")
+                if filtered.get("dup"):
+                    parts.append(f"{filtered['dup']} duplicate")
                 typer.echo(f"ingest: filtered {' + '.join(parts)} job(s)")
 
             if cfg.ingest.auto_discover and not no_discover and inserted:
@@ -508,7 +510,10 @@ async def _ingest_all(
             closer_task = asyncio.create_task(closer())
 
             inserted = 0
-            filtered = {"mgmt": 0, "stale": 0, "research": 0, "senior": 0, "non_eng": 0}
+            filtered = {
+                "mgmt": 0, "stale": 0, "research": 0, "senior": 0,
+                "non_eng": 0, "dup": 0,
+            }
             drop_research = cfg.ingest.drop_research_titles
             drop_non_eng = cfg.ingest.drop_non_engineering_titles
             drop_senior = not cfg.applicant.include_senior_roles
@@ -546,6 +551,7 @@ async def _ingest_all(
                     item, seen_dedup, agg_shadow
                 )
                 if skip:
+                    filtered["dup"] += 1
                     continue
                 with conn:
                     if stale_agg_id is not None:
@@ -597,9 +603,13 @@ def _dedup_decision(
     """Drain-loop dedupe decision. Mutates `seen` (claims this job's keys).
 
     Returns (skip, stale_aggregator_job_id, shadow_claim):
-    - skip: drop the job — its identity key (keys[0]) was already claimed.
-      A direct row is only blocked by its own id; a shadow claimed earlier
-      never blocks a direct row (direct wins ties, richer JD).
+    - skip: drop the job — its identity key (keys[0]) was already claimed, or
+      (direct rows) its shadow was claimed by an earlier *direct* row this
+      scan. Boards double-post the same role under two posting ids (observed:
+      Speechify, two byte-identical Greenhouse JDs 13 minutes apart), so a
+      direct-claimed shadow blocks later direct copies too. A shadow claimed
+      by an aggregator never blocks a direct row (direct wins ties, richer
+      JD — see stale_aggregator_job_id).
     - stale_aggregator_job_id: when a direct row's shadow was claimed by an
       aggregator row inserted earlier this scan, that row's id, so the caller
       deletes the thinner unscored copy. Cross-scan copies are untouched (B3).
@@ -608,6 +618,8 @@ def _dedup_decision(
     """
     keys = _dedup_key(job)
     if keys[0] in seen:
+        return True, None, None
+    if len(keys) == 2 and keys[1] in seen and keys[1] not in agg_shadow:
         return True, None, None
     seen.update(keys)
     if len(keys) == 1:
