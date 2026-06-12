@@ -55,7 +55,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert len(facts.work_history) == 4
 
     employers = {r.employer for r in facts.work_history}
-    assert "Custom Jewelry Brand (Atelier Dacko)" in employers
+    assert "Atelier Dacko, Custom Jewelry Brand" in employers
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
     # Familiar must stay separate. Bucket layout per Resume_Tailoring_Instructions §2:
@@ -73,7 +73,9 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "FastAPI" not in facts.skills_core
 
     # PB3: the PROJECTS narrative section parses into structured projects.
-    assert len(facts.projects) == 4
+    # RR2 (2026-06-11): the two formerly off-resume WORK.md projects (macOS
+    # Ventura on KVM, Hybrid Local+Cloud Coding Agent) joined the baseline.
+    assert len(facts.projects) == 6
     names = [p.name for p in facts.projects]
     assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
     auto = next(p for p in facts.projects if p.name == "Auto-Agent")
@@ -89,7 +91,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     payload = json.loads(out.read_text())
     assert payload["name"] == facts.name
     assert len(payload["work_history"]) == 4
-    assert len(payload["projects"]) == 4
+    assert len(payload["projects"]) == 6
     assert payload["projects"][0]["stack"]  # nested dataclass round-trips
 
     # KB markdown writer leaves five files (projects.md added when projects exist).
@@ -134,6 +136,9 @@ def test_parse_baseline_positioning_and_atomic_skills():
     assert any("Dawn" in b for r in facts.work_history for b in r.bullets)
 
     # The lead role is the JD-aligned specialist title, not "Web Developer".
+    # RR2 (2026-06-11) reconfirmed the specialist positioning after the brief
+    # RR1 de-niche: the niche differentiates against the full-stack flood, and
+    # the tailor re-frames identity per JD anyway.
     assert facts.work_history[0].title.startswith("Shopify / E-Commerce Developer")
 
 

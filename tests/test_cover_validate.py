@@ -465,6 +465,39 @@ _VERIFIED_WITH_PROJECT = {
 }
 
 
+def test_project_sourced_number_allowed() -> None:
+    """SQ5: a number verified only in a projects bullet ("10 GB GPU") is
+    allowed in the cover body — _verified_numbers folds in the projects
+    narrative like _verified_skill_blob does."""
+    verified = dict(_VERIFIED_WITH_PROJECT)
+    verified["projects"] = [
+        {
+            "name": "jobhunt",
+            "url": "github.com/SimBuds/Jobhunt",
+            "stack": ["FastAPI", "Redis", "Ollama"],
+            "bullets": ["Runs a quantized local LLM scorer on a 10 GB GPU."],
+        }
+    ]
+    cover = _good_cover()
+    cover.body[2] = (
+        "My jobhunt CLI keeps structured generation stable on a 10 GB GPU "
+        "using a quantized local model."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert not any("unverified number: '10'" in v for v in violations), violations
+
+
+def test_number_absent_from_projects_still_flagged() -> None:
+    """Control: the projects fold doesn't blanket-allow numbers — a figure
+    found nowhere in verified (including projects) still fires."""
+    cover = _good_cover()
+    cover.body[2] = "My jobhunt CLI processed 77777 postings last month."
+    violations = validate_cover(
+        cover, verified=_VERIFIED_WITH_PROJECT, company="Acme Corp", max_words=280
+    )
+    assert any("77777" in v for v in violations)
+
+
 def test_verified_skill_blob_includes_projects() -> None:
     """PB5: the fabrication blob carries the skills_projects bucket plus the
     projects narrative (name, stack, bullets) so a cover may anchor on one."""

@@ -13,9 +13,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
-*.egg-info/
-dist/
-build/
 
 # Secrets
 secrets.toml
@@ -27,14 +24,12 @@ secrets.toml
 kb/profile/
 *.docx
 *.pdf
-personal/
 WORK.md
-tailored/
-
-# Local Runtime
+Resume_Tailoring_Instructions.md
+Baseline_Resume*
 data/
 
-# Personal artifacts
+# Agents
+AGENTS.md
 IMPLEMENT.md
-tailored/
-Resume_Tailoring_Instructions.md
+PLAN.md
