@@ -5,7 +5,7 @@ ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable,
 Recruitee, Job Bank Canada, generic RSS, Adzuna CA), scoped to GTA +
 100 km and Remote-Canada postings. After each scan, the tool probes public
 ATS APIs for slugs of newly-seen companies and auto-appends hits to
-`config.toml`, so the next scan pulls deep JDs natively, slug curation is
+`config.toml`, so the next scan pulls deep JDs natively and slug curation is
 mostly automatic. Fit-scores them against the parsed baseline resume using local
 Ollama models, drafts a tailored resume and cover letter per role, answers
 free-form application form questions, and assists with form autofill in the
@@ -66,7 +66,7 @@ Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_KEEP_ALIVE=10m"
-Environment="OLLAMA_MAX_LOADED_MODELS=2"
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_VULKAN=0"
 ```
 
@@ -491,6 +491,7 @@ api_key  = "ollama"
 score  = "qwen3.5:9b"
 tailor = "qwen3.5:9b"
 cover  = "qwen3.5:9b"
+answer = "qwen3.5:9b"
 embed  = "nomic-embed-text"
 
 [pipeline]
