@@ -107,8 +107,8 @@ jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 
 `scan`, `list`, `apply`, `answer`, and `analyze` refuse to run until
 `convert-resume` has produced `kb/profile/verified.json`. To start over (drops
-DB, tailored documents, HTTP cache, browser profile, parsed resume):
-`jobhunt db reset` then `jobhunt setup`.
+DB, tailored documents, HTTP cache, interview-prep docs, saved answers,
+browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
 
 ### Daily
 
