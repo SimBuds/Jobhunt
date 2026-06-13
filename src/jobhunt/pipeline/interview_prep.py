@@ -1077,13 +1077,19 @@ def _truncate(s: str, limit: int) -> str:
 
 
 # Match common JD salary patterns. Returns (low, high, currency, unit).
+# Unit accepts "per hour", "an hour", "/hr", "hourly", "annually", etc. —
+# Indeed-style postings write "$18–$19 an hour", not "per hour".
 _SALARY_RE = re.compile(
     r"\$(\d{1,3}(?:[,.]\d{3})*(?:\.\d{1,2})?)\s*[–\-—to]+\s*"
     r"\$?(\d{1,3}(?:[,.]\d{3})*(?:\.\d{1,2})?)\s*"
     r"(USD|CAD)?\s*"
-    r"(?:per\s+)?(hour|hr|year|yr|annum|annually)?",
+    r"(?:per\s+|an?\s+|/\s*)?(hourly|hour|hr|yearly|year|yr|annum|annually)?",
     re.IGNORECASE,
 )
+
+# A pay bound below this can't be an annual salary; treat a unitless match
+# as hourly. Real annual ranges start ~5 digits, hourly rates run 2-3.
+_MAX_PLAUSIBLE_HOURLY = 1000
 
 # Conservative USD→CAD multiplier. Static value is fine here: this is a
 # recruiter-call heads-up, not a contract negotiation.
@@ -1112,9 +1118,11 @@ def extract_comp_section(
         high = float(high_s.replace(",", ""))
     except ValueError:
         return ""
-    currency = (currency or "USD").upper()
-    unit_norm = (unit or "year").lower()
-    is_hourly = unit_norm in {"hour", "hr"}
+    # GTA-scoped tool: an unstated currency is almost always CAD. Defaulting
+    # to USD inflated the CAD estimate by the conversion multiplier.
+    currency = (currency or "CAD").upper()
+    unit_norm = unit.lower() if unit else ("hour" if high < _MAX_PLAUSIBLE_HOURLY else "year")
+    is_hourly = unit_norm in {"hour", "hr", "hourly"}
 
     if is_hourly:
         annual_low = low * _FT_HOURS_PER_YEAR
@@ -1133,17 +1141,67 @@ def extract_comp_section(
     lines = [
         f"- JD range: **${low:,.2f}–${high:,.2f} {currency}/{unit_norm}**",
     ]
-    if is_hourly:
+    if is_hourly and currency == "USD":
         lines.append(
             f"- Annualized FT: ~${annual_low:,.0f}–${annual_high:,.0f} {currency} "
             f"(~${cad_low:,.0f}–${cad_high:,.0f} CAD)"
         )
+    elif is_hourly:
+        lines.append(f"- Annualized FT: ~${cad_low:,.0f}–${cad_high:,.0f} CAD")
     elif currency == "USD":
         lines.append(f"- ~${cad_low:,.0f}–${cad_high:,.0f} CAD")
     lines.append(f"- Your stated range: **{applicant_range_cad}**")
-    lines.append(
-        "- Suggested recruiter phrasing: \"Your range looks in line with what "
-        "I'm looking at. I'd want to confirm contract vs full-time structure "
-        "and benefits before locking a specific number.\""
-    )
+    fit = _range_fit(cad_low, cad_high, applicant_range_cad)
+    if fit == "below":
+        lines.append(
+            "- **Heads-up: the JD range sits below your stated range.** Decide "
+            "before the call whether the role is worth the gap. If comp comes "
+            "up, anchor to your range, not the posting's."
+        )
+    elif fit == "above":
+        lines.append(
+            "- The JD range sits above your stated range. Let them name "
+            "numbers first; don't anchor low."
+        )
+    else:
+        lines.append(
+            "- Suggested recruiter phrasing: \"Your range looks in line with what "
+            "I'm looking at. I'd want to confirm contract vs full-time structure "
+            "and benefits before locking a specific number.\""
+        )
     return "\n".join(lines)
+
+
+# Ordered amount parse for the applicant's free-text range ("60,000 - 90,000",
+# "60k-90k"). `_numbers_from_text` is set-shaped (allowlist use), so it can't
+# supply ordered bounds.
+_AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(k)?", re.IGNORECASE)
+
+
+def _range_fit(
+    jd_cad_low: float, jd_cad_high: float, applicant_range_cad: str
+) -> str | None:
+    """Compare the JD's annualized CAD range to the applicant's stated range.
+
+    Returns "below" (JD tops out under the applicant floor), "above" (JD
+    floor exceeds the applicant ceiling), "overlaps", or None when the
+    applicant text yields no parseable amounts (caller keeps neutral
+    phrasing).
+    """
+    amounts: list[float] = []
+    for num, k_suffix in _AMOUNT_RE.findall(applicant_range_cad):
+        try:
+            value = float(num.replace(",", ""))
+        except ValueError:
+            continue
+        if k_suffix:
+            value *= 1000
+        amounts.append(value)
+    if not amounts:
+        return None
+    app_low, app_high = min(amounts), max(amounts)
+    if jd_cad_high < app_low:
+        return "below"
+    if jd_cad_low > app_high:
+        return "above"
+    return "overlaps"
