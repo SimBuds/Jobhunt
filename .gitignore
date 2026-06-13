@@ -22,13 +22,14 @@ secrets.toml
 
 # Personal & PII
 kb/profile/
+data/
 *.docx
 *.pdf
 WORK.md
 Resume_Tailoring_Instructions.md
-Baseline_Resume*
-data/
-personal/
+Baseline_Resume.docx
+
+Casey_Hsu*
 
 # Agents
 AGENTS.md
