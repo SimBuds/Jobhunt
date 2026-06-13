@@ -796,13 +796,51 @@ def test_skeleton_offline_returns_placeholders() -> None:
 # --- comp section -----------------------------------------------------------
 
 
-def test_comp_section_usd_hourly() -> None:
+def test_comp_section_hourly_defaults_cad() -> None:
     jd = "Compensation: $17.32 – $28.86 per hour."
     out = extract_comp_section(jd, "50,000 - 90,000 CAD")
     assert "17.32" in out
     assert "Annualized FT" in out
     assert "CAD" in out
+    assert "USD" not in out
     assert "50,000 - 90,000 CAD" in out
+
+
+def test_comp_section_an_hour_phrasing() -> None:
+    # Indeed-style: "$18–$19 an hour", no currency. Must parse hourly CAD,
+    # not USD/year (the Urban Customz misparse, 2026-06-12).
+    jd = "Pay: $18.00-$19.00 an hour. Job Type: Full-time."
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "CAD/hour" in out
+    assert "USD" not in out
+    assert "/year" not in out
+    # 18*2080=37,440 and 19*2080=39,520 annualized, no 1.37x inflation.
+    assert "37,440" in out
+    assert "39,520" in out
+
+
+def test_comp_section_unitless_low_numbers_infer_hourly() -> None:
+    jd = "Rate: $30 - $35"
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "CAD/hour" in out
+    assert "62,400" in out  # 30 * 2080
+
+
+def test_comp_section_unitless_large_numbers_stay_annual() -> None:
+    jd = "Salary: $90,000 - $110,000"
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "CAD/year" in out
+    assert "Annualized FT" not in out
+
+
+def test_comp_section_usd_hourly_keeps_conversion() -> None:
+    jd = "Compensation: $40 - $50 USD per hour."
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "USD/hour" in out
+    assert "Annualized FT" in out
+    # 40*2080=83,200 USD → 113,984 CAD at 1.37.
+    assert "83,200" in out
+    assert "113,984" in out
 
 
 def test_comp_section_usd_annual() -> None:
@@ -810,6 +848,40 @@ def test_comp_section_usd_annual() -> None:
     out = extract_comp_section(jd, "50,000 - 90,000 CAD")
     assert "80,000" in out
     assert "CAD" in out
+
+
+def test_comp_section_below_range_warns() -> None:
+    # The Urban Customz case: $18-19/hr CAD annualizes to ~$37k-$40k, half
+    # the applicant floor. Must warn, never say "in line".
+    jd = "Pay: $18.00-$19.00 an hour."
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "below your stated range" in out
+    assert "in line" not in out
+
+
+def test_comp_section_overlap_keeps_in_line_phrasing() -> None:
+    jd = "Salary: $70,000 - $85,000 CAD per year."
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "Your range looks in line" in out
+
+
+def test_comp_section_above_range() -> None:
+    jd = "Salary: $120,000 - $150,000 CAD per year."
+    out = extract_comp_section(jd, "60,000 - 90,000")
+    assert "above your stated range" in out
+    assert "in line" not in out
+
+
+def test_comp_section_k_suffix_applicant_range() -> None:
+    jd = "Pay: $18.00-$19.00 an hour."
+    out = extract_comp_section(jd, "60k-90k CAD")
+    assert "below your stated range" in out
+
+
+def test_comp_section_unparseable_applicant_range_stays_neutral() -> None:
+    jd = "Pay: $18.00-$19.00 an hour."
+    out = extract_comp_section(jd, "negotiable")
+    assert "Your range looks in line" in out
 
 
 def test_comp_section_empty_on_no_match() -> None:
