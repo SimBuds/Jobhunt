@@ -7,10 +7,32 @@ from pathlib import Path
 
 import typer
 
-from jobhunt.config import load_config
+from jobhunt.config import Config, load_config
 from jobhunt.db import connect, migrate
 
 app = typer.Typer(help="Database management.", no_args_is_help=True)
+
+
+def _reset_targets(cfg: Config) -> list[Path]:
+    """Paths `reset` removes: DB (+WAL siblings), tailored docs, HTTP cache,
+    interview-prep docs, standalone answers, browser profile, parsed resume.
+
+    Job-scoped answers (`data/applications/<id>/answers/`) ride along with the
+    `applications` dir, so only the top-level `answers/` dir is listed.
+    """
+    db_path = Path(cfg.paths.db_path)
+    data_dir = Path(cfg.paths.data_dir)
+    return [
+        db_path,
+        db_path.with_suffix(db_path.suffix + "-shm"),
+        db_path.with_suffix(db_path.suffix + "-wal"),
+        data_dir / "applications",
+        data_dir / "cache",
+        data_dir / "interview-prep",
+        data_dir / "answers",
+        Path(cfg.browser.user_data_dir),
+        cfg.paths.kb_dir / "profile",
+    ]
 
 
 @app.command("init")
@@ -46,26 +68,17 @@ def migrate_cmd() -> None:
 def reset(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt."),
 ) -> None:
-    """Wipe DB, tailored docs, HTTP cache, browser profile, and parsed resume,
-    then re-init the database.
+    """Wipe DB, tailored docs, HTTP cache, interview-prep docs, saved answers,
+    browser profile, and parsed resume, then re-init the database.
 
     Removes data/jobhunt.db (+WAL siblings), data/applications/, data/cache/,
-    the Playwright user_data_dir, and kb/profile/ (the convert-resume output).
-    Re-runs all migrations so the database is left ready to scan, then reminds
-    the user to re-run `convert-resume` before scanning.
+    data/interview-prep/, data/answers/, the Playwright user_data_dir, and
+    kb/profile/ (the convert-resume output). Re-runs all migrations so the
+    database is left ready to scan, then reminds the user to re-run
+    `convert-resume` before scanning.
     """
     cfg = load_config()
-    db_path = Path(cfg.paths.db_path)
-    data_dir = Path(cfg.paths.data_dir)
-    targets: list[Path] = [
-        db_path,
-        db_path.with_suffix(db_path.suffix + "-shm"),
-        db_path.with_suffix(db_path.suffix + "-wal"),
-        data_dir / "applications",
-        data_dir / "cache",
-        Path(cfg.browser.user_data_dir),
-        cfg.paths.kb_dir / "profile",
-    ]
+    targets = _reset_targets(cfg)
 
     existing = [p for p in targets if p.exists()]
     if not existing:
