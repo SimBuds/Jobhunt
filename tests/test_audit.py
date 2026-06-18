@@ -34,7 +34,7 @@ def verified() -> dict:
             {
                 "employer": "Custom Jewelry Brand (NDA)",
                 "dates": "2023 – Present",
-                "bullets": ["Built 14+ page Shopify storefront with 200+ SKUs serving 500+ monthly visitors."],
+                "bullets": ["Built 16+ page Shopify storefront on a customized Dawn 2.0 theme."],
             },
             {
                 "employer": "AI Agency (NDA)",
@@ -102,7 +102,7 @@ def _good_cover(company: str = "Acme Corp") -> CoverLetter:
         salutation="Dear Hiring Team,",
         body=[
             f"I applied to {company} after reading about the TypeScript and React role. The Shopify angle matches my contract work closely.",
-            "The centrepiece project is the 14+ page Shopify storefront I built and maintained for a custom jewellery client over 2+ years.",
+            "The centrepiece project is the 16+ page Shopify storefront I built and maintained for a custom jewellery client over 2+ years.",
             "At an AI agency I built a HubSpot theme from scratch and cut page load time by 30%, setting up GitHub Actions CI before handoff.",
             "Happy to discuss further.",
         ],
@@ -179,7 +179,7 @@ def test_audit_ship(verified: dict) -> None:
 
 def test_audit_revise_on_borderline_coverage(verified: dict) -> None:
     # 3 of 5 must-haves matched (60%) — below soft 70 floor, above hard 50 floor → revise.
-    score_borderline = _score(must_haves=["TypeScript", "React", "Node.js", "Terraform", "Go"])
+    score_borderline = _score(must_haves=["TypeScript", "React", "Node.js", "Terraform", "Scala"])
     result = audit(
         tailored=_minimal_tailored(verified),
         cover=_good_cover(),
@@ -213,7 +213,7 @@ def test_audit_block_on_below_hard_floor_coverage(verified: dict) -> None:
 def test_audit_block_on_zero_coverage(verified: dict) -> None:
     # 0 of 5 must-haves matched (0%) — the OCR/Tesseract/Airflow case from
     # the 2026-05-27 audit. Tailor can't fabricate, screen will toss it.
-    score_zero = _score(must_haves=["Tesseract", "Airflow", "Temporal", "Go", "Rust"])
+    score_zero = _score(must_haves=["Tesseract", "Airflow", "Temporal", "Scala", "Rust"])
     result = audit(
         tailored=_minimal_tailored(verified),
         cover=_good_cover(),

@@ -22,7 +22,7 @@ def verified() -> dict:
         "work_history": [
             {
                 "bullets": [
-                    "Built and maintained a 14+ page Shopify storefront with 200+ product SKUs.",
+                    "Built and maintained a 16+ page Shopify storefront on a customized Dawn 2.0 theme.",
                     "Cut page load time by 30%.",
                 ]
             }
@@ -36,7 +36,7 @@ def _good_cover(company: str = "Acme Corp") -> CoverLetter:
         salutation="Dear Hiring Team,",
         body=[
             f"I applied to {company} after reading the job description for the Full-Stack Developer role. The emphasis on TypeScript and Shopify maps cleanly onto my contract work over the past three years.",
-            "The centrepiece project is the 14+ page Shopify storefront I built for a custom jewellery client. I migrated them from WordPress, wrote all the Liquid templates, and integrated a third-party ring-builder app — the store now carries 200+ SKUs.",
+            "The centrepiece project is the 16+ page Shopify storefront I built for a custom jewellery client. I migrated them from WordPress and wrote all the Liquid templates.",
             "A second relevant project: I built a custom HubSpot theme from scratch for an AI agency, cut page load time by 30%, and set up GitHub Actions CI before handing off to their team.",
             "I'd like to talk through how this work fits the role.",
         ],
