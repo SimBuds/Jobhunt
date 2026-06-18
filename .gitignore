@@ -1,24 +1,9 @@
-# Tooling & editors
-node_modules/
-package-lock.json
-.vscode/
-.claude/
-.cursor/
-CLAUDE.md
-
 # Python
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 .venv/
 __pycache__/
-*.pyc
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-
-# Secrets
-secrets.toml
-*.secret.*
-.env
-.env.*
 
 # Personal & PII
 kb/profile/
@@ -28,10 +13,3 @@ data/
 WORK.md
 Resume_Tailoring_Instructions.md
 Baseline_Resume.docx
-
-Casey_Hsu*
-
-# Agents
-AGENTS.md
-IMPLEMENT.md
-PLAN.md

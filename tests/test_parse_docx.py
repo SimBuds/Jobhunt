@@ -73,9 +73,11 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "FastAPI" not in facts.skills_core
 
     # PB3: the PROJECTS narrative section parses into structured projects.
-    # RR2 (2026-06-11): the two formerly off-resume WORK.md projects (macOS
-    # Ventura on KVM, Hybrid Local+Cloud Coding Agent) joined the baseline.
-    assert len(facts.projects) == 6
+    # 2026-06-18: the baseline carries TWO projects (Jobhunt, Auto-Agent), both
+    # at least beta. AI Context Stack + SEO-LLM (in-progress) and macOS Ventura
+    # on KVM + the Hybrid coding agent are long-form-only in WORK.md, off the
+    # baseline.
+    assert len(facts.projects) == 2
     names = [p.name for p in facts.projects]
     assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
     auto = next(p for p in facts.projects if p.name == "Auto-Agent")
@@ -91,7 +93,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     payload = json.loads(out.read_text())
     assert payload["name"] == facts.name
     assert len(payload["work_history"]) == 4
-    assert len(payload["projects"]) == 6
+    assert len(payload["projects"]) == 2
     assert payload["projects"][0]["stack"]  # nested dataclass round-trips
 
     # KB markdown writer leaves five files (projects.md added when projects exist).
@@ -113,7 +115,8 @@ def test_parse_baseline_positioning_and_atomic_skills():
     moved, so a future re-parse can't silently regress them:
     - skills_ai stays ATOMIC and paren-aware (retires PLAN.md's stale "skills_ai
       produces a run-on, patch by hand" caveat).
-    - Figma is Core (promoted from Familiar after the verified Atelier work).
+    - Figma is Familiar (2026-06-18 decision): Casey builds from Figma handoffs,
+      he does not author designs in it, so it is not promoted to Core.
     - "Dawn" survives the parse (it lives in the Atelier bullet, not the skills
       line).
     - The lead role carries the JD-aligned retitle, not the old generic title.
@@ -128,18 +131,16 @@ def test_parse_baseline_positioning_and_atomic_skills():
     for item in facts.skills_ai:
         assert item.count("(") == item.count(")"), f"unbalanced parens: {item!r}"
 
-    # Figma promoted to Core, and not left in Familiar.
-    assert "Figma" in facts.skills_core
-    assert "Figma" not in facts.skills_familiar
+    # Figma is Familiar (2026-06-18 decision), not promoted to Core.
+    assert "Figma" in facts.skills_familiar
+    assert "Figma" not in facts.skills_core
 
     # Dawn is captured somewhere in the verified facts (it lives in a bullet).
     assert any("Dawn" in b for r in facts.work_history for b in r.bullets)
 
-    # The lead role is the JD-aligned specialist title, not "Web Developer".
-    # RR2 (2026-06-11) reconfirmed the specialist positioning after the brief
-    # RR1 de-niche: the niche differentiates against the full-stack flood, and
-    # the tailor re-frames identity per JD anyway.
-    assert facts.work_history[0].title.startswith("Shopify / E-Commerce Developer")
+    # The lead role is the confirmed CMS-focused specialist title, not
+    # "Web Developer" or a generic full-stack label.
+    assert facts.work_history[0].title.startswith("CMS / E-Commerce Developer")
 
 
 def test_parse_warns_on_unknown_skill_label(tmp_path: Path):

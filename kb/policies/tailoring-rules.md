@@ -74,14 +74,16 @@ If any of the following hold, mark the job `decline_reason` and skip:
 ## AI/LLM differentiator (§6, May 2026)
 
 When the JD mentions AI, LLM, RAG, generative AI, prompt engineering, ML, or
-"modern tooling" anywhere — even as a "nice to have":
+"modern tooling" anywhere, even as a "nice to have":
 
+- Casey's baseline identity is CMS Developer. AI tooling is a supporting
+  side-project and interest signal by default, not the headline identity.
 - The **resume summary**'s first or second sentence MUST surface Casey's
   Ollama / local LLM / prompt-engineering work using the literal tokens
-  "AI" and "LLM" so ATS keyword matchers latch on.
+  "AI" and "LLM" for AI-adjacent roles so ATS keyword matchers latch on.
 - At least one bullet in the most recent role MUST reference the AI/LLM
-  tooling work concretely.
+  tooling work concretely when the JD asks for it.
 - The **cover-letter lead paragraph** MUST surface Ollama / local LLM /
-  GPU-tuning in the hook sentence — not paragraph 3. AI-screener
-  summarizers in 2026 pull the lead first; this is Casey's strongest
-  differentiator and burying it costs the application.
+  GPU-tuning in the hook sentence, not paragraph 3. AI-screener
+  summarizers in 2026 pull the lead first. This is a strong differentiator
+  for AI-adjacent roles and burying it costs the application.
