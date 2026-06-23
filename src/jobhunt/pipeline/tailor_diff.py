@@ -19,7 +19,7 @@ from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume
 
 _VERIFIED_BUCKETS = (
     ("skills_core", "Core"),
-    ("skills_cms", "CMS & E-Commerce"),
+    ("skills_cms", "CMS & E-commerce"),
     ("skills_data_devops", "Data & DevOps"),
     ("skills_ai", "AI & Tooling"),
     ("skills_familiar", "Familiar"),

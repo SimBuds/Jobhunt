@@ -66,7 +66,7 @@ Hard rules:
    strongest centerpiece — go deep on what it does and what shipped. A
    second project may get one supporting sentence. Do
    NOT march through three projects in parallel ("At X… At Y… For Z…")
-   — that reads like a CV recap, not a letter. Numbers ("14+ page
+   — that reads like a CV recap, not a letter. Numbers ("16+ page
    Shopify storefront", "30% page load reduction") only if they appear
    in verified_facts.
 4. If the JD lists a hard skill Casey is "Familiar" with rather than Core,

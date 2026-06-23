@@ -98,10 +98,10 @@ Hard rules:
    tokens "Ollama" or "LLM". This is Casey's strongest 2026 differentiator.
 
 4. **Concrete project nouns.** Anchors and beats should cite real items from
-   work history: Atelier Dacko (Shopify storefront, ring builder app, Stripe
-   payments, 14+ pages, 200+ SKUs), AI Agency (HubSpot theme, HubL, GitHub
+   work history: Atelier Dacko (Shopify storefront, WordPress-to-Shopify
+   migration, ring builder app (in progress), 16+ pages), AI Agency (HubSpot theme, HubL, GitHub
    Actions CI, 30% page-load reduction), Vintage Gaming Retailer (Shopify
-   catalog, 400+ items, bulk JSON migrations), Multiple Venues (nine years
+   catalog, 400+ items, CSV inventory exports), Multiple Venues (ten years
    culinary leadership of teams 5–20). Use real numbers from `verified_facts`;
    never invent new metrics.
 
@@ -119,7 +119,7 @@ Hard rules:
    built automated content upload systems" in any reframe bullet unless
    that phrase exists in verified_facts. Use narrower verified bridges
    such as Shopify Liquid templates, HubSpot HubL modules, GitHub Actions
-   linting, bulk JSON migrations, API integrations, or Ollama/local-LLM
+   linting, CSV inventory exports, API integrations, or Ollama/local-LLM
    workflow only when those facts appear in verified_facts. This same
    restriction applies to every bullet inside `likely_questions[].beats`
    and to `strongest_anchors`: do not write "zero errors", "replace
@@ -194,7 +194,7 @@ Cover-letter draft (anchors already chosen): {cover_summary}
   **3-5 talking-point bullets**, each ≤ 25 words. Bullets are stand-alone
   talking points — Casey reads one bullet and has enough to speak for 15-30
   seconds. Bullet 1 leads with the real project name (e.g. "Atelier Dacko
-  Shopify storefront — 14+ pages, 200+ SKUs"). Bullets 2-N add specifics
+  Shopify storefront — 16+ pages"). Bullets 2-N add specifics
   drawn from `verified_facts` (tools used, real numbers, follow-up framing,
   adjacent project the question might pivot to). Each bullet must
   independently stand up to the honesty validator — no shared verb

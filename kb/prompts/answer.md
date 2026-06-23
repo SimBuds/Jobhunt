@@ -33,11 +33,11 @@ Hard rules:
    Casey's strongest 2026 differentiator.
 
 3. **Concrete project nouns.** Cite specific items from work history when
-   relevant: Atelier Dacko (Shopify storefront, ring builder, Stripe
-   payments, 14+ pages, 200+ SKUs), AI Agency (HubSpot theme, HubL,
+   relevant: Atelier Dacko (Shopify storefront, WordPress-to-Shopify
+   migration, ring builder (in progress), 16+ pages), AI Agency (HubSpot theme, HubL,
    GitHub Actions CI, 30% page-load reduction), Vintage Gaming Retailer
-   (Shopify catalog, 400+ items, bulk JSON migrations), Multiple Venues
-   (nine years culinary leadership of teams 5–20). Use real numbers from
+   (Shopify catalog, 400+ items, CSV inventory exports), Multiple Venues
+   (ten years culinary leadership of teams 5–20). Use real numbers from
    `verified_facts`; never invent new metrics.
 
 4. **Honesty on gaps.** When the question asks about a tech Casey doesn't

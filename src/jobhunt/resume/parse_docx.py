@@ -127,9 +127,9 @@ _SKILL_LABEL_ALIASES: dict[str, str] = {
     "devops": "Data & DevOps",
     "infrastructure": "Data & DevOps",
     "cloud": "Data & DevOps",
-    "cms": "CMS & E-Commerce",
-    "e-commerce": "CMS & E-Commerce",
-    "ecommerce": "CMS & E-Commerce",
+    "cms": "CMS & E-commerce",
+    "e-commerce": "CMS & E-commerce",
+    "ecommerce": "CMS & E-commerce",
     "ai": "AI & Tooling",
     "ml": "AI & Tooling",
     "ai & ml": "AI & Tooling",
@@ -302,7 +302,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
 
     skill_buckets: dict[str, list[str]] = {
         "Core": [],
-        "CMS & E-Commerce": [],
+        "CMS & E-commerce": [],
         "Data & DevOps": [],
         "AI & Tooling": [],
         "Project Stack": [],
@@ -415,7 +415,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
         contact_line=contact_line,
         summary=summary,
         skills_core=skill_buckets["Core"],
-        skills_cms=skill_buckets["CMS & E-Commerce"],
+        skills_cms=skill_buckets["CMS & E-commerce"],
         skills_data_devops=skill_buckets["Data & DevOps"],
         skills_ai=skill_buckets["AI & Tooling"],
         skills_projects=skill_buckets["Project Stack"],
@@ -459,7 +459,7 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
         "skill into a Core category. See `kb/policies/tailoring-rules.md`.\n\n"
         "## Core\n\n"
         f"{_md_bullets(facts.skills_core)}\n"
-        "## CMS & E-Commerce\n\n"
+        "## CMS & E-commerce\n\n"
         f"{_md_bullets(facts.skills_cms)}\n"
         "## Data & DevOps\n\n"
         f"{_md_bullets(facts.skills_data_devops)}\n"

@@ -46,7 +46,7 @@ def build() -> Path:
 
     cats = [
         TailoredCategory("Core", list(v.get("skills_core") or [])),
-        TailoredCategory("CMS & E-Commerce", list(v.get("skills_cms") or [])),
+        TailoredCategory("CMS & E-commerce", list(v.get("skills_cms") or [])),
         TailoredCategory("Data & DevOps", list(v.get("skills_data_devops") or [])),
         TailoredCategory(
             "AI & Tooling",

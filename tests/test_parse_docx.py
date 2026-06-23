@@ -140,7 +140,7 @@ def test_parse_baseline_positioning_and_atomic_skills():
 
     # The lead role is the confirmed CMS-focused specialist title, not
     # "Web Developer" or a generic full-stack label.
-    assert facts.work_history[0].title.startswith("CMS / E-Commerce Developer")
+    assert facts.work_history[0].title.startswith("CMS / E-commerce Developer")
 
 
 def test_parse_warns_on_unknown_skill_label(tmp_path: Path):
