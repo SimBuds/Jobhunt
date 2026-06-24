@@ -1,4 +1,4 @@
-"""Typer entry point. Four user-facing commands; db/config are hidden internals."""
+"""Typer entry point for the visible CLI. db/config are hidden internals."""
 
 from __future__ import annotations
 

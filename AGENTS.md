@@ -164,6 +164,10 @@ than working around it.
 - `PLAN.md` — pillar 2: design rationale. The *why* decisions were made.
 - `README.md` — pillar 3: install + usage for developers running the app locally.
 - `IMPLEMENT.md` — pillar 4: the execution engine. Phase-by-phase task breakdown, progress checkboxes, current state.
+  When the user approves work as complete, clean `IMPLEMENT.md` back to the
+  skeleton only. Durable decisions and facts discovered during the work must be
+  reflected in the appropriate source docs before cleanup. Do not leave
+  completed phase logs in `IMPLEMENT.md`.
 - `Resume_Tailoring_Instructions.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is maintained.
 - `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never hand-add unverified entries.
@@ -330,10 +334,14 @@ jobhunt interview-prep <id> [--stage agency|hiring_manager|assessment] [--resear
                             [--refresh-research]
                             [--recruiter-type internal_recruiter|hiring_manager|external_agency|unknown]
                              # hybrid prep doc: deterministic skeleton + LLM middle
-jobhunt list [--week N] [--verdict ship|revise|block] [--no-reply]
-             [--older-than 14d|2w]
-                             # pipeline view + weekly rollup. `--verdict`
-                             # filters by audit verdict (reads audit.json).
+jobhunt list [--applied] [--drafted] [--withdrawn]
+             [--week N] [--verdict ship|revise|block] [--no-reply]
+             [--older-than 14d|2w] [--limit N]
+                             # top 10 unapplied jobs by default + weekly
+                             # rollup. `--applied`, `--drafted`, and
+                             # `--withdrawn` show those application rows.
+                             # `--verdict` filters by audit verdict
+                             # (reads audit.json).
                              # `--no-reply` shows applied jobs without a
                              # recorded recruiter response. `--older-than`
                              # narrows to applications submitted before
@@ -684,9 +692,9 @@ top-level commands that touch scoring/listing/applying must call it too.
    up if the thin-JD band looks under-ranked.
 
    **Familiar-only-fit cap (Phase 10.2).** When every matched must-have
-   resolves into `verified.skills_familiar` (Java, Spring Boot, MCP
-   Servers, Agile/Scrum, Headless Architecture, Figma) and NOT into any
-   Core bucket, the deterministic post-filter in `pipeline.score`
+   resolves into `verified.skills_familiar` (Java, Spring Boot, Angular, MCP
+   Servers, Agile/Scrum, Headless Architecture, Figma, Astro) and NOT into
+   any Core bucket, the deterministic post-filter in `pipeline.score`
    (`_all_matched_are_familiar`) caps the score at 54 and sets
    `decline_reason = "role's matched skills are all Familiar (academic/
    light use only)..."`. Without this cap, qwen's transferable-skill
@@ -700,7 +708,7 @@ top-level commands that touch scoring/listing/applying must call it too.
    bucket for skills demonstrated in Casey's shipped personal projects
    (FastAPI, Redis, Claude API, Docker Compose, JSON-LD, agentic
    architecture). It is parsed from a `Project Stack:` labeled line in the
-   `Resume.docx` TECHNICAL SKILLS section, reusing the existing
+   `Baseline_Resume.docx` TECHNICAL SKILLS section, reusing the existing
    labeled-skills-line mechanism (one entry in `parse_docx.skill_buckets`).
    Honesty semantics: project-demonstrated and honest to claim, Core-grade,
    distinct from `skills_familiar` (academic / light use) and the professional
@@ -728,7 +736,7 @@ top-level commands that touch scoring/listing/applying must call it too.
    projects initiative (PB1-PB5) is complete end-to-end. The role-header regex
    also gained optional
    parenthesized-date support (e.g. `(2023 – Present)`) during PB3 so Casey's
-   reformatted `Resume.docx` parses.
+   reformatted `Baseline_Resume.docx` parses.
 
    **React umbrella (2026-05-28).** The verified Core skill is
    `React (Redux, React Native)` — one entry covering the React ecosystem.

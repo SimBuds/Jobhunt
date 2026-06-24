@@ -1,4 +1,4 @@
-"""`jobhunt list` — pipeline view + weekly rollup."""
+"""`jobhunt list` - top apply targets plus pipeline views."""
 
 from __future__ import annotations
 
@@ -38,6 +38,15 @@ def run(
     status: str | None = typer.Option(
         None, "--status", help="Filter by application status (drafted/applied/interviewing/...)."
     ),
+    drafted: bool = typer.Option(
+        False, "--drafted", "--draft", help="Show drafted application rows."
+    ),
+    applied: bool = typer.Option(
+        False, "--applied", help="Show submitted application rows."
+    ),
+    withdrawn: bool = typer.Option(
+        False, "--withdrawn", help="Show withdrawn application rows."
+    ),
     min_score: int | None = typer.Option(
         None, "--min-score", help="Filter scored jobs by minimum score."
     ),
@@ -56,7 +65,7 @@ def run(
         None, "--older-than",
         help="Only applications submitted before NOW - duration (e.g. 14d, 2w).",
     ),
-    limit: int = typer.Option(20, "--limit", help="Max rows to display."),
+    limit: int = typer.Option(10, "--limit", help="Max rows to display."),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
@@ -69,19 +78,41 @@ def run(
             err=True,
         )
         raise typer.Exit(code=2)
+    selected_statuses = _selected_flag_statuses(
+        drafted=drafted,
+        applied=applied,
+        withdrawn=withdrawn,
+    )
+    if status is not None and selected_statuses:
+        typer.echo(
+            "error: use either --status or lifecycle flags "
+            "(--drafted/--applied/--withdrawn), not both.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     older_than_iso = _parse_older_than(older_than)
 
     conn = connect(cfg.paths.db_path)
     try:
         target_week = _iso_week_label(week) if week is not None else None
+        default_apply_targets = not (
+            target_week
+            or status is not None
+            or selected_statuses
+            or verdict is not None
+            or no_reply
+            or older_than_iso is not None
+        )
         rows = _query(
             conn,
             week_label=target_week,
             status=status,
+            selected_statuses=selected_statuses,
             min_score=min_score,
             source=source,
             no_reply=no_reply,
             applied_before=older_than_iso,
+            default_apply_targets=default_apply_targets,
             # When filtering by verdict, take a generous buffer because verdict
             # lives in audit.json (not SQL) and we filter post-fetch.
             limit=limit if verdict is None else max(limit * 10, 200),
@@ -129,6 +160,22 @@ def _parse_older_than(spec: str | None) -> str | None:
     return cutoff.isoformat()
 
 
+def _selected_flag_statuses(
+    *,
+    drafted: bool,
+    applied: bool,
+    withdrawn: bool,
+) -> tuple[str, ...]:
+    selected: list[str] = []
+    if drafted:
+        selected.append("drafted")
+    if applied:
+        selected.append("applied")
+    if withdrawn:
+        selected.append("withdrawn")
+    return tuple(selected)
+
+
 def _load_audit_summary(cfg: Config, job_id: str) -> _AuditSummary:
     """Read `data/applications/<safe_id>/audit.json` if present and return
     `(verdict, coverage_pct)`. Missing file / malformed JSON / missing keys
@@ -170,6 +217,8 @@ def _query(
     no_reply: bool,
     applied_before: str | None,
     limit: int,
+    selected_statuses: tuple[str, ...] = (),
+    default_apply_targets: bool = False,
 ) -> list[sqlite3.Row]:
     sql = (
         "SELECT j.id, j.source, j.title, j.company, j.location, j.url, "
@@ -189,6 +238,16 @@ def _query(
     if status is not None:
         sql += "AND a.status = ? "
         params.append(status)
+    elif selected_statuses:
+        placeholders = ", ".join("?" for _ in selected_statuses)
+        sql += f"AND a.status IN ({placeholders}) "
+        params.extend(selected_statuses)
+    elif default_apply_targets:
+        sql += (
+            "AND a.id IS NULL "
+            "AND (j.decline_reason IS NULL OR TRIM(j.decline_reason) = '') "
+            "AND s.score IS NOT NULL "
+        )
     if min_score is not None:
         sql += "AND COALESCE(s.score, -1) >= ? "
         params.append(min_score)
@@ -256,6 +315,6 @@ def _render_weekly_footer(conn: sqlite3.Connection, week_label: str) -> None:
     parts = [f"{week_label}:"]
     parts.append(f"scanned={scanned['n'] if scanned else 0}")
     parts.append(f"declined={declined['n'] if declined else 0}")
-    for s in ("drafted", "applied", "interviewing", "offer", "rejected"):
+    for s in ("drafted", "applied", "interviewing", "offer", "rejected", "withdrawn"):
         parts.append(f"{s}={counts.get(s, 0)}")
     typer.echo(" | ".join(parts))
