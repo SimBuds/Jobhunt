@@ -62,11 +62,11 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_KEEP_ALIVE=10m"
-Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_MAX_LOADED_MODELS=2"
 Environment="OLLAMA_VULKAN=0"
 ```
 
@@ -148,7 +148,7 @@ per score band and tune `[pipeline] min_score`.
 
 ## Commands
 
-Eight user-facing top-level commands plus the `analyze` and `discover` groups.
+Ten visible top-level entries, counting the `analyze` and `discover` groups.
 `config` and `db` are hidden setup-only internals (documented at the end for
 completeness). Ordered below from most- to least-used. Every command also
 accepts the global `--debug` (full tracebacks) and `--verbose` / `-v` flags.
@@ -170,22 +170,27 @@ jobhunt scan --refresh          # bypass the HTTP cache and re-fetch sources
 ```
 
 Pre-score filters: freshness window (`--max-age-days`), management-title drop,
-plus optional senior-title and research/ML-title drops
-(`[applicant] include_senior_roles`, `[ingest] drop_research_titles`). A warm-up
-call fires before the scoring loop so the first real call doesn't pay cold-load.
+default-on non-engineering-title drop, plus optional senior-title and
+research/ML-title drops (`[applicant] include_senior_roles`,
+`[ingest] drop_research_titles`). A warm-up call fires before the scoring loop
+so the first real call doesn't pay cold-load.
 
 ### `list`
 
-Pipeline view + weekly rollup. Always renders a footer (scanned / declined /
-per-status counts). Rows you've run `apply` on show a `cov=NN%` tag, the
-keyword-coverage % from the latest `audit.json`. A `cov < 70%` is a re-tailor
-candidate.
+Top application targets + weekly rollup. By default this shows the top 10
+scored, non-declined jobs with no application row yet. Always renders a footer
+(scanned / declined / per-status counts). Rows you've run `apply` on show a
+`cov=NN%` tag, the keyword-coverage % from the latest `audit.json`. A
+`cov < 70%` is a re-tailor candidate.
 
 ```bash
-jobhunt list                                # default view (most recent, --limit 20)
+jobhunt list                                # top 10 unapplied jobs by score
 jobhunt list --week 0                        # 0=current week, 1=last, …
 jobhunt list --min-score 70                  # high-fit subset
-jobhunt list --status interviewing           # drafted|applied|interviewing|offer|rejected
+jobhunt list --applied                       # submitted rows
+jobhunt list --drafted                       # drafted rows
+jobhunt list --withdrawn                     # withdrawn rows
+jobhunt list --status interviewing           # any status: drafted|applied|interviewing|offer|rejected|withdrawn
 jobhunt list --verdict ship                  # audit verdict: ship|revise|block
 jobhunt list --source greenhouse             # filter by ingest source (see list below)
 jobhunt list --no-reply --older-than 14d     # applied, no recruiter reply, >14d (nudge list)
@@ -475,6 +480,10 @@ drop_research_titles = false  # opt-in: drop ML scientist / research
                               # ingest. Enable for frontend / CMS /
                               # full-stack profiles where these roles never
                               # fit. See `ingest._filter.is_research_title`.
+drop_non_engineering_titles = true
+                              # default-on: drop clearly non-engineering
+                              # functions before scoring. A dev/eng title
+                              # signal always wins.
 
 [ingest.adzuna]
 # Empty list = auto-derive from kb/profile/verified.json (skills + bullets).
@@ -590,21 +599,28 @@ runtime pipeline stays local-Ollama, and the deterministic honesty checks
 remain the gate of record. Suggestions that would require fabrication are
 called out as "do not do".
 
-This repo carries four agent-facing docs. Edit them in this order. They
-cite each other and stay in sync via the cross-tool `AGENTS.md` convention.
+This repo uses the 4-pillar documentation map from `AGENTS.md`, plus a few
+project-only references. Keep them in sync via the cross-tool `AGENTS.md`
+convention.
 
 - [AGENTS.md](AGENTS.md): guardrails, conventions, project structure,
   pipeline rules. The *how*. Source of truth for any agent (Claude Code,
   Cursor, Codex, Aider) working in this repo.
 - [PLAN.md](PLAN.md): design rationale. The *why*. Goals, model choice,
   honesty-enforcement layers, sources, success criteria.
+- [README.md](README.md): install, usage, and maintainer entry point.
 - [IMPLEMENT.md](IMPLEMENT.md): execution engine. Phase-by-phase task
   breakdown, progress checkboxes, current state.
-- [CLAUDE.md](CLAUDE.md): tiny stub that `@`-imports AGENTS.md so
-  Claude Code's auto-load works. Don't edit it, edit AGENTS.md.
 - [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md):
   honesty rules enforced by the tailor pipeline. Bucket placements,
   things Casey hasn't done, when to tell Casey "no".
+- [WORK.md](WORK.md): long-form work, projects, and education knowledge base
+  for human and agent resume work.
+- [kb/README.md](kb/README.md): map for the tracked knowledge base.
+- [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md):
+  prompt-injectable mirror of the tailoring rules.
+- [CLAUDE.md](CLAUDE.md): tiny stub that `@`-imports AGENTS.md so Claude Code's
+  auto-load works. Don't edit it, edit AGENTS.md.
 
 Honesty enforcement is structural (verified-snapshot constraint,
 schema-bounded output, post-decode invariants, score clamp, cover and

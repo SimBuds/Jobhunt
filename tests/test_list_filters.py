@@ -1,6 +1,7 @@
 """Phase 2 tests — list verdict / no-reply / older-than filters."""
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -13,6 +14,7 @@ from jobhunt.commands.list_cmd import (
     _load_audit_summary,
     _parse_older_than,
     _query,
+    run,
 )
 from jobhunt.config import Config, PathsConfig
 from jobhunt.db import (
@@ -21,6 +23,7 @@ from jobhunt.db import (
     migrate,
     upsert_application,
     upsert_job,
+    write_score,
 )
 from jobhunt.models import Job
 
@@ -57,6 +60,76 @@ def _apply(conn, job_id: str, *, status: str = "applied") -> None:
         fill_plan_path=None,
         applied_week="2026-W21",
     )
+
+
+def _score(conn, job_id: str, score: int) -> None:
+    write_score(
+        conn,
+        job_id=job_id,
+        score=score,
+        reasons=[],
+        red_flags=[],
+        must_clarify=[],
+        model="test",
+        prompt_hash="test",
+    )
+
+
+# --- _query: default apply targets ------------------------------------------
+
+
+def test_run_default_limit_is_10() -> None:
+    option = inspect.signature(run).parameters["limit"].default
+    assert option.default == 10
+
+
+def test_default_query_shows_scored_unapplied_non_declined_jobs(conn) -> None:
+    for suffix, score in (("a", 80), ("b", 95), ("c", 99), ("d", 70), ("e", 90)):
+        upsert_job(conn, _job(suffix))
+        _score(conn, f"greenhouse:acme:{suffix}", score)
+    upsert_job(conn, _job("unscored"))
+    _apply(conn, "greenhouse:acme:c", status="applied")
+    _apply(conn, "greenhouse:acme:d", status="drafted")
+    conn.execute(
+        "UPDATE jobs SET decline_reason = ? WHERE id = ?",
+        ("not a fit", "greenhouse:acme:e"),
+    )
+
+    rows = _query(
+        conn,
+        week_label=None,
+        status=None,
+        min_score=None,
+        source=None,
+        no_reply=False,
+        applied_before=None,
+        limit=10,
+        default_apply_targets=True,
+    )
+
+    assert [r["id"] for r in rows] == ["greenhouse:acme:b", "greenhouse:acme:a"]
+
+
+def test_selected_statuses_show_requested_lifecycle_rows(conn) -> None:
+    for suffix, status in (("a", "applied"), ("b", "drafted"), ("c", "withdrawn")):
+        upsert_job(conn, _job(suffix))
+        _score(conn, f"greenhouse:acme:{suffix}", 80)
+        _apply(conn, f"greenhouse:acme:{suffix}", status=status)
+
+    rows = _query(
+        conn,
+        week_label=None,
+        status=None,
+        min_score=None,
+        source=None,
+        no_reply=False,
+        applied_before=None,
+        limit=10,
+        selected_statuses=("drafted", "withdrawn"),
+    )
+
+    assert {r["status"] for r in rows} == {"drafted", "withdrawn"}
+    assert {r["id"] for r in rows} == {"greenhouse:acme:b", "greenhouse:acme:c"}
 
 
 # --- _parse_older_than ------------------------------------------------------
