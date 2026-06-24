@@ -73,13 +73,15 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "FastAPI" not in facts.skills_core
 
     # PB3: the PROJECTS narrative section parses into structured projects.
-    # 2026-06-18: the baseline carries TWO projects (Jobhunt, Auto-Agent), both
-    # at least beta. AI Context Stack + SEO-LLM (in-progress) and macOS Ventura
-    # on KVM + the Hybrid coding agent are long-form-only in WORK.md, off the
-    # baseline.
-    assert len(facts.projects) == 2
+    # Baseline carries FOUR projects: Jobhunt + Auto-Agent (2026-06-18) and
+    # SEO-LLM + AI Context Stack (re-added 2026-06-23 at Casey's request). macOS
+    # Ventura on KVM + the Hybrid coding agent stay long-form-only in WORK.md,
+    # off the baseline.
+    assert len(facts.projects) == 4
     names = [p.name for p in facts.projects]
     assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
+    assert "SEO-LLM" in names
+    assert "AI Context Stack" in names
     auto = next(p for p in facts.projects if p.name == "Auto-Agent")
     assert auto.url == "github.com/SimBuds/Auto-Agent"
     assert "FastAPI" in auto.stack
@@ -93,7 +95,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     payload = json.loads(out.read_text())
     assert payload["name"] == facts.name
     assert len(payload["work_history"]) == 4
-    assert len(payload["projects"]) == 2
+    assert len(payload["projects"]) == 4
     assert payload["projects"][0]["stack"]  # nested dataclass round-trips
 
     # KB markdown writer leaves five files (projects.md added when projects exist).
