@@ -73,8 +73,9 @@ If any of the following hold, mark the job `decline_reason` and skip:
 
 ## AI/LLM differentiator (§6, May 2026)
 
-When the JD mentions AI, LLM, RAG, generative AI, prompt engineering, ML, or
-"modern tooling" anywhere, even as a "nice to have":
+When the JD explicitly mentions AI, LLM, RAG, generative AI, prompt
+engineering, ML, automation tooling, developer tooling, local-first tooling,
+or infrastructure work:
 
 - Casey's baseline identity is CMS Developer. AI tooling is a supporting
   side-project and interest signal by default, not the headline identity.
@@ -87,3 +88,18 @@ When the JD mentions AI, LLM, RAG, generative AI, prompt engineering, ML, or
   GPU-tuning in the hook sentence, not paragraph 3. AI-screener
   summarizers in 2026 pull the lead first. This is a strong differentiator
   for AI-adjacent roles and burying it costs the application.
+- Do not treat vague phrases like "modern stack", "modern engineering", or
+  "modern tools" as an AI trigger by themselves.
+- For ordinary CMS, frontend, backend, or full-stack roles, lead with the
+  strongest work-history project instead of forcing the local-LLM project.
+
+## Tone guardrails (June 2026)
+
+- Do not overstate adjacency between Casey's projects and a JD.
+- Avoid exact-fit claims, proof language, and one-to-one bridge phrases such
+  as "translates directly", "directly mirrors", "this mirrors", or
+  "perfect fit".
+- Cover letters and form answers should use one centerpiece project by
+  default. Add a second project only when the question or JD asks for breadth.
+- Form answers must answer the exact question first. They are not mini cover
+  letters.

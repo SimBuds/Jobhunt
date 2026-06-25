@@ -21,6 +21,8 @@ from jobhunt.config import ApplicantProfile
 from jobhunt.errors import BrowserError
 
 _FORM_FIELD_HINT_ATTRS = ("name", "id", "placeholder", "aria-label")
+_BROWSER_VIEWPORT = {"width": 1440, "height": 1000}
+_BROWSER_WINDOW_SIZE = "--window-size=1440,1000"
 
 
 async def looks_like_application_page(page: Any) -> bool:
@@ -86,13 +88,18 @@ async def autofill(
     async with async_playwright() as pw:
         if user_data_dir:
             ctx = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(user_data_dir), headless=not headed
+                user_data_dir=str(user_data_dir),
+                headless=not headed,
+                viewport=_BROWSER_VIEWPORT,
+                args=[_BROWSER_WINDOW_SIZE],
             )
             browser = None
         else:
-            browser = await pw.chromium.launch(headless=not headed)
-            ctx = await browser.new_context()
-        page = await ctx.new_page()
+            browser = await pw.chromium.launch(
+                headless=not headed, args=[_BROWSER_WINDOW_SIZE]
+            )
+            ctx = await browser.new_context(viewport=_BROWSER_VIEWPORT)
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         except Exception as e:  # noqa: BLE001
