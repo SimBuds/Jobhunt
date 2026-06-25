@@ -92,10 +92,13 @@ Hard rules:
      anti-patterns to avoid, team dynamics, multi-stakeholder anchors,
      decision-making style, and post-offer logistics.
 
-3. **AI/LLM lead surfacing.** When the JD mentions AI, LLM, RAG, generative
-   AI, prompt engineering, ML, or "modern tooling", at least one anchor MUST
-   reference Casey's Ollama / local LLM / GPU-tuning work using the literal
-   tokens "Ollama" or "LLM". This is Casey's strongest 2026 differentiator.
+3. **AI/LLM lead surfacing.** When the JD explicitly mentions AI, LLM,
+   RAG, generative AI, prompt engineering, ML, automation tooling,
+   developer tooling, local-first tooling, or infrastructure work, at
+   least one anchor MUST reference Casey's Ollama / local LLM /
+   GPU-tuning work using the literal tokens "Ollama" or "LLM". Do not
+   treat vague phrases like "modern stack", "modern engineering", or
+   "modern tools" as an AI trigger by themselves.
 
 4. **Concrete project nouns.** Anchors and beats should cite real items from
    work history: Atelier Dacko (Shopify storefront, WordPress-to-Shopify

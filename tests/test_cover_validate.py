@@ -22,7 +22,10 @@ def verified() -> dict:
         "work_history": [
             {
                 "bullets": [
-                    "Built and maintained a 16+ page Shopify storefront on a customized Dawn 2.0 theme.",
+                    (
+                        "Built and maintained a 16+ page Shopify storefront on "
+                        "a customized Dawn 2.0 theme."
+                    ),
                     "Cut page load time by 30%.",
                 ]
             }
@@ -35,9 +38,21 @@ def _good_cover(company: str = "Acme Corp") -> CoverLetter:
     return CoverLetter(
         salutation="Dear Hiring Team,",
         body=[
-            f"I applied to {company} after reading the job description for the Full-Stack Developer role. The emphasis on TypeScript and Shopify maps cleanly onto my contract work over the past three years.",
-            "The centrepiece project is the 16+ page Shopify storefront I built for a custom jewellery client. I migrated them from WordPress and wrote all the Liquid templates.",
-            "A second relevant project: I built a custom HubSpot theme from scratch for an AI agency, cut page load time by 30%, and set up GitHub Actions CI before handing off to their team.",
+            (
+                f"I applied to {company} after reading the job description for the "
+                "Full-Stack Developer role. The emphasis on TypeScript and Shopify "
+                "maps cleanly onto my contract work over the past three years."
+            ),
+            (
+                "The centrepiece project is the 16+ page Shopify storefront I built "
+                "for a custom jewellery client. I migrated them from WordPress and "
+                "wrote all the Liquid templates."
+            ),
+            (
+                "A second relevant project: I built a custom HubSpot theme from "
+                "scratch for an AI agency, cut page load time by 30%, and set up "
+                "GitHub Actions CI before handing off to their team."
+            ),
             "I'd like to talk through how this work fits the role.",
         ],
         sign_off="Best,\nCasey Hsu",
@@ -56,6 +71,20 @@ def test_banned_phrase_flagged(verified: dict) -> None:
     cover.body[0] = cover.body[0] + " I am passionate about this role."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("passionate" in v for v in violations)
+
+
+def test_overconfident_tone_phrases_flagged(verified: dict) -> None:
+    cover = _good_cover()
+    cover.body[0] = (
+        "Acme Corp needs a full-stack developer, and this role is exactly where "
+        "my Shopify and Node.js work fits."
+    )
+    cover.body[1] = "My Shopify migration proves this capability for client work."
+    cover.body[2] = "That project maps directly to your React product work."
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    assert any("exactly where" in v for v in violations)
+    assert any("proves this capability" in v for v in violations)
+    assert any("maps directly" in v for v in violations)
 
 
 def test_form_letter_opener_flagged(verified: dict) -> None:
@@ -116,7 +145,10 @@ def test_scalable_does_not_trigger_scala_fabrication(verified: dict) -> None:
 
 def test_disclaimed_tech_does_not_fire_fabrication(verified: dict) -> None:
     cover = _good_cover()
-    cover.body[2] = "I focus on JavaScript and TypeScript rather than Scala or Kotlin for back-end work."
+    cover.body[2] = (
+        "I focus on JavaScript and TypeScript rather than Scala or Kotlin for "
+        "back-end work."
+    )
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("unverified tech claim" in v for v in violations)
 
@@ -251,7 +283,11 @@ def test_company_match_still_fails_when_absent(verified: dict) -> None:
 
 def test_unverified_number_in_lead_paragraph_allowed(verified: dict) -> None:
     cover = _good_cover()
-    cover.body[0] = "Acme Corp powers marketing for 1,500 events across the country, and your engineering work directly addresses problems I've solved on Shopify and HubSpot."
+    cover.body[0] = (
+        "Acme Corp powers marketing for 1,500 events across the country, and "
+        "your engineering work directly addresses problems I've solved on "
+        "Shopify and HubSpot."
+    )
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("1,500" in v or "1500" in v for v in violations)
 

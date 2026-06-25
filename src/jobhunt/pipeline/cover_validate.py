@@ -35,6 +35,14 @@ BANNED_PHRASES: tuple[str, ...] = (
     "hit the ground running",
     "value-add",
     "direct match",
+    "exactly where",
+    "matches that need directly",
+    "proves this capability",
+    "maps directly",
+    "translates directly",
+    "directly mirrors",
+    "this mirrors",
+    "maps to your roadmap",
     "mirrors the kind of",
     "technical rigor",
     "i'd bring to",
@@ -57,11 +65,17 @@ BANNED_PHRASES: tuple[str, ...] = (
 # Mirrors cover.md rule §4 + §8.
 _DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
     # "coming from React rather than Vue" / "while I have JS rather than Java"
-    (r"\b(?:coming from|while i have)\b[^.]*\brather than\b", "defensive 'rather than' gap-volunteering"),
+    (
+        r"\b(?:coming from|while i have)\b[^.]*\brather than\b",
+        "defensive 'rather than' gap-volunteering",
+    ),
     # "the model transfers" in any disclaiming context
     (r"\bthe model transfers\b", "defensive 'the model transfers' phrasing"),
     # Standalone "rather than <Tech>" claims about Casey's stack
-    (r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b", "defensive familiarity disclaimer"),
+    (
+        r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b",
+        "defensive familiarity disclaimer",
+    ),
     # "I have also worked with GraphQL concepts" / "exposure to Kubernetes
     # concepts" — the cover talks about a tech as "concepts" because Casey
     # doesn't actually have hands-on experience with it. The defensive
@@ -110,9 +124,15 @@ _SIGNOFF_TAIL_RE = re.compile(
 # tokens here; those belong in `_FABRICATION_WATCHLIST`.
 _OVERREACH_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\blive[- ](?:data )?streams?\b", "live data streams"),
-    (r"\breal[- ]time (?:data )?(?:stream(?:ing)?|processing|pipelines?)\b", "real-time streaming/processing"),
+    (
+        r"\breal[- ]time (?:data )?(?:stream(?:ing)?|processing|pipelines?)\b",
+        "real-time streaming/processing",
+    ),
     (r"\bwebsockets?\b", "websockets"),
-    (r"\bevent[- ]driven (?:architectures?|systems?|designs?|pipelines?)\b", "event-driven architecture"),
+    (
+        r"\bevent[- ]driven (?:architectures?|systems?|designs?|pipelines?)\b",
+        "event-driven architecture",
+    ),
     (r"\bstreaming pipelines?\b", "streaming pipelines"),
     (r"\bdistributed systems?\b", "distributed systems"),
     (r"\bhigh[- ]throughput\b", "high-throughput claim"),
@@ -423,11 +443,11 @@ def validate_cover(
     # coursework. Originally only checked the last paragraph; extended to all
     # non-lead paragraphs because the model started placing recap in paragraph 3
     # of 4 to evade the check.
-    _RECAP_TOKENS = ("dean's list", "coursework", "george brown", "diploma")
+    recap_tokens = ("dean's list", "coursework", "george brown", "diploma")
     if len(cover.body) >= 3:
         for para in cover.body[1:]:  # skip lead
             para_lower = _normalize(para)
-            for token in _RECAP_TOKENS:
+            for token in recap_tokens:
                 if token in para_lower:
                     violations.append(f"body recaps resume material: {token!r}")
                     break

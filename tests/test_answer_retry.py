@@ -43,7 +43,10 @@ VERIFIED = {
     "skills_ai": ["Ollama (Local LLM hosting)", "Prompt engineering"],
     "skills_familiar": ["Java", "Spring Boot"],
     "certifications": [
-        "Contentful Certified Professional + Personalization Skill Badge, Contentful (October 2025)",
+        (
+            "Contentful Certified Professional + Personalization Skill Badge, "
+            "Contentful (October 2025)"
+        ),
     ],
     "education": [],
     "coursework_baseline": [],
@@ -230,6 +233,19 @@ def test_validator_flags_banned_phrase() -> None:
     )
     violations = validate_answer(ans, verified=VERIFIED, max_words=200)
     assert any("passionate" in v.lower() for v in violations)
+
+
+def test_validator_flags_overconfident_tone_phrase() -> None:
+    ans = Answer(
+        text=(
+            "My Shopify migration proves this capability for client work, and "
+            "that project maps directly to the role."
+        ),
+        model="test",
+    )
+    violations = validate_answer(ans, verified=VERIFIED, max_words=200)
+    assert any("proves this capability" in v.lower() for v in violations)
+    assert any("maps directly" in v.lower() for v in violations)
 
 
 def test_validator_flags_unverified_tech() -> None:

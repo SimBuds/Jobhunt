@@ -90,10 +90,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
    4–6 items chosen from verified_facts.coursework_baseline OR the broader
    GBC list mentioned in `policy`, only items that map to the JD.
 6. Summary: 3–5 sentences. Strict rules:
-   a. Open with the candidate's actual role label as it appears in
-      `verified_facts.summary` (e.g. "Full-stack JavaScript developer"). NEVER
-      prepend a seniority qualifier (Senior / Sr. / Staff / Lead / Principal /
-      Architect) that is not literally present in `verified_facts.summary`.
+   a. Open with a truthful role label that matches the JD's primary lane and
+      Casey's verified facts. For CMS and e-commerce roles, keep the
+      verified summary's CMS identity. For backend or full-stack JavaScript
+      roles, a label such as "Full-stack JavaScript developer" is allowed
+      when it is grounded in verified Core skills. NEVER prepend a seniority
+      qualifier (Senior / Sr. / Staff / Lead / Principal / Architect) that is
+      not literally present in `verified_facts.summary`.
    b. Years of experience must come verbatim from `verified_facts.summary`
       (e.g. "2+ years"). Do not round, restate, or invent.
    c. The culinary / leadership-of-kitchen-teams clause is **OMITTED** unless
@@ -106,13 +109,16 @@ Hard rules (from kb/policies/tailoring-rules.md):
    d. Tech-stack name-drops in the summary must come from
       `verified_facts.skills_core` ∪ `verified_facts.skills_cms` only — never
       from `skills_familiar`.
-   e. If the JD mentions AI, ML, LLM, generative AI, RAG, prompt engineering,
-      or "modern tooling", the summary's first OR second sentence MUST surface
-      Casey's local LLM / Ollama / GPU / prompt-engineering work — do NOT
-      bury it as the closing sentence. Use phrasing that includes the literal
-      tokens "AI" and "LLM" (e.g. "AI/LLM tooling with local Ollama
-      hosting…") so ATS keyword matchers latch onto both. Mention the GBC
-      diploma + Dean's List once, but in the closing sentence, not the lead.
+   e. If the JD explicitly mentions AI, ML, LLM, generative AI, RAG,
+      prompt engineering, automation tooling, developer tooling,
+      local-first tooling, or infrastructure work, the summary's first OR
+      second sentence MUST surface Casey's local LLM / Ollama / GPU /
+      prompt-engineering work. Use phrasing that includes the literal tokens
+      "AI" and "LLM" (e.g. "AI/LLM tooling with local Ollama hosting") so
+      ATS keyword matchers latch onto both. Do not treat vague phrases like
+      "modern stack", "modern engineering", or "modern tools" as an AI
+      trigger by themselves. Mention the GBC diploma + Dean's List once, but
+      in the closing sentence, not the lead.
 7. Bullets must use strong verbs (built, designed, shipped, owned, led,
    integrated, migrated, optimized, deployed, configured, automated). No "I",
    no "responsible for", no "helped with".

@@ -151,8 +151,11 @@ Within each band, vary by (matched count, hard-gap count, transferable count,
 ai_bonus_present). If two jobs in the same batch would land on the same
 integer, perturb one by ±1–3.
 
-`ai_bonus_present` = true if the JD mentions AI / LLM / RAG / prompt
-engineering / ML / "modern tooling" as must-have or bonus.
+`ai_bonus_present` = true if the JD explicitly mentions AI / LLM / RAG /
+prompt engineering / ML / automation tooling / developer tooling /
+local-first tooling / infrastructure work as must-have or bonus. Do not
+set it from vague phrases like "modern stack", "modern engineering", or
+"modern tools" by themselves.
 
 `matched_must_haves` lists JD must-haves the candidate satisfies (exact or
 transferable, with annotation when transferable).

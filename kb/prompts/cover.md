@@ -51,20 +51,23 @@ Hard rules:
    should land the strongest specific match between Casey's verified
    experience and the JD's must-haves.
 
-   **AI/LLM lead-paragraph rule (May 2026).** If the JD mentions AI,
-   LLM, RAG, generative AI, prompt engineering, ML, or "modern tooling"
-   anywhere in the body — even as a "nice to have" — the lead's hook
-   MUST surface Casey's Ollama / local LLM / GPU-tuning work, naming
-   the literal token "Ollama" or "LLM" so an AI-screener summarizer
-   pulls it. This is Casey's strongest 2026 differentiator and the
-   summarizer reads the lead first. Do NOT bury this in paragraph 3.
+   **AI/LLM lead-paragraph rule (May 2026).** If the JD explicitly
+   mentions AI, LLM, RAG, generative AI, prompt engineering, ML,
+   automation tooling, developer tooling, local-first tooling, or
+   infrastructure work, the lead's hook MUST surface Casey's Ollama /
+   local LLM / GPU-tuning work, naming the literal token "Ollama" or
+   "LLM" so an AI-screener summarizer pulls it. Do not treat vague
+   phrases like "modern stack", "modern engineering", or "modern tools"
+   as an AI trigger by themselves. For ordinary CMS, frontend, backend,
+   or full-stack roles, lead with the strongest work-history project.
 3. Middle paragraph (3–4 sentences): pick ONE project from verified_facts
    as the centerpiece and go deep — what the problem was, what shipped,
    what changed. The centerpiece may be a work-history project OR a
-   `projects` entry. For AI / LLM / backend JDs, the jobhunt local-LLM CLI
-   (or another `projects` entry whose stack maps to the JD) is often the
-   strongest centerpiece — go deep on what it does and what shipped. A
-   second project may get one supporting sentence. Do
+   `projects` entry. For AI, LLM, automation, infrastructure, or
+   developer-tooling JDs, the jobhunt local-LLM CLI (or another
+   `projects` entry whose stack matches explicit JD requirements) is
+   often the strongest centerpiece. Go deep on what it does and what
+   shipped. A second project may get one supporting sentence. Do
    NOT march through three projects in parallel ("At X… At Y… For Z…")
    — that reads like a CV recap, not a letter. Numbers ("16+ page
    Shopify storefront", "30% page load reduction") only if they appear
@@ -74,7 +77,7 @@ Hard rules:
    defensively. Phrasings like "rather than Java", "while I have... rather
    than", "the model transfers", "coming from X rather than Y" are
    FORBIDDEN — they volunteer weakness the reader did not ask about. Lead
-   with what Casey *does* have that maps to the role; let the resume show
+   with what Casey *does* have for the role; let the resume show
    the rest. Do not pretend a Familiar skill is Core, and do not apologize
    for not having it.
 5. Closing paragraph (1–2 sentences): forward-looking, not a re-recap of
@@ -91,7 +94,7 @@ Hard rules:
    - "Happy to step through the Shopify→HubSpot migration in more detail."
    - "Available to walk through the HubSpot migration design."
    - "Glad to step through how the Ollama tooling work would apply here."
-   - "Available to discuss how the local-LLM stack maps to your roadmap."
+   - "Glad to step through the Ollama tooling work if AI tooling is part of the role."
    - "Happy to dig into the Contentful side over a call."
 
    Each of these names a concrete artifact from earlier in the letter.
@@ -100,7 +103,9 @@ Hard rules:
 6. Voice: Casey writes like a person, not an HR template. Use
    contractions where natural ("I've", "I'm", "don't", "it's"). Vary
    sentence length — short punchy lines are fine. Direct, concrete, no
-   buzzwords.
+   buzzwords. Do not overstate adjacency. Avoid exact-fit claims,
+   proof language, and one-to-one bridge phrases such as "translates
+   directly", "directly mirrors", "this mirrors", or "perfect fit".
 7. Banned phrases. The model has historically reached for these on every
    attempt — they are auto-rejected by a downstream validator, so using
    them wastes a retry. Read this list before you start writing, and
@@ -120,7 +125,8 @@ Hard rules:
    Also banned (less common but still rejected): "synergy",
    "results-driven", "core requirements", "production-grade",
    "complementing my practical experience", "track record", "proven
-   ability", "value-add", "direct match", "mirrors the kind of",
+   ability", "value-add", "direct match", "directly mirrors",
+   "translates directly", "this mirrors", "mirrors the kind of",
    "technical rigor", "I'd bring to", "I'd welcome the chance", "the
    chance to discuss", "I'm drawn to", "transform enterprises", "support
    your team's goals", "coming from", "while I have".
