@@ -128,7 +128,7 @@ def _scrub_metadata(doc: Any, name: str) -> None:
     """Strip OOXML core properties that leak machine identity. Recruiter-side
     AI screeners in 2026 occasionally inspect these. Set author and last-modifier
     to the candidate's own name; clear comments/keywords/category."""
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
     cp = doc.core_properties
     cp.author = name
@@ -139,7 +139,7 @@ def _scrub_metadata(doc: Any, name: str) -> None:
     cp.comments = ""
     cp.category = ""
     cp.revision = 1
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cp.created = now
     cp.modified = now
 

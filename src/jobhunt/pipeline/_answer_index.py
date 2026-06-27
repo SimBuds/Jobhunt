@@ -20,7 +20,6 @@ import re
 import sqlite3
 from pathlib import Path
 
-
 _QUESTION_BLOCK_RE = re.compile(
     r"^# Question\s*\n+(?P<question>.+?)\n+# Answer", re.DOTALL
 )

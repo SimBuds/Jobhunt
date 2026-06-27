@@ -5,6 +5,11 @@
 .venv/
 __pycache__/
 
+# Agents
+.agents/
+.claude/
+.codex/
+
 # Personal & PII
 kb/profile/
 data/

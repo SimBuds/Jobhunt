@@ -14,7 +14,6 @@ import pytest
 from jobhunt.errors import GatewayError
 from jobhunt.gateway.client import complete_json
 
-
 _ORIG_ASYNC_CLIENT = httpx.AsyncClient
 
 

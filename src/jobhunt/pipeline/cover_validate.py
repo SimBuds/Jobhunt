@@ -475,14 +475,14 @@ def validate_cover(
         token = tech.strip(", ")
         if not token:
             continue
-        pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
-        if not pattern.search(body):
+        token_pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
+        if not token_pattern.search(body):
             continue
-        if pattern.search(verified_blob):
+        if token_pattern.search(verified_blob):
             continue
         # Check whether every occurrence is in a negation context.
         all_negated = True
-        for m in pattern.finditer(body_lower):
+        for m in token_pattern.finditer(body_lower):
             window = body_lower[max(0, m.start() - 40) : m.start()]
             if not _NEGATION_PRECEDES_RE.search(window):
                 all_negated = False
@@ -497,11 +497,11 @@ def validate_cover(
     # if verified_blob already contains the phrase, suppress if every occurrence
     # is in a negation context.
     for pattern_str, label in _OVERREACH_PATTERNS:
-        pattern = re.compile(pattern_str, re.IGNORECASE)
-        matches = list(pattern.finditer(body))
+        overreach_pattern = re.compile(pattern_str, re.IGNORECASE)
+        matches = list(overreach_pattern.finditer(body))
         if not matches:
             continue
-        if pattern.search(verified_blob):
+        if overreach_pattern.search(verified_blob):
             continue
         all_negated = True
         for m in matches:

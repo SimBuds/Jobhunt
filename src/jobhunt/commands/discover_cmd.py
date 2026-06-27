@@ -8,7 +8,14 @@ from collections.abc import Callable
 
 import httpx
 import typer
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from jobhunt.commands._config_write import write_config_atomically
 from jobhunt.config import Config, config_path, load_config
@@ -21,7 +28,14 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_SUPPORTED_ATSES = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee")
+_SUPPORTED_ATSES = (
+    "greenhouse",
+    "ashby",
+    "lever",
+    "smartrecruiters",
+    "workable",
+    "recruitee",
+)
 
 
 def _parse_atses(raw: str) -> list[str]:
@@ -81,7 +95,10 @@ def slugs(
             BarColumn(),
             MofNCompleteColumn(),
             TimeElapsedColumn(),
-            TextColumn("[green]{task.fields[hits]}h [red]{task.fields[misses]}m [yellow]{task.fields[errors]}e"),
+            TextColumn(
+                "[green]{task.fields[hits]}h [red]{task.fields[misses]}m "
+                "[yellow]{task.fields[errors]}e"
+            ),
             transient=False,
         ) as progress:
             task_id = progress.add_task(
@@ -100,7 +117,11 @@ def slugs(
                         miss_count += 1
                     else:
                         err_count += 1
-                label = f"[bold]{event.company}[/bold]" if len(event.company) <= 30 else event.company[:28] + "…"
+                label = (
+                    f"[bold]{event.company}[/bold]"
+                    if len(event.company) <= 30
+                    else event.company[:28] + "…"
+                )
                 progress.update(
                     task_id,
                     description=f"probing {label}",
@@ -112,7 +133,14 @@ def slugs(
                 )
 
             hits = asyncio.run(
-                _run(cfg, conn, atses=atses, limit=limit, include_cached=include_cached, on_progress=_on_progress)
+                _run(
+                    cfg,
+                    conn,
+                    atses=atses,
+                    limit=limit,
+                    include_cached=include_cached,
+                    on_progress=_on_progress,
+                )
             )
             progress.update(task_id, description="done")
     finally:
@@ -144,11 +172,14 @@ async def _run(
     atses: list[str],
     limit: int,
     include_cached: bool,
-    on_progress: "Callable[[ProgressEvent], None] | None" = None,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> list[ProbeOutcome]:
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0),
-        headers={"User-Agent": cfg.ingest.user_agent or DEFAULT_UA, "Accept": "application/json"},
+        headers={
+            "User-Agent": cfg.ingest.user_agent or DEFAULT_UA,
+            "Accept": "application/json",
+        },
         follow_redirects=True,
     ) as client:
         return await discover(
@@ -167,12 +198,16 @@ def _print_table(hits: list[ProbeOutcome]) -> None:
     company_w = max(7, max(len(h.company) for h in hits))
     ats_w = max(3, max(len(h.ats) for h in hits))
     slug_w = max(4, max(len(h.slug) for h in hits))
-    header = f"{'company':<{company_w}}  {'ats':<{ats_w}}  {'slug':<{slug_w}}  {'jobs':>5}"
+    header = (
+        f"{'company':<{company_w}}  {'ats':<{ats_w}}  "
+        f"{'slug':<{slug_w}}  {'jobs':>5}"
+    )
     typer.echo(header)
     typer.echo("-" * len(header))
     for h in hits:
         typer.echo(
-            f"{h.company:<{company_w}}  {h.ats:<{ats_w}}  {h.slug:<{slug_w}}  {h.job_count or 0:>5}"
+            f"{h.company:<{company_w}}  {h.ats:<{ats_w}}  "
+            f"{h.slug:<{slug_w}}  {h.job_count or 0:>5}"
         )
 
 

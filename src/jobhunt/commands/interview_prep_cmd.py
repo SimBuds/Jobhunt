@@ -15,12 +15,16 @@ Modes:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re as _re
 import sys
+from datetime import date as _date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 import typer
 
 from jobhunt.config import Config, load_config
@@ -48,17 +52,15 @@ def run(
     job_id: str | None = typer.Argument(
         None,
         help=(
-            "Job ID (e.g. `manual:89f772b92cf1` or `adzuna_ca:5730918359`). "
-            "Omit when using --url or --description-from-stdin to bring in a "
-            "job that isn't in the DB yet (e.g. a LinkedIn-found posting)."
+            "Existing job ID. Omit when using --url or --stdin for a job not "
+            "yet in the DB."
         ),
     ),
     url: str | None = typer.Option(
         None,
         "--url",
         help=(
-            "Fetch a single JD from this URL, synth a manual: job, then prep "
-            "it. Quote the URL if it contains & characters."
+            "Fetch one JD from a URL, create a manual job, then prep it."
         ),
     ),
     title: str | None = typer.Option(
@@ -69,11 +71,10 @@ def run(
     ),
     description_from_stdin: bool = typer.Option(
         False,
+        "--stdin",
         "--description-from-stdin",
         help=(
-            "Paste the JD body from stdin instead of fetching (use when "
-            "force-robots fails or the source is restricted, e.g. LinkedIn). "
-            "Requires --title and --company."
+            "Read JD body from stdin. Requires --title and --company."
         ),
     ),
     stage: str = typer.Option(
@@ -104,10 +105,8 @@ def run(
         None,
         "--recruiter-type",
         help=(
-            "Bias likely-questions for a specific recruiter type. One of "
-            "internal_recruiter, hiring_manager, external_agency, unknown. "
-            "When omitted, reads applications.recruiter_type for this job "
-            "(if a response has been recorded) or defaults to 'unknown'."
+            "Bias questions by recruiter type. One of internal_recruiter, "
+            "hiring_manager, external_agency, unknown."
         ),
     ),
     refresh_research: bool = typer.Option(
@@ -383,7 +382,7 @@ def _resolve_recruiter_type(
         conn.close()
     if row is None or not row["recruiter_type"]:
         return "unknown"
-    return row["recruiter_type"]
+    return str(row["recruiter_type"])
 
 
 def _fetch_research(
@@ -401,8 +400,6 @@ def _fetch_research(
     """
     if not job_url:
         return ""
-    import httpx
-    from datetime import date as _date
 
     cache_root = cfg.paths.data_dir / "research-cache"
     today = _date.today().isoformat()
@@ -450,8 +447,6 @@ def _cache_path_for(cache_root: Path, url: str, day: str) -> Path | None:
     """Return `<cache_root>/<host>/<day>__<url-hash>.txt` or None on bad URL.
     Hash keeps the JD URL distinct from the company root URL even though
     they share a host."""
-    import hashlib
-
     try:
         parts = urlsplit(url)
     except Exception:
@@ -484,7 +479,6 @@ def _research_urls(job_url: str) -> list[str]:
 # never enter the prompt. Single-digit standalone integers (1, 2, 3...)
 # survive because they're too common to filter and tend to appear in
 # legitimate text fragments ("3-year roadmap").
-import re as _re
 
 # Per-source cap on a single stripped research page. Two pages (JD URL +
 # company root) at this cap fill pipeline.interview_prep._RESEARCH_MAX_CHARS

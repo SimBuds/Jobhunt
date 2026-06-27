@@ -8,20 +8,27 @@ without hand-editing config.toml."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import typer
 
 from jobhunt.commands import config_cmd, convert_resume_cmd
 from jobhunt.commands._config_write import write_config_atomically
-from jobhunt.config import config_path, load_config
+from jobhunt.config import EmploymentType, WorkArrangement, config_path, load_config
 from jobhunt.db import connect, migrate
 
 # Mirrors the Literal[...] options in ApplicantProfile. Hardcoded here so the
 # wizard doesn't reach into Pydantic internals; if these expand in config.py,
 # update both sites.
-_WORK_ARRANGEMENTS = ("onsite", "hybrid", "remote")
-_EMPLOYMENT_TYPES = ("full_time", "part_time", "contract", "internship", "temporary")
+_WORK_ARRANGEMENTS: tuple[WorkArrangement, ...] = ("onsite", "hybrid", "remote")
+_EMPLOYMENT_TYPES: tuple[EmploymentType, ...] = (
+    "full_time",
+    "part_time",
+    "contract",
+    "internship",
+    "temporary",
+)
 
 app = typer.Typer(
     help="Guided first-run setup: DB init, resume parse, applicant defaults, seed import.",
@@ -64,13 +71,16 @@ def _step_convert_resume(docx: Path) -> None:
     _header("Step 3/6: parse resume")
     cfg = load_config()
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
-    if verified.is_file() and verified.stat().st_mtime > docx.stat().st_mtime:
-        if not typer.confirm(
+    if (
+        verified.is_file()
+        and verified.stat().st_mtime > docx.stat().st_mtime
+        and not typer.confirm(
             f"{verified.name} is newer than {docx.name} — re-parse anyway?",
             default=False,
-        ):
-            typer.echo("skipped (existing profile kept).")
-            return
+        )
+    ):
+        typer.echo("skipped (existing profile kept).")
+        return
     convert_resume_cmd.run(docx=docx)
 
 
@@ -90,18 +100,22 @@ def _prompt_int(label: str, current: int | None) -> int:
 
 
 def _prompt_str(label: str, current: str) -> str:
-    return typer.prompt(label, default=current, show_default=bool(current))
+    return str(typer.prompt(label, default=current, show_default=bool(current)))
 
 
-def _prompt_multi(label: str, current: list[str], allowed: tuple[str, ...]) -> list[str]:
+def _prompt_multi[Choice: str](
+    label: str, current: Sequence[Choice], allowed: tuple[Choice, ...]
+) -> list[Choice]:
     typer.echo(f"{label} (comma-separated; allowed: {', '.join(allowed)})")
-    raw = typer.prompt("  >", default=",".join(current), show_default=bool(current))
+    raw = str(
+        typer.prompt("  >", default=",".join(current), show_default=bool(current))
+    )
     picked = [t.strip() for t in raw.split(",") if t.strip()]
-    invalid = [t for t in picked if t not in allowed]
+    allowed_by_value = {value: value for value in allowed}
+    invalid = [t for t in picked if t not in allowed_by_value]
     if invalid:
         typer.echo(f"  ignoring unknown: {', '.join(invalid)}")
-        picked = [t for t in picked if t in allowed]
-    return picked
+    return [allowed_by_value[t] for t in picked if t in allowed_by_value]
 
 
 def _step_applicant() -> None:
@@ -118,7 +132,9 @@ def _step_applicant() -> None:
         "salary expectation (CAD, free text)", a.salary_expectation_cad
     )
 
-    a.work_arrangements = _prompt_multi("work arrangements", a.work_arrangements, _WORK_ARRANGEMENTS)
+    a.work_arrangements = _prompt_multi(
+        "work arrangements", a.work_arrangements, _WORK_ARRANGEMENTS
+    )
     a.employment_types = _prompt_multi("employment types", a.employment_types, _EMPLOYMENT_TYPES)
 
     write_config_atomically(cfg)

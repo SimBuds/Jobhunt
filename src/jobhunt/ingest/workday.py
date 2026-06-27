@@ -23,7 +23,7 @@ import asyncio
 import json
 import re
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any
 
@@ -130,7 +130,7 @@ def _parse_posted_on(value: str | None, *, now: datetime | None = None) -> datet
     """
     if not value:
         return None
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     v = value.strip().lower()
     if "today" in v or "just posted" in v:
         return now

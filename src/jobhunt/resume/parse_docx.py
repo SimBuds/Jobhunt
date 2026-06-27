@@ -14,6 +14,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 
 from jobhunt.errors import PipelineError
 
@@ -228,7 +229,7 @@ def _split_skills(value: str) -> list[str]:
     return out
 
 
-def _paragraph_text_with_links(p) -> str:
+def _paragraph_text_with_links(p: Paragraph) -> str:
     """Return paragraph text with hyperlink visible-text replaced by the
     hyperlink's target URL. `mailto:` prefixes are stripped so email addresses
     remain readable. Falls back to visible text if a hyperlink has no

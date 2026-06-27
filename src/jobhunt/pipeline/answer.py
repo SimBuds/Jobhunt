@@ -33,10 +33,10 @@ from jobhunt.pipeline.cover_validate import (
     _NEGATION_PRECEDES_RE,
     _TIME_OF_DAY_RE,
     _YEAR_RANGE_RE,
+    BANNED_PHRASES,
     _normalize,
     _verified_numbers,
     _verified_skill_blob,
-    BANNED_PHRASES,
 )
 
 
@@ -193,13 +193,13 @@ def validate_answer(
         token = tech.strip(", ")
         if not token:
             continue
-        pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
-        if not pattern.search(body):
+        token_pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
+        if not token_pattern.search(body):
             continue
-        if pattern.search(verified_blob):
+        if token_pattern.search(verified_blob):
             continue
         all_negated = True
-        for m in pattern.finditer(body_lower):
+        for m in token_pattern.finditer(body_lower):
             window = body_lower[max(0, m.start() - 40) : m.start()]
             if not _NEGATION_PRECEDES_RE.search(window):
                 all_negated = False

@@ -60,8 +60,11 @@ async def test_next_llm_phase_starts_before_current_io_completes(
     # Stub the verified.json load by skipping path access — give it a config
     # whose kb_dir resolves nowhere and let the fall-through use empty dict.
     class _FakeCfg:
-        class paths:
+        class _Paths:
             kb_dir = Path("/nonexistent")
+
+        paths = _Paths
+
     monkeypatch.setattr(apply_cmd, "load_config", lambda: _FakeCfg)  # unused here
 
     rows = [_StubJob("job-A"), _StubJob("job-B"), _StubJob("job-C")]
@@ -147,8 +150,11 @@ async def test_continue_prompt_no_stops_loop(
     monkeypatch.setattr(apply_cmd.sys.stdin, "isatty", lambda: True)
 
     class _FakeCfg:
-        class paths:
+        class _Paths:
             kb_dir = Path("/nonexistent")
+
+        paths = _Paths
+
     cfg = _FakeCfg()
     rows = [_StubJob("A"), _StubJob("B"), _StubJob("C")]
     await apply_cmd._apply_each(cfg, rows, no_browser=True)

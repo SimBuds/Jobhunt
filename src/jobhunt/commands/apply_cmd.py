@@ -22,7 +22,8 @@ import sqlite3
 import sys
 import uuid
 from collections.abc import Callable
-from dataclasses import asdict
+from contextlib import suppress
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import typer
@@ -71,7 +72,9 @@ def run(
         False, "--best", help="Interactively pick from the top 10 unapplied jobs."
     ),
     min_score: int | None = typer.Option(
-        None, "--min-score", help="Floor for --top / --best selection (default: pipeline.min_score)."
+        None,
+        "--min-score",
+        help="Floor for --top / --best selection (default: pipeline.min_score).",
     ),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Generate docs only; skip the browser autofill step."
@@ -80,49 +83,43 @@ def run(
         None,
         "--set-status",
         help=(
-            "Update an existing application's status without re-tailoring. "
-            "Use as `apply --set-status STATUS <job-id>` (flag before the id). "
-            "One of: drafted, applied, interviewing, offer, rejected, withdrawn."
+            "Update status without re-tailoring. Put the flag before <job-id>. "
+            "Allowed: drafted, applied, interviewing, offer, rejected, withdrawn."
         ),
     ),
     mark_response: str | None = typer.Option(
         None,
         "--mark-response",
         help=(
-            "Record that a recruiter responded. Pass an ISO date (YYYY-MM-DD) "
-            "or full timestamp. Combine with --recruiter to also stamp the "
-            "recruiter handle. Bypasses re-tailoring."
+            "Record recruiter response date or timestamp without re-tailoring. "
+            "Use --recruiter-type to tag who responded."
         ),
     ),
     mark_interview: str | None = typer.Option(
         None,
         "--mark-interview",
         help=(
-            "Record when the first interview is scheduled (ISO date or full "
-            "timestamp). Promotes status to 'interviewing' if still earlier."
+            "Record first interview date or timestamp. Promotes status to "
+            "'interviewing' when needed."
         ),
     ),
     set_outcome: str | None = typer.Option(
         None,
         "--set-outcome",
         help=(
-            "Record the final disposition: offer, rejected, withdrawn, ghosted. "
-            "Distinct from --set-status; outcome is terminal."
+            "Record terminal outcome: offer, rejected, withdrawn, or ghosted."
         ),
     ),
     recruiter_type: str | None = typer.Option(
         None,
         "--recruiter-type",
         help=(
-            "Tag who responded, alongside --mark-response. One of: "
-            "internal_recruiter, hiring_manager, external_agency, unknown. "
-            "Drives interview-prep question biasing — agencies skew "
-            "personal/soft-skills, hiring managers skew deep technical, "
-            "internal recruiters skew behavioral+comp."
+            "Tag who responded with --mark-response. One of: internal_recruiter, "
+            "hiring_manager, external_agency, unknown."
         ),
     ),
     url: str | None = typer.Option(
-        None, "--url", help='Fetch a single JD from this URL, score it, then apply. Quote the URL if it contains & characters, e.g. --url "https://..."'
+        None, "--url", help="Fetch one JD from a URL, score it, then apply."
     ),
     title: str | None = typer.Option(
         None, "--title",
@@ -141,11 +138,9 @@ def run(
         help="Fetch a URL even if robots.txt disallows. Personal-use override only.",
     ),
     description_from_stdin: bool = typer.Option(
-        False, "--description-from-stdin",
+        False, "--stdin", "--description-from-stdin",
         help=(
-            "Skip URL fetch; read the JD body from stdin instead. "
-            "Requires --url (for ID + bookkeeping), --title, --company. "
-            "Use when a page won't render or sits behind a login wall."
+            "Read JD body from stdin. Requires --url, --title, and --company."
         ),
     ),
     include_borderline: bool = typer.Option(
@@ -215,6 +210,7 @@ def run(
     effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
 
     if manual_mode:
+        assert url is not None
         if description_from_stdin and (not title or not company):
             typer.echo(
                 "error: --description-from-stdin requires --title and --company.",
@@ -346,7 +342,7 @@ def _run_lifecycle(
                     mark_response_received(conn, job_id, mark_response, recruiter_type)
                 except ValueError as e:
                     typer.echo(f"error: {e}", err=True)
-                    raise typer.Exit(code=2)
+                    raise typer.Exit(code=2) from e
                 type_note = f" (type: {recruiter_type})" if recruiter_type else ""
                 typer.echo(f"{job_id}: response received {mark_response}{type_note}")
             if mark_interview is not None:
@@ -357,7 +353,7 @@ def _run_lifecycle(
                     db_set_outcome(conn, job_id, set_outcome)
                 except ValueError as e:
                     typer.echo(f"error: {e}", err=True)
-                    raise typer.Exit(code=2)
+                    raise typer.Exit(code=2) from e
                 typer.echo(f"{job_id}: outcome set to {set_outcome}")
 
         effective_status = set_status or row["status"]
@@ -425,7 +421,11 @@ async def _resolve_manual(
                         prompt_hash=ph,
                     )
                     set_decline_reason(conn, job.id, result.decline_reason)
-                tag = f"DECLINE: {result.decline_reason}" if result.decline_reason else str(result.score)
+                tag = (
+                    f"DECLINE: {result.decline_reason}"
+                    if result.decline_reason
+                    else str(result.score)
+                )
                 typer.echo(f"  scored [{tag}]")
         rows = list(
             conn.execute(
@@ -607,8 +607,15 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         if i + 1 < len(rows):
             next_job = _row_to_job(rows[i + 1])
             buf: list[tuple[str, bool]] = []
-            def _buf_echo(msg: str = "", *, err: bool = False, _b: list[tuple[str, bool]] = buf) -> None:
+
+            def _buf_echo(
+                msg: str = "",
+                *,
+                err: bool = False,
+                _b: list[tuple[str, bool]] = buf,
+            ) -> None:
                 _b.append((msg, err))
+
             next_buf = buf
             next_llm = asyncio.create_task(
                 _apply_llm_phase(cfg, next_job, verified=verified, echo=_buf_echo)
@@ -635,10 +642,8 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
             keep_going = await _prompt_continue(_row_to_job(rows[i + 1]))
             if not keep_going:
                 next_llm.cancel()
-                try:
+                with suppress(asyncio.CancelledError, Exception):
                     await next_llm
-                except (asyncio.CancelledError, Exception):
-                    pass
                 typer.echo("stopping loop. unprocessed jobs remain unapplied.")
                 break
 
@@ -656,9 +661,6 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                 f"{topic}×{n}" for topic, n in violation_topics.most_common(5)
             )
             typer.echo(f"top warning categories: {top}")
-
-
-from dataclasses import dataclass
 
 
 @dataclass
@@ -687,7 +689,7 @@ async def _apply_llm_phase(
     job: Job,
     *,
     verified: dict[str, object],
-    echo: callable[..., None] = _default_echo,
+    echo: Callable[..., None] = _default_echo,
 ) -> _LLMPhaseResult | None:
     """LLM-bound work for one job: tailor + cover + audit + write artifacts.
 
@@ -749,9 +751,11 @@ async def _apply_llm_phase(
         ),
         encoding="utf-8",
     )
+    coverage = audit_result.keyword_coverage_pct
+    coverage_label = f"{coverage}%" if coverage is not None else "n/a"
     echo(
         f"    audit: verdict={audit_result.verdict} "
-        f"keyword_coverage={audit_result.keyword_coverage_pct if audit_result.keyword_coverage_pct is not None else 'n/a'}{'%' if audit_result.keyword_coverage_pct is not None else ''} "
+        f"keyword_coverage={coverage_label} "
         f"missing={len(audit_result.missing_must_haves)} "
         f"cover_violations={len(audit_result.cover_letter_violations)} "
         f"alignment={len(audit_result.alignment_flags)}"

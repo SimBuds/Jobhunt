@@ -13,7 +13,10 @@ import contextlib
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from playwright.async_api import ViewportSize
 
 from jobhunt.browser.handlers import pick_handler
 from jobhunt.browser.profile_map import build_field_map
@@ -21,7 +24,7 @@ from jobhunt.config import ApplicantProfile
 from jobhunt.errors import BrowserError
 
 _FORM_FIELD_HINT_ATTRS = ("name", "id", "placeholder", "aria-label")
-_BROWSER_VIEWPORT = {"width": 1440, "height": 1000}
+_BROWSER_VIEWPORT: ViewportSize = {"width": 1440, "height": 1000}
 _BROWSER_WINDOW_SIZE = "--window-size=1440,1000"
 
 
@@ -107,13 +110,11 @@ async def autofill(
             if browser:
                 await browser.close()
             raise BrowserError(f"failed to load {url}: {e}") from e
-        try:
+        # SPA-heavy ATS pages (Intuit, Workday, iCIMS) fire analytics requests
+        # long after the form is visible. A chatty tail should not abort the
+        # autofill session.
+        with contextlib.suppress(Exception):
             await page.wait_for_load_state("networkidle", timeout=10_000)
-        except Exception:  # noqa: BLE001
-            # SPA-heavy ATS pages (Intuit, Workday, iCIMS) fire analytics
-            # requests long after the form is visible — swallow the networkidle
-            # timeout so a chatty tail doesn't abort the autofill session.
-            pass
 
         # Pick the ATS handler from the *landed* URL, not the input URL.
         # Adzuna and similar aggregators redirect through tracking links;

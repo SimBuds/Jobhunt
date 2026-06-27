@@ -8,7 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from jobhunt.cli import app
-from jobhunt.discover import probe as probe_mod
+from jobhunt.commands import add_cmd
 from jobhunt.discover.probe import ProbeOutcome
 
 
@@ -46,7 +46,7 @@ def _stub_probe_hit(monkeypatch: pytest.MonkeyPatch, count: int = 1) -> None:
     async def fake(client: Any, limiter: Any, company: str, ats: str, slug: str) -> ProbeOutcome:
         return ProbeOutcome(company, ats, slug, 200, count)
 
-    monkeypatch.setattr(probe_mod, "_probe_one", fake)
+    monkeypatch.setattr(add_cmd, "_probe_one", fake)
 
 
 def test_add_greenhouse_url_appends_slug(

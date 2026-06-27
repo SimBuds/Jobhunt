@@ -504,7 +504,10 @@ def test_validator_passes_title_phrase_as_context() -> None:
                 "Who would you collaborate with?",
                 [
                     "Day-to-day I'd coordinate with the Director of Search on roadmap priorities.",
-                    "Closest verified context: I shipped Shopify Liquid templates daily at Atelier Dacko.",
+                    (
+                        "Closest verified context: I shipped Shopify Liquid "
+                        "templates daily at Atelier Dacko."
+                    ),
                 ],
             )
         ],

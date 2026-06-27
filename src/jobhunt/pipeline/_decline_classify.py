@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from typing import Iterable
+from collections.abc import Iterable
 
 # Order matters: more specific patterns come first so the wider ones don't
 # capture cases that have a sharper category.
@@ -74,7 +74,8 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "wrong_stack",
         re.compile(
-            r"\b(no production .* experience|requires? .* (Go|Rust|C#|\.NET|PHP|Ruby|Laravel|Rails|Django|Flask|Vue|Angular)|"
+            r"\b(no production .* experience|requires? .* "
+            r"(Go|Rust|C#|\.NET|PHP|Ruby|Laravel|Rails|Django|Flask|Vue|Angular)|"
             r"primary stack (?:is|in) (Go|Rust|C#|\.NET|PHP|Ruby)|"
             r"stack mismatch|"
             r"non[- ]overlapping (?:required )?stack)\b",

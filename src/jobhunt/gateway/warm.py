@@ -16,7 +16,6 @@ from jobhunt.config import Config
 from jobhunt.errors import GatewayError
 from jobhunt.gateway.client import complete_json
 
-
 _WARMUP_SCHEMA = {
     "type": "object",
     "properties": {"ok": {"type": "boolean"}},

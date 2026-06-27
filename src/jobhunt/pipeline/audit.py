@@ -296,7 +296,8 @@ def _extract_must_haves_from_jd(
     if not parts:
         return []
     blob = "\n".join(parts).lower()
-    is_short = (job_description or "") and len(job_description) < _SHORT_JD_THRESHOLD
+    description_text = job_description or ""
+    is_short = bool(description_text) and len(description_text) < _SHORT_JD_THRESHOLD
 
     # Two-pass: first pass collects direct hits and tracks which peer families
     # are already covered. Second pass adds peer-broadened inferences only
@@ -366,9 +367,9 @@ def audit(
 
     alignment = _alignment_flags(tailored, cover, _derive_project_anchors(verified))
 
-    if fabrication_flags:
-        verdict = "block"
-    elif coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT:
+    if fabrication_flags or (
+        coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT
+    ):
         verdict = "block"
     elif (
         cover_violations

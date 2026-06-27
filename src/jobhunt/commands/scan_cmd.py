@@ -8,6 +8,7 @@ import sqlite3
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import cast
 
 import httpx
 import typer
@@ -629,6 +630,7 @@ def _dedup_decision(
 
 def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID],
                         source: str) -> None:
+    task_id = cast(TaskID, st["tid"])
     done = int(st["done"])
     total = int(st["total"])
     jobs = int(st["jobs"])
@@ -636,7 +638,7 @@ def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID],
     desc = f"  {source} — {done}/{total} slugs, {jobs} job(s)"
     if errs:
         desc += f", {errs} failed"
-    progress.update(st["tid"], description=desc, completed=done, total=total)
+    progress.update(task_id, description=desc, completed=done, total=total)
 
 
 async def _safe_stream(

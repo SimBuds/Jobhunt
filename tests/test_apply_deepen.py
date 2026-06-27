@@ -107,7 +107,11 @@ async def test_non_adzuna_not_fetched(cfg: Config, stubs: list[str]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_robots_denial_keeps_snippet(cfg: Config, stubs: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_robots_denial_keeps_snippet(
+    cfg: Config,
+    stubs: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(apply_cmd, "robots_allowed", lambda url, ua: False)
     job = _job()
     _seed(cfg, job)
@@ -117,7 +121,11 @@ async def test_robots_denial_keeps_snippet(cfg: Config, stubs: list[str], monkey
 
 
 @pytest.mark.asyncio
-async def test_fetch_failure_keeps_snippet(cfg: Config, stubs: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fetch_failure_keeps_snippet(
+    cfg: Config,
+    stubs: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def boom(url, *, user_agent, **kw):  # noqa: ANN001, ANN003
         raise RuntimeError("render timeout")
 
@@ -133,7 +141,11 @@ async def test_fetch_failure_keeps_snippet(cfg: Config, stubs: list[str], monkey
 
 
 @pytest.mark.asyncio
-async def test_shorter_fetch_result_keeps_snippet(cfg: Config, stubs: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_shorter_fetch_result_keeps_snippet(
+    cfg: Config,
+    stubs: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def tiny(url, *, user_agent, **kw):  # noqa: ANN001, ANN003
         return _job(description="tiny")
 

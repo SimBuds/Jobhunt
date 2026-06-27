@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 import typer
+from typer.testing import CliRunner
 
+from jobhunt.cli import app
 from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.commands.interview_prep_cmd import _resolve_job_id
 from jobhunt.config import Config, IngestConfig, PathsConfig
@@ -27,6 +29,17 @@ def _cfg(tmp_path: Path) -> Config:
         paths=PathsConfig(data_dir=tmp_path, db_path=tmp_path / "jobhunt.db"),
         ingest=IngestConfig(user_agent="test/1.0"),
     )
+
+
+@pytest.mark.parametrize("command", (["apply"], ["interview-prep"]))
+def test_stdin_alias_is_accepted_by_manual_intake_commands(
+    command: list[str],
+) -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, [*command, "--stdin", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "No such option" not in result.output
+    assert "--stdin" in result.output
 
 
 @pytest.mark.asyncio
