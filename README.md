@@ -65,9 +65,8 @@ The gateway is tuned to a specific server config. Mirror these
 Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_KEEP_ALIVE=-1"
-Environment="OLLAMA_MAX_LOADED_MODELS=2"
-Environment="OLLAMA_VULKAN=0"
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Environment="OLLAMA_KEEP_ALIVE=10m"
 ```
 
 `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set: context is owned at the app
@@ -187,6 +186,9 @@ jobhunt apply --url <URL> --stdin --title "Role" --company "Company"
 Notes:
 
 - `apply` fills forms, but you review and submit manually.
+- If the submit prompt is answered `no` or cancelled, `apply` records a
+  `drafted` row and keeps the job eligible for another apply run. Choose
+  `withdrawn` only when you want to remove it from default targets.
 - `apply --best` opens an interactive picker over the top scored jobs.
 - `apply --url` creates a tracked `manual:` job for a one-off posting.
 - `--stdin` is the paste-JD path for pages that do not render cleanly.

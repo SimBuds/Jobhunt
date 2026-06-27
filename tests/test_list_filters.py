@@ -107,7 +107,11 @@ def test_default_query_shows_scored_unapplied_non_declined_jobs(conn) -> None:
         default_apply_targets=True,
     )
 
-    assert [r["id"] for r in rows] == ["greenhouse:acme:b", "greenhouse:acme:a"]
+    assert [r["id"] for r in rows] == [
+        "greenhouse:acme:b",
+        "greenhouse:acme:a",
+        "greenhouse:acme:d",
+    ]
 
 
 def test_selected_statuses_show_requested_lifecycle_rows(conn) -> None:

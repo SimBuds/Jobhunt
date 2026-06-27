@@ -244,7 +244,7 @@ def _query(
         params.extend(selected_statuses)
     elif default_apply_targets:
         sql += (
-            "AND a.id IS NULL "
+            "AND (a.id IS NULL OR a.status = 'drafted') "
             "AND (j.decline_reason IS NULL OR TRIM(j.decline_reason) = '') "
             "AND s.score IS NOT NULL "
         )
