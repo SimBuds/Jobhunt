@@ -461,7 +461,7 @@ def _unapplied_top_query(min_score: int, limit: int) -> tuple[str, tuple[int, in
         "LEFT JOIN applications a ON a.job_id = j.id "
         "WHERE s.score >= ? "
         "  AND (j.decline_reason IS NULL OR j.decline_reason = '') "
-        "  AND a.id IS NULL "
+        "  AND (a.id IS NULL OR a.status = 'drafted') "
         "ORDER BY s.score DESC, j.posted_at DESC "
         "LIMIT ?"
     )
@@ -491,7 +491,7 @@ def _resolve_interactive(
             "LEFT JOIN applications a ON a.job_id = j.id "
             "WHERE s.score >= ? AND s.score < ? "
             "  AND (j.decline_reason IS NULL OR j.decline_reason = '') "
-            "  AND a.id IS NULL "
+            "  AND (a.id IS NULL OR a.status = 'drafted') "
             "ORDER BY s.score DESC, j.posted_at DESC "
             "LIMIT 10"
         )
