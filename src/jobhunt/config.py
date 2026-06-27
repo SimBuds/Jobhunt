@@ -19,6 +19,9 @@ from jobhunt.errors import ConfigError
 ENV_PREFIX = "JOBHUNT_"
 ENV_NESTED_SEP = "__"
 
+WorkArrangement = Literal["onsite", "hybrid", "remote"]
+EmploymentType = Literal["full_time", "part_time", "contract", "internship", "temporary"]
+
 
 def _default_config_path() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
@@ -28,6 +31,14 @@ def _default_config_path() -> Path:
 
 def _default_data_dir() -> Path:
     return Path.cwd() / "data"
+
+
+def _default_work_arrangements() -> list[WorkArrangement]:
+    return ["onsite", "hybrid", "remote"]
+
+
+def _default_employment_types() -> list[EmploymentType]:
+    return ["full_time", "contract"]
 
 
 class PathsConfig(BaseModel):
@@ -175,12 +186,12 @@ class ApplicantProfile(BaseModel):
     # and some senior candidates explicitly don't want Staff+ roles.
     include_senior_roles: bool = True
     pronouns: str = ""
-    work_arrangements: list[Literal["onsite", "hybrid", "remote"]] = Field(
-        default_factory=lambda: ["onsite", "hybrid", "remote"]
+    work_arrangements: list[WorkArrangement] = Field(
+        default_factory=_default_work_arrangements
     )
-    employment_types: list[
-        Literal["full_time", "part_time", "contract", "internship", "temporary"]
-    ] = Field(default_factory=lambda: ["full_time", "contract"])
+    employment_types: list[EmploymentType] = Field(
+        default_factory=_default_employment_types
+    )
 
 
 class Config(BaseModel):

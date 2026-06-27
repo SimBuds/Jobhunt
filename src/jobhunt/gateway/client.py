@@ -124,7 +124,7 @@ async def complete_json(
             raise GatewayError(f"ollama {r.status_code} (model={model}): {r.text[:300]}")
         body = r.json()
         content = (body.get("message") or {}).get("content")
-        if not content:
+        if not isinstance(content, str) or not content:
             raise GatewayError(f"ollama returned no content: {body!r}")
         return content
 

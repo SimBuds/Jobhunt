@@ -1,6 +1,10 @@
-# AGENTS.md — Workflow contract for this project
+# AGENTS.md - Workflow contract for this project
 
-This file is the workflow contract for any AI coding agent (Claude Code, Codex, Cursor, Aider, Cline, Copilot, or any other tool that reads `AGENTS.md`) operating in this repository. It is project-agnostic and intentionally portable — drop this file into the root of any repo and it applies as-is. Project-specific rules go in a `## Project-specific rules` section appended at the bottom.
+This file is the workflow contract for any AI coding agent that reads
+`AGENTS.md` while operating in this repository. It is project-agnostic and
+intentionally portable. Drop this file into the root of any repo and it applies
+as-is. Project-specific rules go in a `## Project-specific rules` section
+appended at the bottom.
 
 ## Precedence
 
@@ -171,7 +175,6 @@ than working around it.
 - `Resume_Tailoring_Instructions.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is maintained.
 - `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never hand-add unverified entries.
-- `CLAUDE.md` — tiny stub that `@`-imports this file so Claude Code's auto-load still works. Don't edit it; edit this file.
 
 ### Documentation style
 
@@ -706,7 +709,7 @@ top-level commands that touch scoring/listing/applying must call it too.
 
    **`skills_projects` bucket (Phase PB1, 2026-06-01).** A verified skill
    bucket for skills demonstrated in Casey's shipped personal projects
-   (FastAPI, Redis, Claude API, Docker Compose, JSON-LD, agentic
+   (FastAPI, Redis, third-party API work, Docker Compose, JSON-LD, agentic
    architecture). It is parsed from a `Project Stack:` labeled line in the
    `Baseline_Resume.docx` TECHNICAL SKILLS section, reusing the existing
    labeled-skills-line mechanism (one entry in `parse_docx.skill_buckets`).
@@ -950,7 +953,7 @@ to it without explicit discussion.
   `tests/fixtures/<source>.json` and unit-test the parser against it (no
   network).
 
-## What Claude Code should NOT do
+## What agents should NOT do
 
 - Do not add cloud LLM provider code (OpenAI, Anthropic, etc.) to the runtime path. Building tools using cloud is fine; runtime is local-only.
 - Do not introduce an ORM (SQLAlchemy, Tortoise, etc.).

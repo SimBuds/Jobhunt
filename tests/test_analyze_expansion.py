@@ -1,10 +1,8 @@
-"""Phase 14 tests — analyze skills --gaps / employers / response-rate."""
+"""Phase 14 tests for analyze skills, employers, and response-rate."""
 from __future__ import annotations
 
-from datetime import date, timedelta
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from jobhunt.cli import app
@@ -60,10 +58,10 @@ def _job(suffix: str, *, source: str = "greenhouse", company: str = "live-co",
     )
 
 
-# --- analyze skills --gaps --------------------------------------------------
+# --- analyze skills ---------------------------------------------------------
 
 
-def test_analyze_skills_gaps_surfaces_overrepresented_tokens(
+def test_analyze_skills_default_matches_gaps_flag(
     tmp_config_dir: Path, tmp_path: Path
 ) -> None:
     db_path = tmp_path / "jobhunt.db"
@@ -80,25 +78,24 @@ def test_analyze_skills_gaps_surfaces_overrepresented_tokens(
     c.close()
 
     runner = CliRunner()
-    result = runner.invoke(app, ["analyze", "skills", "--gaps", "--window-days", "365"])
+    result = runner.invoke(app, ["analyze", "skills", "--window-days", "365"])
+    compat = runner.invoke(
+        app, ["analyze", "skills", "--gaps", "--window-days", "365"]
+    )
     assert result.exit_code == 0, result.output
+    assert compat.exit_code == 0, compat.output
+    assert result.output == compat.output
     # `go` should appear with a positive decline-share delta.
     assert "go" in result.output
     # Sanity: header columns present.
     assert "Decline-share" in result.output
 
 
-def test_analyze_skills_requires_gaps_flag(tmp_config_dir: Path, tmp_path: Path) -> None:
-    db_path = tmp_path / "jobhunt.db"
-    _seed_minimal_config(tmp_config_dir, db_path)
-    c = connect(db_path)
-    migrate(c, Path(__file__).resolve().parent.parent / "migrations")
-    c.commit()
-    c.close()
+def test_analyze_skills_help_hides_gaps_compat_flag() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["analyze", "skills"])
-    assert result.exit_code != 0
-    assert "--gaps" in result.output
+    result = runner.invoke(app, ["analyze", "skills", "--help"])
+    assert result.exit_code == 0
+    assert "--gaps" not in result.output
 
 
 def test_analyze_skills_no_declines_in_window(
@@ -113,12 +110,12 @@ def test_analyze_skills_no_declines_in_window(
     c.close()
 
     runner = CliRunner()
-    result = runner.invoke(app, ["analyze", "skills", "--gaps"])
+    result = runner.invoke(app, ["analyze", "skills"])
     assert result.exit_code == 0
     assert "nothing to compare" in result.output
 
 
-# --- analyze employers --hiring-velocity ------------------------------------
+# --- analyze employers ------------------------------------------------------
 
 
 def test_analyze_employers_groups_by_slug(
@@ -137,9 +134,14 @@ def test_analyze_employers_groups_by_slug(
 
     runner = CliRunner()
     result = runner.invoke(
+        app, ["analyze", "employers", "--window-days", "365"]
+    )
+    compat = runner.invoke(
         app, ["analyze", "employers", "--hiring-velocity", "--window-days", "365"]
     )
     assert result.exit_code == 0, result.output
+    assert compat.exit_code == 0, compat.output
+    assert result.output == compat.output
     assert "live-co" in result.output
     assert "good-ash" in result.output
     # dead-co was configured but has no posts → should show up in the
@@ -148,18 +150,11 @@ def test_analyze_employers_groups_by_slug(
     assert "0 posts in window" in result.output
 
 
-def test_analyze_employers_requires_flag(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
-    db_path = tmp_path / "jobhunt.db"
-    _seed_minimal_config(tmp_config_dir, db_path)
-    c = connect(db_path)
-    migrate(c, Path(__file__).resolve().parent.parent / "migrations")
-    c.commit()
-    c.close()
+def test_analyze_employers_help_hides_hiring_velocity_compat_flag() -> None:
     runner = CliRunner()
-    result = runner.invoke(app, ["analyze", "employers"])
-    assert result.exit_code != 0
+    result = runner.invoke(app, ["analyze", "employers", "--help"])
+    assert result.exit_code == 0
+    assert "--hiring-velocity" not in result.output
 
 
 # --- analyze response-rate --------------------------------------------------

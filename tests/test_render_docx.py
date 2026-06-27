@@ -68,7 +68,7 @@ def test_fits_one_page_enforces_safety_margin():
     rendered onto a second page in practice (the Dean's List line tipped over
     when a 6th skills category was added). fits_one_page must reserve one line
     of headroom, so an estimate equal to the raw budget is NOT a fit."""
-    from jobhunt.resume.render_docx import LINES_PER_PAGE, _PAGE_SAFETY_MARGIN
+    from jobhunt.resume.render_docx import _PAGE_SAFETY_MARGIN, LINES_PER_PAGE
 
     assert _PAGE_SAFETY_MARGIN >= 1
     # Build a resume padded to estimate exactly LINES_PER_PAGE, then assert it

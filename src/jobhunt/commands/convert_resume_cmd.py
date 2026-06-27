@@ -1,4 +1,7 @@
-"""`jobhunt convert-resume` — parse Baseline_Resume.docx into kb/profile/*.md + verified.json."""
+"""`jobhunt convert-resume`.
+
+Parse Baseline_Resume.docx into kb/profile/*.md + verified.json.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,12 @@ import tomli_w
 import typer
 
 from jobhunt.config import config_path, load_config
-from jobhunt.resume.parse_docx import VerifiedFacts, parse_baseline, write_kb_markdown, write_verified_json
+from jobhunt.resume.parse_docx import (
+    VerifiedFacts,
+    parse_baseline,
+    write_kb_markdown,
+    write_verified_json,
+)
 
 app = typer.Typer(
     help="Parse Baseline_Resume.docx into the KB.",
@@ -141,11 +149,15 @@ def run(
             typer.echo(f"  - {w}", err=True)
 
     if filled:
-        typer.echo(f"\napplicant: filled {len(filled)} empty field(s) in {config_path()}: {', '.join(filled)}")
+        typer.echo(
+            f"\napplicant: filled {len(filled)} empty field(s) in "
+            f"{config_path()}: {', '.join(filled)}"
+        )
 
     if missing:
         typer.echo(
-            f"\nERROR: [applicant] is missing required fields after parsing: {', '.join(missing)}.\n"
+            "\nERROR: [applicant] is missing required fields after parsing: "
+            f"{', '.join(missing)}.\n"
             f"Edit {config_path()} and set them before running `scan` or `apply` — "
             f"otherwise rendered resumes will have an empty header.",
             err=True,

@@ -1,9 +1,8 @@
 """Phase 13 tests — interview-prep research cache + recruiter-type biasing."""
+
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,7 +15,6 @@ from jobhunt.commands.interview_prep_cmd import (
 )
 from jobhunt.config import Config, IngestConfig, PathsConfig
 from jobhunt.pipeline.interview_prep import _RECRUITER_BIAS_BLURB, PrepContext
-
 
 # --- cache path -----------------------------------------------------------
 
@@ -150,7 +148,9 @@ def test_resolve_recruiter_type_rejects_invalid_override(
     tmp_path: Path, migrations_dir: Path
 ) -> None:
     import click
+
     from jobhunt.db import connect, migrate
+
     db_path = tmp_path / "x.db"
     c = connect(db_path)
     migrate(c, migrations_dir)
@@ -167,8 +167,9 @@ def test_resolve_recruiter_type_rejects_invalid_override(
 def test_resolve_recruiter_type_reads_from_db(
     tmp_path: Path, migrations_dir: Path
 ) -> None:
-    from jobhunt.db import connect, migrate, upsert_application, upsert_job, mark_response_received
+    from jobhunt.db import connect, mark_response_received, migrate, upsert_application, upsert_job
     from jobhunt.models import Job
+
     db_path = tmp_path / "x.db"
     c = connect(db_path)
     migrate(c, migrations_dir)

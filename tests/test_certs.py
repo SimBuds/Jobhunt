@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from contextlib import suppress
+
 import pytest
 
 from jobhunt.analyze.certs import extract_certs, tally
-
 
 # ---------------------------------------------------------------------------
 # extract_certs — known certs
@@ -14,8 +15,14 @@ from jobhunt.analyze.certs import extract_certs, tally
     "text,expected",
     [
         # AWS variants
-        ("AWS Certified Solutions Architect – Associate preferred.", ["AWS Certified Solutions Architect – Associate"]),
-        ("AWS Certified Solutions Architect - Professional a plus.", ["AWS Certified Solutions Architect – Professional"]),
+        (
+            "AWS Certified Solutions Architect – Associate preferred.",
+            ["AWS Certified Solutions Architect – Associate"],
+        ),
+        (
+            "AWS Certified Solutions Architect - Professional a plus.",
+            ["AWS Certified Solutions Architect – Professional"],
+        ),
         ("AWS Certified Developer experience required.", ["AWS Certified Developer"]),
         ("AWS Certified DevOps Engineer certification.", ["AWS Certified DevOps Engineer"]),
         ("AWS Cloud Practitioner or higher.", ["AWS Cloud Practitioner"]),
@@ -48,7 +55,10 @@ from jobhunt.analyze.certs import extract_certs, tally
         ("CPA designation required.", ["CPA"]),
         # Case-insensitive
         ("cissp and pmp are required.", ["CISSP", "PMP"]),
-        ("aws certified solutions architect – associate", ["AWS Certified Solutions Architect – Associate"]),
+        (
+            "aws certified solutions architect – associate",
+            ["AWS Certified Solutions Architect – Associate"],
+        ),
     ],
 )
 def test_known_certs(text: str, expected: list[str]) -> None:
@@ -149,8 +159,14 @@ def test_known_cert_not_double_counted_by_generic() -> None:
 
 def test_tally_aggregates_across_rows() -> None:
     rows = [
-        {"title": "Backend Engineer", "description": "PMP required. AWS Certified Developer a plus."},
-        {"title": "DevOps Engineer", "description": "AWS Certified Developer preferred. CISSP nice to have."},
+        {
+            "title": "Backend Engineer",
+            "description": "PMP required. AWS Certified Developer a plus.",
+        },
+        {
+            "title": "DevOps Engineer",
+            "description": "AWS Certified Developer preferred. CISSP nice to have.",
+        },
         {"title": "Data Engineer", "description": "No certs required."},
     ]
     counts = tally(rows)
@@ -339,10 +355,10 @@ def test_analyze_certs_min_score_snapshot_runs(tmp_path) -> None:
         con.execute("INSERT INTO scores(job_id, score) VALUES (?, ?)", (f"low:{i}", 40))
     con.commit()
     # Drive _render_snapshot directly with min_score=65 — should see 3 fit jobs.
-    from jobhunt.commands.analyze_cmd import _render_snapshot
     import typer
-    try:
+
+    from jobhunt.commands.analyze_cmd import _render_snapshot
+
+    with suppress(typer.Exit):
         _render_snapshot(con, top=10, min_score=65)
-    except typer.Exit:
-        pass  # snapshot calls Exit(0) when done — that's fine
     con.close()

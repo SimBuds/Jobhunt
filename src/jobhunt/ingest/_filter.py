@@ -99,12 +99,9 @@ def is_gta_eligible(location: str | None) -> bool:
     # has both "eastern time" and "US" — the latter must dominate.
     if _NON_CANADA_REMOTE.search(loc):
         return False
-    # Weak hint with no non-Canada anchor — accept. "Remote, EST" is
-    # legitimately Canadian here.
-    if _CANADA_WEAK.search(loc):
-        return True
-    # Bare "Remote" with no country qualifier — too ambiguous, skip.
-    return False
+    # Weak hint with no non-Canada anchor is accepted. Bare "Remote" remains
+    # too ambiguous.
+    return bool(_CANADA_WEAK.search(loc))
 
 
 # People-management title regex. Drops Manager/Director/Head of/VP/Vice

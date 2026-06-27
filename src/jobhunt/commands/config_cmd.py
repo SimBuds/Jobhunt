@@ -20,7 +20,8 @@ from rich.progress import (
 )
 
 from jobhunt.commands._config_write import write_config_atomically
-from jobhunt.config import config_path, load_config
+from jobhunt.config import Config, config_path, load_config
+from jobhunt.discover.probe import ProbeOutcome
 from jobhunt.errors import JobHuntError
 
 app = typer.Typer(help="Inspect and manage configuration.", no_args_is_help=True)
@@ -111,10 +112,10 @@ _PROBEABLE_ATSES = ("greenhouse", "lever", "ashby", "smartrecruiters")
 
 
 async def _reprobe_async(
-    cfg,
+    cfg: Config,
     atses: tuple[str, ...],
     on_progress: Callable[[int, int, str, int], None] | None = None,
-) -> list:
+) -> list[ProbeOutcome]:
     """Probe every configured slug under `atses`. Returns list of
     ProbeOutcome. Per-host rate-limit shared across the run.
 
@@ -134,7 +135,7 @@ async def _reprobe_async(
         return []
 
     total = len(pairs)
-    outcomes: list = []
+    outcomes: list[ProbeOutcome] = []
     async with httpx.AsyncClient(
         timeout=15.0, headers={"User-Agent": cfg.ingest.user_agent}
     ) as client:
@@ -225,7 +226,7 @@ def reprobe(
         typer.echo("no configured slugs to probe.")
         return
 
-    by_ats: dict[str, list] = {}
+    by_ats: dict[str, list[ProbeOutcome]] = {}
     for o in outcomes:
         by_ats.setdefault(o.ats, []).append(o)
 
@@ -244,12 +245,20 @@ def reprobe(
         for o in hits:
             typer.echo(f"  live  {o.slug:<30} {o.job_count or '?'} job(s)")
         for o in stale:
-            reason = "404" if o.status == 404 else ("network/timeout" if o.status == 0 else f"status={o.status}")
+            reason = (
+                "404"
+                if o.status == 404
+                else ("network/timeout" if o.status == 0 else f"status={o.status}")
+            )
             typer.echo(f"  STALE {o.slug:<30} ({reason})")
         if stale:
             stale_by_ats[ats] = [o.slug for o in stale]
 
-    typer.echo(f"\nsummary: {total_hits} live, {total_stale} stale across {sum(len(v) for v in by_ats.values())} configured slugs.")
+    total_probed = sum(len(v) for v in by_ats.values())
+    typer.echo(
+        f"\nsummary: {total_hits} live, {total_stale} stale across "
+        f"{total_probed} configured slugs."
+    )
 
     if not stale_by_ats:
         typer.echo("nothing to prune.")
@@ -324,20 +333,25 @@ def calibrate() -> None:
         typer.echo("No applications with scores yet. Apply to some jobs first.")
         return
 
-    BANDS = [(85, 101, "85–100"), (75, 85, "75–84"), (65, 75, "65–74"), (0, 65, "< 65")]
-    INTERVIEW_STATUSES = {"interviewing", "offer", "rejected"}
+    bands = [
+        (85, 101, "85–100"),
+        (75, 85, "75–84"),
+        (65, 75, "65–74"),
+        (0, 65, "< 65"),
+    ]
+    interview_statuses = {"interviewing", "offer", "rejected"}
 
     typer.echo(f"\n{'Band':<12} {'Applied':>8} {'Interviews':>11} {'Rate':>7}")
     typer.echo("-" * 42)
-    for lo, hi, label in BANDS:
+    for lo, hi, label in bands:
         band_rows = [r for r in rows if lo <= r["score"] < hi]
         applied = len(band_rows)
-        interviews = sum(1 for r in band_rows if r["status"] in INTERVIEW_STATUSES)
+        interviews = sum(1 for r in band_rows if r["status"] in interview_statuses)
         rate = f"{100 * interviews / applied:.0f}%" if applied else "—"
         typer.echo(f"{label:<12} {applied:>8} {interviews:>11} {rate:>7}")
 
     total = len(rows)
-    total_interviews = sum(1 for r in rows if r["status"] in INTERVIEW_STATUSES)
+    total_interviews = sum(1 for r in rows if r["status"] in interview_statuses)
     typer.echo("-" * 42)
     typer.echo(
         f"{'TOTAL':<12} {total:>8} {total_interviews:>11} "

@@ -1,19 +1,22 @@
 """Phase 3 tests — tailor diff artifact."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from jobhunt.pipeline.score import ScoreResult
 from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume, TailoredRole
 from jobhunt.pipeline.tailor_diff import build_tailor_diff
-
 
 VERIFIED = {
     "summary": "Full-stack dev.",
     "skills_core": ["JavaScript (ES6+)", "TypeScript", "React", "Node.js"],
     "skills_cms": ["Shopify (Liquid, Custom Themes)"],
     "skills_data_devops": ["PostgreSQL", "Docker", "Python"],
-    "skills_ai": ["Ollama (Local LLM hosting), GPU optimization (cache, flash attention), Claude Code CLI, OpenAI Codex"],
+    "skills_ai": [
+        (
+            "Ollama (Local LLM hosting), GPU optimization (cache, flash "
+            "attention), Claude Code CLI, OpenAI Codex"
+        )
+    ],
     "skills_familiar": ["Java", "Spring Boot"],
     "work_history": [
         {

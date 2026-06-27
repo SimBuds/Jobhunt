@@ -228,9 +228,11 @@ def _render_trend(
         typer.echo("no jobs in either window — run `jobhunt scan` first.")
         raise typer.Exit(code=0)
 
-    prev_counts: Counter[str] = tally(prev_rows) if prev_rows else Counter()
+    prev_counts: Counter[str] = (
+        tally(dict(row) for row in prev_rows) if prev_rows else Counter()
+    )
     if cur_rows:
-        cur_counts, generic_counts = tally_split(cur_rows)
+        cur_counts, generic_counts = tally_split(dict(row) for row in cur_rows)
     else:
         cur_counts = Counter()
         generic_counts = Counter()
@@ -243,7 +245,7 @@ def _render_trend(
             conn, start_days_ago=window_days, end_days_ago=0, min_score=min_score
         )
         fit_row_count = len(fit_rows)
-        fit_counts = tally(fit_rows) if fit_rows else Counter()
+        fit_counts = tally(dict(row) for row in fit_rows) if fit_rows else Counter()
 
     # Demand-rank (1-indexed) by unfiltered cur, used for "Stable staple" verdict.
     demand_order = [name for name, _ in cur_counts.most_common()]
@@ -369,7 +371,8 @@ def _window_cutoff(days: int) -> str:
 def skills(
     gaps: bool = typer.Option(
         False, "--gaps",
-        help="Show tech tokens over-represented in declined vs. accepted jobs.",
+        help="Compatibility flag. Gaps is the default view.",
+        hidden=True,
     ),
     window_days: int = typer.Option(
         30, "--window-days", min=1, max=365,
@@ -380,10 +383,6 @@ def skills(
         help="Number of top skills to display (default 20).",
     ),
 ) -> None:
-    if not gaps:
-        raise typer.BadParameter(
-            "specify --gaps (only mode supported today; expand later as needed)"
-        )
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
@@ -451,17 +450,14 @@ def skills(
 def employers(
     hiring_velocity: bool = typer.Option(
         False, "--hiring-velocity",
-        help="Counts new posts per configured slug within the window.",
+        help="Compatibility flag. Hiring velocity is the default view.",
+        hidden=True,
     ),
     window_days: int = typer.Option(
         30, "--window-days", min=1, max=365,
         help="Width of window in days (default 30).",
     ),
 ) -> None:
-    if not hiring_velocity:
-        raise typer.BadParameter(
-            "specify --hiring-velocity (only mode supported today)"
-        )
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
@@ -548,7 +544,7 @@ def response_rate(
     # Bucket key extraction. Response is true if either we explicitly logged
     # a response timestamp OR status moved past `applied` to a downstream
     # state (interviewing / offer / rejected).
-    _DOWNSTREAM = {"interviewing", "offer", "rejected"}
+    downstream_statuses = {"interviewing", "offer", "rejected"}
 
     def _bucket(r: sqlite3.Row) -> str:
         if by == "score":
@@ -565,7 +561,7 @@ def response_rate(
     def _responded(r: sqlite3.Row) -> bool:
         if r["response_received_at"] is not None:
             return True
-        return r["status"] in _DOWNSTREAM
+        return r["status"] in downstream_statuses
 
     buckets: dict[str, list[bool]] = {}
     for r in rows:

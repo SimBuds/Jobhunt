@@ -20,9 +20,9 @@ Output:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import typer
 
@@ -42,7 +42,10 @@ app = typer.Typer(
 def run(
     question: str = typer.Argument(
         ...,
-        help='The application form question, in quotes. Example: "Why are you interested in this role?"',
+        help=(
+            'The application form question, in quotes. Example: '
+            '"Why are you interested in this role?"'
+        ),
     ),
     job: str | None = typer.Option(
         None,
@@ -122,17 +125,19 @@ def run(
     typer.echo("─" * 60 + "\n")
 
     if not no_save:
-        path = _save_answer(cfg, question=question, answer_text=answer.text, job_id_safe=job_id_safe)
+        path = _save_answer(
+            cfg, question=question, answer_text=answer.text, job_id_safe=job_id_safe
+        )
         typer.echo(f"  saved: {path}")
 
 
-def _load_verified(cfg: Config) -> dict:
+def _load_verified(cfg: Config) -> dict[str, Any]:
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     if not verified_path.is_file():
         raise PipelineError(
             f"missing {verified_path} — run `jobhunt convert-resume` first"
         )
-    return json.loads(verified_path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(verified_path.read_text(encoding="utf-8")))
 
 
 def _load_jd_context(cfg: Config, job_id: str) -> tuple[str, str]:

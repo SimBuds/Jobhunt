@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -208,16 +209,40 @@ def test_dedup_key_greenhouse_uses_job_id() -> None:
 def test_dedup_key_adzuna_normalises() -> None:
     from jobhunt.commands.scan_cmd import _dedup_key
 
-    j1 = Job(id="adzuna_ca:1", source="adzuna_ca", external_id="1", title="Full-Stack Developer", company="ACME Inc")
-    j2 = Job(id="adzuna_ca:2", source="adzuna_ca", external_id="2", title="Full-Stack Developer", company="ACME Inc")
+    j1 = Job(
+        id="adzuna_ca:1",
+        source="adzuna_ca",
+        external_id="1",
+        title="Full-Stack Developer",
+        company="ACME Inc",
+    )
+    j2 = Job(
+        id="adzuna_ca:2",
+        source="adzuna_ca",
+        external_id="2",
+        title="Full-Stack Developer",
+        company="ACME Inc",
+    )
     assert _dedup_key(j1) == _dedup_key(j2)
 
 
 def test_dedup_key_different_companies_differ() -> None:
     from jobhunt.commands.scan_cmd import _dedup_key
 
-    j1 = Job(id="adzuna_ca:1", source="adzuna_ca", external_id="1", title="Developer", company="ACME")
-    j2 = Job(id="adzuna_ca:2", source="adzuna_ca", external_id="2", title="Developer", company="Beta Corp")
+    j1 = Job(
+        id="adzuna_ca:1",
+        source="adzuna_ca",
+        external_id="1",
+        title="Developer",
+        company="ACME",
+    )
+    j2 = Job(
+        id="adzuna_ca:2",
+        source="adzuna_ca",
+        external_id="2",
+        title="Developer",
+        company="Beta Corp",
+    )
     assert _dedup_key(j1) != _dedup_key(j2)
 
 
@@ -314,10 +339,9 @@ def test_workday_fixture_filters_to_gta() -> None:
 
 
 # Phase 5 — postedOn parser
-from datetime import datetime, timezone
 
 
-_NOW = datetime(2026, 5, 20, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC)
 
 
 def test_workday_parse_posted_today() -> None:

@@ -76,10 +76,17 @@ def _minimal_tailored(verified: dict) -> TailoredResume:
     roles = []
     for i, r in enumerate(verified.get("work_history", [])):
         title, bullets = (
-            _ROLE_CONTENT[i] if i < len(_ROLE_CONTENT) else (r.get("title", "Developer"), ["Did work."])
+            _ROLE_CONTENT[i]
+            if i < len(_ROLE_CONTENT)
+            else (r.get("title", "Developer"), ["Did work."])
         )
         roles.append(
-            TailoredRole(title=title, employer=r["employer"], dates=r["dates"], bullets=list(bullets))
+            TailoredRole(
+                title=title,
+                employer=r["employer"],
+                dates=r["dates"],
+                bullets=list(bullets),
+            )
         )
     return TailoredResume(
         summary="TypeScript and React developer with Shopify and Node.js experience.",
@@ -101,9 +108,21 @@ def _good_cover(company: str = "Acme Corp") -> CoverLetter:
     return CoverLetter(
         salutation="Dear Hiring Team,",
         body=[
-            f"I applied to {company} after reading about the TypeScript and React role. The Shopify angle matches my contract work closely.",
-            "The centrepiece project is the 16+ page Shopify storefront I built and maintained for a custom jewellery client over 2+ years.",
-            "At an AI agency I built a HubSpot theme from scratch and cut page load time by 30%, setting up GitHub Actions CI before handoff.",
+            (
+                f"I applied to {company} after reading about the TypeScript "
+                "and React role. The Shopify angle matches my contract work "
+                "closely."
+            ),
+            (
+                "The centrepiece project is the 16+ page Shopify storefront I "
+                "built and maintained for a custom jewellery client over 2+ "
+                "years."
+            ),
+            (
+                "At an AI agency I built a HubSpot theme from scratch and cut "
+                "page load time by 30%, setting up GitHub Actions CI before "
+                "handoff."
+            ),
             "Happy to discuss further.",
         ],
         sign_off="Best,\nCasey Hsu",
@@ -514,7 +533,6 @@ def test_audit_topics_categorisation(verified: dict) -> None:
     so the summary histogram aggregates as expected.
     """
     from jobhunt.commands.apply_cmd import _audit_topics
-    from jobhunt.pipeline.audit import AuditResult
 
     clean = AuditResult(
         keyword_coverage_pct=90, matched_keywords=["TypeScript"],

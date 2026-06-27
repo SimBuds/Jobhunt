@@ -248,21 +248,17 @@ def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
         tokens = [t for t in _re.findall(r"[a-z0-9+#]+", phrase.lower()) if t]
         if not tokens:
             return False
-        for item in items:
-            # Build a regex requiring every token to appear as a whole word
-            # (or +-#-bounded chunk) within this item.
-            if all(_re.search(rf"\b{_re.escape(t)}\b", item) for t in tokens):
-                return True
-        return False
+        # Require every token to appear as a whole word, or +-#-bounded chunk,
+        # within at least one bucket item.
+        return any(
+            all(_re.search(rf"\b{_re.escape(t)}\b", item) for t in tokens)
+            for item in items
+        )
 
-    for phrase in matched:
-        if not _in_bucket(phrase, familiar_items):
-            return False
-        if _in_bucket(phrase, core_items):
-            # Phrase is present in BOTH Familiar and a Core bucket. Treat as
-            # Core (the matched item is a legitimate production skill).
-            return False
-    return True
+    return all(
+        _in_bucket(phrase, familiar_items) and not _in_bucket(phrase, core_items)
+        for phrase in matched
+    )
 
 
 def _verify_against_profile(

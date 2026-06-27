@@ -22,7 +22,13 @@ from jobhunt.pipeline.cover import _format_revision_hint, write_cover_with_retry
 
 VERIFIED = {
     "summary": "Web developer.",
-    "work_history": [{"employer": "X", "dates": "2024", "bullets": ["Built 14+ page Shopify site."]}],
+    "work_history": [
+        {
+            "employer": "X",
+            "dates": "2024",
+            "bullets": ["Built 14+ page Shopify site."],
+        }
+    ],
     "certifications": ["Contentful Certified Professional (October 2025)"],
     "education": [],
     "coursework_baseline": [],
@@ -112,7 +118,10 @@ async def test_returns_first_attempt_when_clean(
 
 
 @pytest.mark.asyncio
-async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_retries_until_clean(
+    kb_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     payloads = [_dirty_payload(), _clean_payload()]
     calls = {"n": 0}
     seen_users: list[str] = []
