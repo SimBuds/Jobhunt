@@ -96,7 +96,10 @@ Hard rules (from kb/policies/tailoring-rules.md):
       roles, a label such as "Full-stack JavaScript developer" is allowed
       when it is grounded in verified Core skills. NEVER prepend a seniority
       qualifier (Senior / Sr. / Staff / Lead / Principal / Architect) that is
-      not literally present in `verified_facts.summary`.
+      not literally present in `verified_facts.summary`. This rule is
+      enforced deterministically: a label tech token with no backing in
+      verified non-Familiar skills (e.g. "Django developer") is rejected
+      and the attempt retried.
    b. Years of experience must come verbatim from `verified_facts.summary`
       (e.g. "2+ years"). Do not round, restate, or invent.
    c. The culinary / leadership-of-kitchen-teams clause is **OMITTED** unless

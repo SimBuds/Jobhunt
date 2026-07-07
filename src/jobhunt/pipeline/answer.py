@@ -27,6 +27,7 @@ from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.pipeline.cover_validate import (
+    _BRIDGE_PATTERNS,
     _DEFENSIVE_PATTERNS,
     _DIGIT_CLUSTER_RE,
     _FABRICATION_WATCHLIST,
@@ -145,6 +146,12 @@ def validate_answer(
     # Defensive gap-volunteering patterns (including the May 2026 "concepts"
     # framing added in Phase 8).
     for pattern, label in _DEFENSIVE_PATTERNS:
+        if re.search(pattern, body_lower):
+            violations.append(label)
+
+    # Overconfident bridge claims — context-anchored tier shared with the
+    # cover validator (tone guardrails).
+    for pattern, label in _BRIDGE_PATTERNS:
         if re.search(pattern, body_lower):
             violations.append(label)
 

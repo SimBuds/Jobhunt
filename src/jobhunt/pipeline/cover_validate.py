@@ -35,13 +35,9 @@ BANNED_PHRASES: tuple[str, ...] = (
     "hit the ground running",
     "value-add",
     "direct match",
-    "exactly where",
     "matches that need directly",
     "proves this capability",
-    "maps directly",
-    "translates directly",
     "directly mirrors",
-    "this mirrors",
     "maps to your roadmap",
     "mirrors the kind of",
     "technical rigor",
@@ -92,6 +88,39 @@ _DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
     # legitimate and not matched; only the "ready to" variant trips, since it
     # signals the model is filling space rather than naming a next step.
     (r"\bi am ready to\b", "formulaic 'I am ready to' closer"),
+)
+
+# Overconfident one-to-one bridge claims (tone guardrails, 2026-06-25).
+# These four started as flat BANNED_PHRASES entries but fired on benign prose
+# ("knew exactly where to look", "the export maps directly onto the import
+# schema"), causing retry churn. They are matched here as regexes anchored to
+# the bridging context the tone guardrails actually ban — a first-person fit
+# claim or a claim aimed at the employer's role. The unambiguous proof-language
+# phrases ("directly mirrors", "proves this capability", "maps to your
+# roadmap") stay flat in BANNED_PHRASES.
+_BRIDGE_PATTERNS: tuple[tuple[str, str], ...] = (
+    # "this role is exactly where my Shopify work fits" — fit claim; but not
+    # "knew exactly where to look first" (no first-person after the phrase).
+    (
+        r"\bexactly where\b[^.!?]*\b(?:my|i|we)\b",
+        "overconfident bridge: 'exactly where' exact-fit claim",
+    ),
+    # "this mirrors your stack" — employer-aimed; but not "this mirrors the
+    # approach I used at Atelier" (self-referential comparison).
+    (
+        r"\b(?:this|that|it|which) mirrors\b[^.!?]*\byour\b",
+        "overconfident bridge: 'this mirrors your …' claim",
+    ),
+    # "maps directly to your React product work" / "to the role"; but not
+    # "the export maps directly onto the import schema".
+    (
+        r"\bmaps directly\b[^.!?]*\b(?:your?|the role|this role|the position|the job)\b",
+        "overconfident bridge: 'maps directly' role-fit claim",
+    ),
+    (
+        r"\btranslates directly\b[^.!?]*\b(?:your?|the role|this role|the position|the job)\b",
+        "overconfident bridge: 'translates directly' role-fit claim",
+    ),
 )
 
 # Form-letter openers banned by §2. Matched after stripping a leading
@@ -374,6 +403,12 @@ def validate_cover(
 
     for pattern, label in _DEFENSIVE_PATTERNS:
         if re.search(pattern, body_lower):
+            violations.append(label)
+
+    # Bridge claims are checked on the full text (parity with the flat
+    # BANNED_PHRASES entries they replaced).
+    for pattern, label in _BRIDGE_PATTERNS:
+        if re.search(pattern, full_lower):
             violations.append(label)
 
     if cover.body:

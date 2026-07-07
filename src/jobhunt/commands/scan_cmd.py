@@ -295,54 +295,42 @@ async def _auto_discover(cfg: Config, conn: sqlite3.Connection) -> None:
 
 
 def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
-    """Wipe HTTP cache and drop scored/ingested jobs; preserve real apply history.
+    """Wipe HTTP cache and drop scored/ingested jobs; preserve apply history.
 
-    Drafted applications are treated as ephemeral — their DB rows and on-disk
-    artifact dirs (`data/applications/<safe_id>/`) are removed so the underlying
-    jobs can be dropped and re-evaluated on the next scan. Submitted statuses
-    (applied/interviewing/offer/rejected/withdrawn) are preserved along with
-    their jobs. Scores cascade-delete from jobs via their own FK.
+    Applications of EVERY status pin their job row — including 'drafted'.
+    Drafted rows are durable re-apply targets (`apply --top/--best` and the
+    `list` default view select them), so a refresh must not silently discard
+    a draft or its on-disk artifacts under `data/applications/<safe_id>/`.
+    Unpinned jobs are dropped for re-evaluation on the next scan; their
+    scores cascade-delete via the jobs FK. Kept jobs keep their scores and
+    are re-scored when the score prompt_hash goes stale.
     """
-    from jobhunt.commands.apply_cmd import _safe_id
-
     cache_dir = Path(cfg.paths.data_dir) / "cache"
     cache_removed = False
     if cache_dir.exists():
         shutil.rmtree(cache_dir)
         cache_removed = True
 
-    apps_dir = Path(cfg.paths.data_dir) / "applications"
     with conn:
-        drafted_job_ids = [
-            r[0] for r in conn.execute(
-                "SELECT job_id FROM applications WHERE status = 'drafted'"
-            )
-        ]
-        conn.execute("DELETE FROM applications WHERE status = 'drafted'")
+        drafted = conn.execute(
+            "SELECT COUNT(*) FROM applications WHERE status = 'drafted'"
+        ).fetchone()[0]
         cur = conn.execute(
             "DELETE FROM jobs WHERE id NOT IN (SELECT job_id FROM applications)"
         )
         dropped_jobs = cur.rowcount
-        kept = conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
-
-    dropped_dirs = 0
-    for jid in drafted_job_ids:
-        d = apps_dir / _safe_id(jid)
-        if d.exists():
-            shutil.rmtree(d)
-            dropped_dirs += 1
+        submitted = conn.execute(
+            "SELECT COUNT(*) FROM applications WHERE status != 'drafted'"
+        ).fetchone()[0]
 
     bits = []
     if cache_removed:
         bits.append("HTTP cache wiped")
     bits.append(f"{dropped_jobs} job(s) + scores dropped")
-    if drafted_job_ids:
-        bits.append(
-            f"{len(drafted_job_ids)} drafted application(s) discarded "
-            f"({dropped_dirs} dir(s) removed)"
-        )
-    if kept:
-        bits.append(f"{kept} submitted application(s) kept")
+    if drafted:
+        bits.append(f"{drafted} drafted application(s) kept (still apply targets)")
+    if submitted:
+        bits.append(f"{submitted} submitted application(s) kept")
     typer.echo("refresh: " + "; ".join(bits))
 
 

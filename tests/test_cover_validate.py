@@ -87,6 +87,22 @@ def test_overconfident_tone_phrases_flagged(verified: dict) -> None:
     assert any("maps directly" in v for v in violations)
 
 
+def test_bridge_phrases_pass_in_benign_context(verified: dict) -> None:
+    """The four context-anchored bridge patterns must not fire on benign prose
+    — the reason they were moved out of the flat BANNED_PHRASES tier."""
+    cover = _good_cover()
+    cover.body[1] = (
+        "On the performance audit I knew exactly where to look first: the "
+        "theme's image pipeline. The CSV export maps directly onto the import "
+        "schema, so feed errors surface before import. This mirrors the "
+        "checklist I built at Geeked Out Goods, and that experience translates "
+        "directly into faster theme reviews."
+    )
+    violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
+    bridge = [v for v in violations if "overconfident bridge" in v]
+    assert bridge == [], bridge
+
+
 def test_form_letter_opener_flagged(verified: dict) -> None:
     cover = _good_cover()
     cover.body[0] = "Applying for the Full-Stack Developer position at Acme Corp."

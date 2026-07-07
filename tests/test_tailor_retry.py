@@ -278,6 +278,55 @@ def test_format_revision_hint_role_divergence() -> None:
     assert "every verified role" in hint
 
 
+def test_check_summary_accepts_grounded_jd_label() -> None:
+    # "JavaScript" is a verified Core skill, so the JD-lane label passes.
+    tailor_mod._check_summary(
+        "Full-stack JavaScript developer with 2+ years of client work.", VERIFIED
+    )
+
+
+def test_check_summary_accepts_verbatim_verified_label() -> None:
+    tailor_mod._check_summary(VERIFIED["summary"], VERIFIED)
+
+
+def test_check_summary_rejects_ungrounded_label_token() -> None:
+    with pytest.raises(FabricationError) as exc:
+        tailor_mod._check_summary(
+            "Django developer with 2+ years of client work.", VERIFIED
+        )
+    v = exc.value.violations[0]
+    assert v.kind == "summary-label-ungrounded"
+    assert v.detail == "django"
+
+
+def test_check_summary_rejects_familiar_grounded_label() -> None:
+    # Java is Familiar-only in VERIFIED; an identity label may not rest on it.
+    with pytest.raises(FabricationError) as exc:
+        tailor_mod._check_summary(
+            "Java developer with 2+ years of client work.", VERIFIED
+        )
+    assert exc.value.violations[0].kind == "summary-label-ungrounded"
+    assert exc.value.violations[0].detail == "java"
+
+
+def test_check_summary_skips_label_check_when_no_label_isolates() -> None:
+    # No "with"/comma/paren delimiter and more than 6 words: the guard
+    # declines to guess where the label ends rather than risk a false reject.
+    tailor_mod._check_summary(
+        "Builder of unusual storefront experiences across many client industries daily.",
+        VERIFIED,
+    )
+
+
+def test_format_revision_hint_summary_label_ungrounded() -> None:
+    hint = _format_tailor_revision_hint(
+        [FabricationViolation("summary-label-ungrounded", "django")], attempt=1
+    )
+    assert "'django'" in hint
+    assert "role label" in hint
+    assert "verified" in hint
+
+
 def test_format_revision_hint_summary_seniority() -> None:
     hint = _format_tailor_revision_hint(
         [FabricationViolation("summary-seniority", "senior")],
