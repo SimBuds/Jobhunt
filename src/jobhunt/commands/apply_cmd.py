@@ -209,8 +209,7 @@ def run(
     ensure_profile(cfg)
     effective_min_score = min_score if min_score is not None else cfg.pipeline.min_score
 
-    if manual_mode:
-        assert url is not None
+    if url is not None:
         if description_from_stdin and (not title or not company):
             typer.echo(
                 "error: --description-from-stdin requires --title and --company.",

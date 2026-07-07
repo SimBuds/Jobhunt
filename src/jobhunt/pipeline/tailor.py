@@ -235,6 +235,14 @@ def _violation_hint_line(
             "culinary clause to the LAST sentence only, and only if the JD "
             "explicitly asks for team-management or operational leadership."
         )
+    if v.kind == "summary-label-ungrounded":
+        return (
+            f"- The summary's opening role label claims {v.detail!r}, which is "
+            "not backed by verified Core skills or the verified summary. Open "
+            "with a truthful role label grounded in verified skills — keep the "
+            "verified summary's own label, or use a JD-lane label only when "
+            "its tech tokens appear in verified non-Familiar skills."
+        )
     if v.kind == "unverified-project":
         return (
             f"- The project {v.detail!r} is NOT in verified_facts.projects. "
@@ -688,6 +696,20 @@ def _identity_tokens(s: str) -> frozenset[str]:
 _FORBIDDEN_SENIORITY = ("senior", "sr", "staff", "lead", "principal", "architect")
 _CULINARY_TERMS = ("culinary", "chef", "kitchen", "restaurant", "sous")
 
+# Generic role-label words that carry no tech identity of their own. Used by
+# the summary role-label grounding check in `_check_summary`: after dropping
+# these, whatever tokens remain in the opening label are identity claims that
+# must be backed by verified skills (or the verified summary itself).
+# Deliberately minimal — words like "designer" or "architect" DO carry a claim
+# and are excluded so they get checked (or, for seniority words, rejected
+# earlier by `_FORBIDDEN_SENIORITY`).
+_LABEL_GENERIC_TOKENS: frozenset[str] = frozenset({
+    "developer", "engineer", "programmer", "consultant", "specialist",
+    "full", "stack", "fullstack", "front", "frontend", "back", "backend",
+    "end", "web", "software", "e", "commerce", "ecommerce", "cms",
+    "and", "or", "the", "a", "an",
+})
+
 
 @dataclass(frozen=True)
 class FabricationViolation:
@@ -699,7 +721,8 @@ class FabricationViolation:
     """
 
     # unverified-skill | familiar-promoted | role-divergence |
-    # summary-seniority | summary-culinary
+    # summary-seniority | summary-culinary | summary-label-ungrounded |
+    # unverified-project | project-url-divergence
     kind: str
     detail: str
 
@@ -746,6 +769,38 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
         raise FabricationError(
             [FabricationViolation("summary-culinary", "first-sentence")], msg
         )
+
+    # Role-label grounding (tailor.md §6a). The summary may open with a
+    # JD-appropriate role label ("Full-stack JavaScript developer") instead of
+    # the verified summary's verbatim label, but the relaxation is fenced:
+    # every tech/domain token the label carries must be backed by verified
+    # non-Familiar skills or by the verified summary itself. Familiar skills
+    # deliberately do NOT ground a label — an identity claim ("Java developer")
+    # needs production-grade backing. Applied only when the label isolates
+    # cleanly at label length (≤6 words); anything longer means we failed to
+    # isolate a label, so skip rather than risk a false reject. This is the
+    # deterministic guard behind the prompt-only §6a rule.
+    label = re.split(r"\s+with\s+|\s*[(,—–]", first_sentence, maxsplit=1)[0].strip()
+    if label and len(label.split()) <= 6:
+        grounding = set(_tokens(verified_summary))
+        for key in (
+            "skills_core",
+            "skills_cms",
+            "skills_data_devops",
+            "skills_ai",
+            "skills_projects",
+        ):
+            for skill in verified.get(key, []) or []:
+                grounding |= _tokens(str(skill))
+        for token in sorted(_tokens(label) - _LABEL_GENERIC_TOKENS):
+            if token not in grounding:
+                msg = (
+                    f"summary role label contains {token!r} not backed by "
+                    "verified skills or verified.summary"
+                )
+                raise FabricationError(
+                    [FabricationViolation("summary-label-ungrounded", token)], msg
+                )
 
 
 def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) -> None:
