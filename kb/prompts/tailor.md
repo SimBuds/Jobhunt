@@ -91,10 +91,13 @@ Hard rules (from kb/policies/tailoring-rules.md):
    GBC list mentioned in `policy`, only items that map to the JD.
 6. Summary: 3–5 sentences. Strict rules:
    a. Open with a truthful role label that matches the JD's primary lane and
-      Casey's verified facts. For CMS and e-commerce roles, keep the
-      verified summary's CMS identity. For backend or full-stack JavaScript
-      roles, a label such as "Full-stack JavaScript developer" is allowed
-      when it is grounded in verified Core skills. NEVER prepend a seniority
+      Casey's verified facts. The verified summary's own label ("Full-stack
+      JavaScript/TypeScript developer") is always safe. Lane-specific labels
+      are allowed when grounded in verified non-Familiar skills: CMS or
+      e-commerce roles may open "CMS & E-commerce Developer"; AI / LLM /
+      automation roles may open with an AI-automation label (e.g. "Full-stack
+      developer building AI automation tooling"); technical-SEO / site
+      performance roles may open "Technical SEO developer". NEVER prepend a seniority
       qualifier (Senior / Sr. / Staff / Lead / Principal / Architect) that is
       not literally present in `verified_facts.summary`. This rule is
       enforced deterministically: a label tech token with no backing in

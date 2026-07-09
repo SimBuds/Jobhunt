@@ -18,6 +18,10 @@ humans edit `policies/`.
     `Resume_Tailoring_Instructions.md` (root-level source of truth).
 - `prompts/`: task prompts loaded by the gateway. Frontmatter declares model,
   temperature, and JSON schema.
+- `lanes/`: hand-edited pseudo-JD briefs (`ai-automation.md`,
+  `cms-ecommerce.md`, `technical-seo.md`) that `jobhunt resume --focus
+  ai|cms|seo|all` tailors the base resumes against. Same fabrication checks as
+  real applications; output lands in `data/resumes/`.
 - `seeds/`: curated cold-start data.
   - `gta-employers.toml`: verified ATS slugs imported by
     `jobhunt config seed --apply`. Every entry is probe-checked via

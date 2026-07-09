@@ -260,6 +260,7 @@ src/jobhunt/
 │   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
 │   ├── add_cmd.py             # URL → ATS slug → config.toml (primary slug-acquisition surface)
 │   ├── answer_cmd.py          # P11: application-form question assistant
+│   ├── resume_cmd.py          # lane base resumes from kb/lanes/ briefs (July 2026)
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
 │   ├── discover_cmd.py        # legacy: harvest URLs + probe Greenhouse/Ashby/Lever/SmartRecruiters
 │   ├── _config_write.py       # atomic `.bak`-then-tmp-rename helper (shared by add, config seed, discover --apply)
@@ -311,7 +312,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **ten** commands. `db` and `config` are hidden internals
+User-facing surface is **eleven** commands. `db` and `config` are hidden internals
 (except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
@@ -337,6 +338,11 @@ jobhunt interview-prep <id> [--stage agency|hiring_manager|assessment] [--resear
                             [--refresh-research]
                             [--recruiter-type internal_recruiter|hiring_manager|external_agency|unknown]
                              # hybrid prep doc: deterministic skeleton + LLM middle
+jobhunt resume [--focus ai|cms|seo|all]
+                             # regenerate the lane base resumes (manual channels:
+                             # LinkedIn/Indeed/recruiters) from kb/lanes/ briefs
+                             # through the same tailor + fabrication pipeline;
+                             # output: data/resumes/
 jobhunt list [--applied] [--drafted] [--withdrawn]
              [--week N] [--verdict ship|revise|block] [--no-reply]
              [--older-than 14d|2w] [--limit N]
@@ -507,7 +513,7 @@ Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
   skip the confirmation prompt.
 - `jobhunt config show|path|calibrate`.
 
-**Profile guard.** `scan`, `list`, and `apply` call `ensure_profile(cfg)` from
+**Profile guard.** `scan`, `list`, `apply`, and `resume` call `ensure_profile(cfg)` from
 `commands/__init__.py` at the top of their callbacks. If
 `kb/profile/verified.json` is missing, they exit with a friendly message
 pointing the user to `convert-resume`. Do not bypass this guard — adding new
