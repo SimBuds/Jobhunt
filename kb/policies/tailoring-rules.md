@@ -77,8 +77,12 @@ When the JD explicitly mentions AI, LLM, RAG, generative AI, prompt
 engineering, ML, automation tooling, developer tooling, local-first tooling,
 or infrastructure work:
 
-- Casey's baseline identity is CMS Developer. AI tooling is a supporting
-  side-project and interest signal by default, not the headline identity.
+- Casey's baseline identity is full-stack JavaScript/TypeScript developer with
+  CMS & e-commerce depth (July 2026 repositioning). For AI/LLM/automation-lane
+  JDs, the AI automation tooling work (verified `skills_ai`) may headline the
+  summary label — e.g. "developer building AI automation tooling" — but never
+  an employment-title claim like "AI Engineer". For all other lanes AI tooling
+  stays a supporting signal.
 - The **resume summary**'s first or second sentence MUST surface Casey's
   Ollama / local LLM / prompt-engineering work using the literal tokens
   "AI" and "LLM" for AI-adjacent roles so ATS keyword matchers latch on.

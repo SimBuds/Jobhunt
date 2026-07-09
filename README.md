@@ -104,7 +104,7 @@ jobhunt convert-resume         # generates kb/profile/* from Baseline_Resume.doc
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
 
-`scan`, `list`, `apply`, `answer`, and `analyze` refuse to run until
+`scan`, `list`, `apply`, `answer`, `resume`, and `analyze` refuse to run until
 `convert-resume` has produced `kb/profile/verified.json`. To start over (drops
 DB, tailored documents, HTTP cache, interview-prep docs, saved answers,
 browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
@@ -158,6 +158,7 @@ the full option list. The commands below are the ones you usually need.
 | `apply` | Tailor docs and open the browser autofill flow | `jobhunt apply <job-id>`, `jobhunt apply --best`, `jobhunt apply --url <URL>` |
 | `answer` | Draft a form-question response | `jobhunt answer "Question" --job <job-id>` |
 | `interview-prep` | Draft an interview prep note | `jobhunt interview-prep <job-id> --research` |
+| `resume` | Regenerate the three lane base resumes for manual channels | `jobhunt resume`, `jobhunt resume --focus ai` |
 | `add` | Add an ATS source from a career URL | `jobhunt add <URL>` |
 | `analyze` | Run deterministic job-search reports | `jobhunt analyze certs`, `jobhunt analyze employers` |
 | `convert-resume` | Rebuild `kb/profile/` from the baseline resume | `jobhunt convert-resume` |
@@ -318,12 +319,14 @@ adzuna_app_key = "..."
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
 | `kb/policies/tailoring-rules.md` | Prompt-injectable mirror of the tailoring rules. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
+| `kb/lanes/{ai-automation,cms-ecommerce,technical-seo}.md` | Pseudo-JD briefs for `jobhunt resume` lane base resumes. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
 | `~/.config/jobhunt/config.toml` | Sources, models, applicant profile, paths. |
 | `~/.config/jobhunt/secrets.toml` | API keys (Adzuna), mode 0600. |
 | `data/jobhunt.db` | SQLite: jobs, scores, applications, slug_probes. |
 | `data/applications/<job-id>/` | Tailored resume, cover letter, `audit.json`, `fill-plan.json`, `answers/`. |
 | `data/answers/<sha1>.md` | Standalone (non-job-scoped) answer artifacts. |
+| `data/resumes/` | Lane base resumes (`jobhunt resume`) + their tailored JSON. |
 | `data/interview-prep/<job-id>.md` | Interview prep docs. |
 | `data/cache/` | Cached raw HTTP responses (TTL-based). |
 
