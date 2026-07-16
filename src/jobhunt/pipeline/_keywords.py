@@ -134,9 +134,50 @@ def phrase_tokens(phrase: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(phrase.lower()) if t not in _STOPWORDS and len(t) > 1]
 
 
+_PAREN_RE = re.compile(r"\([^)]*\)")
+
+# Minimum length for a '/'-part to stand alone as an alternative. Keeps
+# 'CI/CD' one unit ('ci'/'cd' are fragments of a single concept) while
+# 'CSS3/Sass' and 'Git/GitHub' split into real alternatives.
+_MIN_ALT_LEN = 3
+
+
+def _strip_parenthetical(phrase: str) -> str:
+    """Drop parenthetical qualifiers before matching. Verified skills carry
+    detail ('WordPress (Elementor)'); score-LLM must-haves carry commentary
+    ('WordPress (exact match)'). Neither is part of the keyword itself, and
+    requiring commentary tokens makes real matches unfindable — a resume
+    listing WordPress can never contain 'exact match'. Falls back to the
+    original phrase when stripping leaves nothing."""
+    stripped = _PAREN_RE.sub(" ", phrase).strip()
+    return stripped or phrase
+
+
+def _token_present(token: str, blob: str) -> bool:
+    """Substring presence with '/'-compound handling: a token like
+    'css3/sass' names alternatives, but a resume lists the parts as separate
+    items, so the token also counts when any part >= _MIN_ALT_LEN chars is
+    present. Shorter parts ('ci/cd') keep whole-token semantics."""
+    if token in blob:
+        return True
+    if "/" in token:
+        return any(p in blob for p in token.split("/") if len(p) >= _MIN_ALT_LEN)
+    return False
+
+
+def _all_tokens_present(phrase: str, blob: str) -> bool:
+    tokens = phrase_tokens(phrase)
+    if not tokens:
+        return False
+    return all(_token_present(t, blob) for t in tokens)
+
+
 def phrase_present(phrase: str, blob: str) -> bool:
-    """Phrase counts as covered if (a) the full phrase appears as a substring,
-    or (b) every non-stopword token in the phrase appears somewhere in the blob.
+    """Phrase counts as covered if, after dropping parenthetical qualifiers:
+    (a) the phrase appears as a substring, or (b) every non-stopword token
+    appears somewhere in the blob ('/'-compound tokens match on any part >=
+    _MIN_ALT_LEN chars), or (c) any '/'-separated alternative of the whole
+    phrase ('Performance Optimization/Core Web Vitals') matches on its own.
     Blob must already be lower-cased.
     """
     p = phrase.lower().strip()
@@ -144,7 +185,13 @@ def phrase_present(phrase: str, blob: str) -> bool:
         return False
     if p in blob:
         return True
-    tokens = phrase_tokens(p)
-    if not tokens:
-        return False
-    return all(t in blob for t in tokens)
+    p = _strip_parenthetical(p)
+    if p in blob or _all_tokens_present(p, blob):
+        return True
+    if "/" in p:
+        return any(
+            alt in blob or _all_tokens_present(alt, blob)
+            for alt in (a.strip() for a in p.split("/"))
+            if len(alt) >= _MIN_ALT_LEN
+        )
+    return False

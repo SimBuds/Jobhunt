@@ -879,10 +879,11 @@ async def _apply_io_phase(
                 f" (+{len(audit_result.missing_must_haves) - 5} more)"
                 if len(audit_result.missing_must_haves) > 5 else ""
             )
+            pct = audit_result.keyword_coverage_pct
+            low = f" (coverage {pct}% < 70%)" if pct is not None and pct < 70 else ""
             typer.echo(
                 f"    revise: {len(audit_result.missing_must_haves)} JD must-have(s) "
-                f"not in resume — {', '.join(preview)}{tail} "
-                f"(coverage {audit_result.keyword_coverage_pct}% < {70}%)",
+                f"not in resume — {', '.join(preview)}{tail}{low}",
                 err=True,
             )
 
