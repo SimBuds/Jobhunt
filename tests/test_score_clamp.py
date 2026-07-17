@@ -95,10 +95,79 @@ def test_coerce_phrase_list_drops_dicts_without_string_values() -> None:
 
 def test_verify_credits_phrases_present_in_profile() -> None:
     matched, gaps = _verify_against_profile(
-        ["TypeScript", "React"], ["Vue.js"], VERIFIED_BLOB
+        ["TypeScript", "React"], ["Kubernetes"], VERIFIED_BLOB
     )
     assert matched == ["TypeScript", "React"]
-    assert gaps == ["Vue.js"]
+    assert gaps == ["Kubernetes"]
+
+
+# --- transferable crediting (July 2026): the clamp must honor the same
+# peer-family / annotation rules the score prompt promises, instead of
+# demoting every transferable match to a gap and capping the score. ---
+
+
+def test_verify_credits_peer_family_member() -> None:
+    """JD asks Vue; profile has React (frontend peer family). The prompt
+    counts this as matched — the clamp must agree instead of demoting."""
+    matched, gaps = _verify_against_profile([], ["Vue"], VERIFIED_BLOB)
+    assert matched == ["Vue"]
+    assert gaps == []
+
+
+def test_verify_credits_annotated_bridge_without_family() -> None:
+    """Zustand has no PEER_FAMILIES entry, but the LLM annotated the bridge
+    (React) and React is verified — the annotation path must credit it."""
+    matched, gaps = _verify_against_profile(
+        ["Zustand (transferable: React)"], [], VERIFIED_BLOB
+    )
+    assert matched == ["Zustand (transferable: React)"]
+
+
+def test_verify_credits_school_project_bridge_form() -> None:
+    """The prompt's coursework form: '(transferable: school project — X)'.
+    The concrete tech after the em-dash is what gets verified."""
+    matched, gaps = _verify_against_profile(
+        ["Django (transferable: school project — Python)"], [], VERIFIED_BLOB
+    )
+    assert matched == ["Django (transferable: school project — Python)"]
+
+
+def test_verify_demotes_bogus_bridge() -> None:
+    """A bridge naming a tech NOT in the profile fails closed — the LLM
+    can't launder an unverified skill through the annotation."""
+    matched, gaps = _verify_against_profile(
+        ["Rust (transferable: Haskell)"], [], VERIFIED_BLOB
+    )
+    assert gaps == ["Rust (transferable: Haskell)"]
+
+
+def test_verify_credits_cross_language_framework_bridge() -> None:
+    """Phase 6: 'Spring Boot (transferable: Express)' — Spring Boot has no
+    PEER_FAMILIES entry (deliberately: audit/tailor stay strict), so the
+    credit flows only through the annotation bridge, which must verify."""
+    blob = json.dumps({"skills_core": ["Express", "TypeScript"]})
+    matched, gaps = _verify_against_profile(
+        ["Spring Boot (transferable: Express)"], [], blob
+    )
+    assert matched == ["Spring Boot (transferable: Express)"]
+    assert gaps == []
+
+
+def test_verify_demotes_cross_language_bogus_bridge() -> None:
+    blob = json.dumps({"skills_core": ["Express", "TypeScript"]})
+    matched, gaps = _verify_against_profile(
+        ["ASP.NET (transferable: Haskell)"], [], blob
+    )
+    assert gaps == ["ASP.NET (transferable: Haskell)"]
+
+
+def test_verify_demotes_unannotated_cross_language_claim() -> None:
+    """Without the annotation, a cross-language claim has no path: not
+    literal, no peer family, no bridge. The prompt's 'ALWAYS annotate'
+    instruction is load-bearing."""
+    blob = json.dumps({"skills_core": ["Express", "TypeScript"]})
+    matched, gaps = _verify_against_profile(["Spring Boot"], [], blob)
+    assert gaps == ["Spring Boot"]
 
 
 def test_verify_demotes_llm_matched_when_not_in_profile() -> None:
@@ -324,10 +393,12 @@ async def test_score_job_still_clamps_when_denominator_sufficient(
     regression that originally motivated the clamp."""
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        # Gaps must be true non-peers: Angular/Svelte would now legitimately
+        # peer-credit via verified React (July 2026 transferable crediting).
         return {
             "score": 95,
             "matched_must_haves": ["React"],
-            "gaps": ["Vue.js", "Angular", "Svelte"],  # 1/4 = 25% coverage
+            "gaps": ["Rust", "Scala", "Kubernetes"],  # 1/4 = 25% coverage
             "decline_reason": None,
             "ai_bonus_present": False,
         }
@@ -372,16 +443,18 @@ async def test_score_job_nullifies_senior_band_decline_for_junior_title(
 
 
 @pytest.mark.asyncio
-async def test_score_job_keeps_senior_band_decline_for_senior_title(
+async def test_score_job_senior_decline_converts_to_cap_when_opted_in(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The override is title-gated: a Senior-titled posting with a Senior-
-    band decline reason must keep the decline."""
+    """Senior-band exposure (July 2026): with `include_senior_roles = true`
+    (the ApplicantConfig default), a Senior-band decline the model still
+    emits converts to a ≤70 confidence cap instead — the role stays
+    applyable in the stretch band."""
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return {
-            "score": 0,
-            "matched_must_haves": [],
+            "score": 88,
+            "matched_must_haves": ["TypeScript", "React", "Node.js"],
             "gaps": [],
             "decline_reason": "Senior-band title; candidate YoE under typical floor",
             "ai_bonus_present": False,
@@ -397,6 +470,42 @@ async def test_score_job_keeps_senior_band_decline_for_senior_title(
         company="Acme",
     )
     result = await score_job(_cfg(kb_dir), job)
+    assert result.decline_reason is None
+    assert result.score == 70  # raw 88, full coverage, senior ceiling
+
+
+@pytest.mark.asyncio
+async def test_score_job_keeps_senior_band_decline_when_opted_out(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The conversion is config-gated: with `include_senior_roles = false`,
+    a Senior-titled posting with a Senior-band decline keeps the decline."""
+    from jobhunt.config import ApplicantProfile
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 0,
+            "matched_must_haves": [],
+            "gaps": [],
+            "decline_reason": "Senior-band title; candidate YoE under typical floor",
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    cfg = Config(
+        paths=PathsConfig(kb_dir=kb_dir),
+        gateway=GatewayConfig(tasks={"score": "qwen3.5:9b"}),
+        applicant=ApplicantProfile(include_senior_roles=False),
+    )
+    job = Job(
+        id="test:sr",
+        source="test",
+        external_id="sr",
+        title="Senior Software Engineer",
+        description="React + Node.",
+        company="Acme",
+    )
+    result = await score_job(cfg, job)
     assert result.decline_reason is not None
     assert "senior-band" in result.decline_reason.lower()
 
@@ -405,13 +514,12 @@ async def test_score_job_keeps_senior_band_decline_for_senior_title(
 
 
 @pytest.mark.asyncio
-async def test_score_job_caps_familiar_only_fit(
+async def test_score_job_familiar_only_soft_band_for_junior_title(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Phase 10.2 regression: when every matched must-have resolves to a
-    Familiar-bucket skill (Java/Spring Boot, academic-only), the score must
-    cap at <55 and set a decline reason. Avoids the Java-Developer-shipped-
-    with-Familiar-only-section pattern."""
+    """July 2026 soft band: a NON-senior title whose matches are all
+    Familiar-bucket skills caps at 58 WITHOUT a decline — the role stays
+    visible in the 55-59 stretch band (coachable-junior story)."""
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return {
@@ -423,8 +531,65 @@ async def test_score_job_caps_familiar_only_fit(
         }
 
     monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
-    result = await score_job(_cfg(kb_dir), _job())
-    assert result.score <= 54, f"expected cap, got {result.score}"
+    result = await score_job(_cfg(kb_dir), _job())  # title: Front-end Engineer
+    assert result.score == 58, f"expected soft cap 58, got {result.score}"
+    assert result.decline_reason is None
+
+
+@pytest.mark.asyncio
+async def test_score_job_llm_familiar_decline_nullified_for_junior_title(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """qwen still emits the Familiar-only decline on junior titles despite
+    the updated prompt (observed live 2026-07-17, adzuna Java Developer).
+    The deterministic layer must nullify it and apply the 58 soft cap."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 62,
+            "matched_must_haves": ["Java", "Spring Boot"],
+            "gaps": ["Kubernetes"],
+            "decline_reason": (
+                "role's matched skills are all Familiar (academic/light use); "
+                "not Core production experience"
+            ),
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())  # non-senior title
+    assert result.decline_reason is None
+    assert result.score <= 58
+
+
+@pytest.mark.asyncio
+async def test_score_job_familiar_only_still_declines_senior_title(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The decline survives for Senior-band titles: Familiar-only matches
+    against a senior bar remain a misrepresentation risk (the May 2026
+    Ignite Talent Java Developer ship)."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 78,
+            "matched_must_haves": ["Java", "Spring Boot"],
+            "gaps": ["10+ years"],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    job = Job(
+        id="test:sr-java",
+        source="test",
+        external_id="sr-java",
+        title="Senior Java Developer",
+        description="Java + Spring Boot. Senior role.",
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.score <= 54, f"expected senior cap, got {result.score}"
     assert result.decline_reason is not None
     assert "familiar" in result.decline_reason.lower()
 

@@ -20,6 +20,7 @@ from jobhunt.commands import (
     resume_cmd,
     scan_cmd,
     setup_cmd,
+    track_cmd,
 )
 from jobhunt.errors import JobHuntError
 
@@ -38,6 +39,7 @@ app.command("interview-prep", help=interview_prep_cmd.app.info.help)(interview_p
 app.command("resume", help=resume_cmd.app.info.help)(resume_cmd.run)
 app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
 app.add_typer(analyze_cmd.app, name="analyze")
+app.add_typer(track_cmd.app, name="track")
 app.add_typer(discover_cmd.app, name="discover")
 app.add_typer(db_cmd.app, name="db", hidden=True)
 app.add_typer(config_cmd.app, name="config", hidden=True)

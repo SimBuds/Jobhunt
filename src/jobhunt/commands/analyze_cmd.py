@@ -513,11 +513,11 @@ def employers(
 def response_rate(
     by: str = typer.Option(
         "score", "--by",
-        help="Bucket key: 'score' (band) or 'ats' (source).",
+        help="Bucket key: 'score' (band), 'ats' (source), or 'channel'.",
     ),
 ) -> None:
-    if by not in {"score", "ats"}:
-        raise typer.BadParameter("--by must be 'score' or 'ats'")
+    if by not in {"score", "ats", "channel"}:
+        raise typer.BadParameter("--by must be 'score', 'ats', or 'channel'")
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
@@ -527,7 +527,7 @@ def response_rate(
     try:
         rows = conn.execute(
             """
-            SELECT s.score, j.source, a.status, a.response_received_at
+            SELECT s.score, j.source, a.status, a.response_received_at, a.channel
             FROM applications a
             JOIN jobs j ON j.id = a.job_id
             LEFT JOIN scores s ON s.job_id = a.job_id
@@ -556,6 +556,8 @@ def response_rate(
                 if lo <= sc < hi:
                     return label
             return "—"
+        if by == "channel":
+            return r["channel"] or "pipeline"
         return r["source"] or "?"
 
     def _responded(r: sqlite3.Row) -> bool:
@@ -583,6 +585,99 @@ def response_rate(
         f"{'TOTAL':<14} {len(rows):>8} {total_responded:>10} "
         f"{100 * total_responded / len(rows):.0f}%"
     )
+
+
+@app.command("funnel", help="Application funnel: applied → responded → interviewed → offer.")
+def funnel(
+    by: str | None = typer.Option(
+        None, "--by", help="Optional split key: 'channel'.",
+    ),
+) -> None:
+    """Aggregates every submitted application into funnel stages, with the
+    median days from application to first response. A row counts as:
+    - responded: response_received_at set OR status moved downstream;
+    - interviewed: interview_at set OR status interviewing/offer;
+    - offer: outcome = 'offer'.
+    """
+    if by is not None and by != "channel":
+        raise typer.BadParameter("--by only supports 'channel'")
+    from jobhunt.commands import ensure_profile
+
+    cfg = load_config()
+    ensure_profile(cfg)
+    conn = connect(cfg.paths.db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT a.channel, a.status, a.outcome, a.applied_at,
+                   a.response_received_at, a.interview_at
+            FROM applications a
+            WHERE a.applied_at IS NOT NULL
+            """,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        typer.echo("no submitted applications yet. Apply to some jobs first.")
+        return
+
+    def _as_date(raw: str | None):
+        from datetime import date as _date
+
+        if not raw:
+            return None
+        try:
+            return _date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            return None
+
+    def _responded(r: sqlite3.Row) -> bool:
+        return r["response_received_at"] is not None or r["status"] in {
+            "interviewing", "offer", "rejected",
+        }
+
+    def _interviewed(r: sqlite3.Row) -> bool:
+        return r["interview_at"] is not None or r["status"] in {"interviewing", "offer"}
+
+    def _render(label: str, group: list[sqlite3.Row]) -> None:
+        import statistics
+
+        applied = len(group)
+        responded = sum(1 for r in group if _responded(r))
+        interviewed = sum(1 for r in group if _interviewed(r))
+        offers = sum(1 for r in group if r["outcome"] == "offer")
+        lags = [
+            (resp - app_d).days
+            for r in group
+            if (app_d := _as_date(r["applied_at"]))
+            and (resp := _as_date(r["response_received_at"]))
+        ]
+        med = f"{statistics.median(lags):.0f}d" if lags else "—"
+
+        def pct(n: int) -> str:
+            return f"{100 * n / applied:.0f}%" if applied else "—"
+
+        typer.echo(
+            f"{label:<14} {applied:>8} {responded:>6} ({pct(responded):>4}) "
+            f"{interviewed:>6} ({pct(interviewed):>4}) "
+            f"{offers:>5} ({pct(offers):>4})  median-response {med}"
+        )
+
+    typer.echo(f"\napplication funnel ({len(rows)} applications):\n")
+    typer.echo(
+        f"{'Bucket':<14} {'Applied':>8} {'Resp':>6} {'':>6} "
+        f"{'Intvw':>6} {'':>6} {'Offer':>5}"
+    )
+    typer.echo("-" * 78)
+    if by == "channel":
+        groups: dict[str, list[sqlite3.Row]] = {}
+        for r in rows:
+            groups.setdefault(r["channel"] or "pipeline", []).append(r)
+        for key in sorted(groups, key=lambda k: -len(groups[k])):
+            _render(key, groups[key])
+        typer.echo("-" * 78)
+    _render("TOTAL", list(rows))
 
 
 @app.command("validators", help="Which cover-letter validators fired most over a window.")

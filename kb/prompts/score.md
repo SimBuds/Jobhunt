@@ -41,6 +41,11 @@ A JD must-have counts as **matched** when verified_facts shows any of:
    - JS/TS runtimes: Node.js ↔ Bun ↔ Deno
    - Edge runtimes: Cloudflare Workers ↔ Vercel Edge ↔ Lambda@Edge ↔ Deno Deploy
    - Node servers: Express ↔ Fastify ↔ Koa ↔ NestJS ↔ Hono
+   - Server frameworks (cross-language, July 2026 — fundamentals bridge:
+     routing, middleware, ORM/data access, auth, REST): Express/Fastify/
+     NestJS ↔ Spring Boot ↔ Django ↔ Flask ↔ Laravel ↔ Rails ↔ ASP.NET.
+     ALWAYS annotate the verified bridge, e.g. `"Spring Boot (transferable:
+     Express)"` — an unannotated cross-language match will be demoted.
    - ORMs / query builders: Prisma ↔ Drizzle ↔ Knex ↔ TypeORM ↔ Sequelize ↔ Kysely
    - API patterns: REST ↔ tRPC (transferable for Casey). GraphQL is a related
      skill but counts as a **gap** when not in verified — do not auto-decline on it.
@@ -51,7 +56,12 @@ A JD must-have counts as **matched** when verified_facts shows any of:
    - E2E test runners: Playwright ↔ Cypress ↔ Puppeteer ↔ WebdriverIO
    - Cloud providers: AWS ↔ GCP ↔ Azure (general cloud literacy)
    - Containers: Docker ↔ Podman
-   - Languages: TypeScript ↔ JavaScript (type-system fundamentals)
+   - Languages: TypeScript ↔ JavaScript (type-system fundamentals).
+     Cross-language (July 2026 — typed-OO fundamentals; the candidate's
+     coursework covers Enterprise Java and PHP runs in his WordPress work):
+     JavaScript/TypeScript ↔ Java ↔ C# ↔ PHP ↔ Python. ALWAYS annotate the
+     verified bridge, e.g. `"C# (transferable: TypeScript)"`,
+     `"Java (transferable: coursework — Enterprise Java)"`.
    - CI: GitHub Actions ↔ GitLab CI ↔ CircleCI ↔ Buildkite ↔ Jenkins
    - CMS / e-commerce: Shopify ↔ BigCommerce ↔ WooCommerce ↔ Medusa;
      Contentful ↔ Strapi ↔ Sanity ↔ Ghost ↔ Payload ↔ Storyblok;
@@ -88,15 +98,15 @@ Use these sparingly.
   declines but "7+ years" is borderline. Below the +3 cushion, score the JD
   honestly in the rubric range — do not auto-decline.
 - **Senior-band titles** (Senior, Sr., Lead, Staff, Principal, Architect):
-  - When `Candidate years of experience` ≥ 4 — treat as IC roles and score
-    in the 60–85 band based on coverage. Do NOT auto-decline on the title
-    alone; auto-decline only when the JD body explicitly names people-
-    management responsibilities (mentoring 4+ direct reports, owning
-    headcount, performance reviews).
-  - When `Candidate years of experience` < 4 — set
-    `decline_reason = "Senior-band title; candidate YoE under typical
-    floor"`. Senior postings rarely waive YoE screens for sub-4-YoE
-    candidates.
+  treat as IC roles. Do NOT auto-decline on the title alone; auto-decline
+  only when the JD body explicitly names people-management responsibilities
+  (mentoring 4+ direct reports, owning headcount, performance reviews).
+  - When `Candidate years of experience` ≥ 4 — score in the 60–85 band
+    based on coverage.
+  - When `Candidate years of experience` < 4 — score IC-coding-heavy senior
+    JDs in the **55–70 band** (recruiters regularly consider strong 3-YoE
+    candidates for these). When the JD hard-requires years beyond the +3
+    cushion, the years rule above still applies.
 - Title is people-management: Manager, Senior Manager, Director, Head of,
   VP, Engineering Manager. (Pure IC titles never trigger this.)
 - Title is a non-engineering function: Sales, Partnerships, Account
@@ -106,15 +116,18 @@ Use these sparingly.
 - Domain requires regulated experience (clinical software, securities
   trading, medical devices, defense) and verified_facts shows none.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
-- **All matched skills are Familiar-only.** When every entry you'd put in
-  `matched_must_haves` comes from `verified_facts.skills_familiar` (Java,
-  Spring Boot, MCP Servers, Agile/Scrum, Headless Architecture, Figma —
-  academic / coursework / light-use only), the role is a misrepresentation
-  risk. Casey's rendered resume would contain only a Familiar bucket with
-  no Core skills section. Decline with reason
+- **All matched skills are Familiar-only AND the title is Senior-band.**
+  When every entry you'd put in `matched_must_haves` comes from
+  `verified_facts.skills_familiar` (Java, Spring Boot, MCP Servers,
+  Agile/Scrum, Headless Architecture, Figma — academic / coursework /
+  light-use only) and the title is Senior/Lead/Staff/Principal/Architect,
+  the role is a misrepresentation risk — decline with reason
   `"role's matched skills are all Familiar (academic/light use); not Core
-  production experience"`. The deterministic post-filter enforces this cap
-  at score ≤ 54 even if you over-credit — but emit it here for clarity.
+  production experience"`. For **junior/intermediate titles**, do NOT
+  decline on Familiar-only matches: score in the 50–58 band instead —
+  coursework fundamentals plus production JS/TS is a legitimate
+  coachable-junior story. The deterministic post-filter enforces the
+  senior decline (≤ 54) and the junior cap (≤ 58) even if you over-credit.
 
 If none apply, set `decline_reason` to null and return a score.
 

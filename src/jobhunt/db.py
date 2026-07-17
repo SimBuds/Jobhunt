@@ -198,13 +198,18 @@ def upsert_application(
     fill_plan_path: str | None,
     applied_week: str | None,
     notes: str | None = None,
+    channel: str | None = None,
 ) -> None:
+    # `channel` semantics: None means "don't care" — new rows default to
+    # 'pipeline', existing rows keep whatever channel they already have (so a
+    # re-tailor via `apply` never clobbers a row logged as 'linkedin' by
+    # `track applied`). An explicit value always wins.
     conn.execute(
         """
         INSERT INTO applications
             (id, job_id, status, resume_path, cover_path, fill_plan_path,
-             applied_week, notes, applied_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+             applied_week, notes, channel, applied_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'pipeline'),
                 CASE WHEN ? = 'applied' THEN CURRENT_TIMESTAMP ELSE NULL END)
         ON CONFLICT(job_id) DO UPDATE SET
             status = excluded.status,
@@ -213,6 +218,7 @@ def upsert_application(
             fill_plan_path = COALESCE(excluded.fill_plan_path, applications.fill_plan_path),
             applied_week = COALESCE(excluded.applied_week, applications.applied_week),
             notes = COALESCE(excluded.notes, applications.notes),
+            channel = COALESCE(?, applications.channel),
             applied_at = CASE
                 WHEN excluded.status = 'applied' AND applications.applied_at IS NULL
                 THEN CURRENT_TIMESTAMP ELSE applications.applied_at END,
@@ -230,7 +236,9 @@ def upsert_application(
             fill_plan_path,
             applied_week,
             notes,
+            channel,
             status,
+            channel,
         ),
     )
 

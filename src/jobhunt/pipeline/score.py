@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
-from jobhunt.ingest._filter import is_explicit_junior_title
+from jobhunt.ingest._filter import is_explicit_junior_title, is_senior_title
 from jobhunt.models import Job
-from jobhunt.pipeline._keywords import phrase_present
+from jobhunt.pipeline._keywords import peer_match, phrase_present
 
 # Cap inputs to keep prompts within the app-owned context window the gateway
 # pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
@@ -113,6 +114,22 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     ):
         decline_reason = None
 
+    # Senior-band exposure (July 2026): when senior titles are opted in via
+    # `applicant.include_senior_roles`, a "Senior-band" decline the model
+    # still emits (the prompt now says score 55-70 instead) converts to a
+    # confidence ceiling — same posture as thin_jd_score_cap. The role stays
+    # applyable in the stretch band without outranking full fits. Only fires
+    # when the title actually is senior-band; body-inferred declines on
+    # non-senior titles are the junior override's job above.
+    if (
+        decline_reason
+        and "senior-band" in decline_reason.lower()
+        and cfg.applicant.include_senior_roles
+        and is_senior_title(job.title)
+    ):
+        decline_reason = None
+        score = min(score, 70)
+
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
     # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...
     # — academic / light-use only), the role is at most a stretch — Casey
@@ -123,16 +140,38 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # (transferable coursework matching let it through) and shipped a
     # Familiar-only-skills resume that misrepresented Casey to any human
     # reviewer. This guard catches that pattern at the score boundary.
+    # July 2026: the prompt now reserves the Familiar-only decline for
+    # Senior-band titles, but qwen3.5:9b still emits it on junior/mid
+    # postings (it pattern-matches the example string). Nullify those so
+    # they fall through to the soft-band cap below.
+    if (
+        decline_reason
+        and "familiar" in decline_reason.lower()
+        and not is_senior_title(job.title)
+    ):
+        decline_reason = None
+
     if (
         decline_reason is None
         and matched
         and _all_matched_are_familiar(matched, verified)
     ):
-        score = min(score, 54)
-        decline_reason = (
-            "role's matched skills are all Familiar (academic/light use only); "
-            "applying would misrepresent Core production experience"
-        )
+        if is_senior_title(job.title):
+            # Senior familiar-stack roles stay declined — a Familiar-only
+            # resume against a senior bar is a genuine misrepresentation risk
+            # (the May 2026 Java Developer @ Ignite Talent ship).
+            score = min(score, 54)
+            decline_reason = (
+                "role's matched skills are all Familiar (academic/light use "
+                "only); applying would misrepresent Core production experience"
+            )
+        else:
+            # July 2026 soft band: junior/mid familiar-stack roles are a
+            # coachable-junior story (Dean's List coursework + production JS),
+            # not a misrepresentation — the resume's Familiar section makes no
+            # production claim. Cap into the 55-59 stretch band and keep the
+            # role visible instead of declining it.
+            score = min(score, 58)
 
     # qwen3.5:9b sometimes uses score=0 as a silent decline (no decline_reason).
     # The prompt forbids this; enforce a floor so non-declined jobs stay in
@@ -261,6 +300,46 @@ def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
     )
 
 
+# The score prompt instructs the model to annotate transferable matches as
+# "Vue (transferable: React)" / "Postgres (transferable: school project —
+# SQLite)". This regex pulls out the annotation body so the clamp can verify
+# the named bridge against the profile instead of demoting the whole phrase.
+_TRANSFER_BRIDGE_RE = re.compile(
+    r"\(\s*transferable\b[:\s—–-]*([^)]+)\)", re.IGNORECASE
+)
+
+
+def _bridge_of(phrase: str) -> str | None:
+    """Extract the concrete bridge tech from a `(transferable: …)` annotation.
+
+    'Vue (transferable: React)'                          -> 'React'
+    'Postgres (transferable: school project — SQLite)'   -> 'SQLite'
+    'TypeScript' (no annotation)                          -> None
+    """
+    m = _TRANSFER_BRIDGE_RE.search(phrase)
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    # Prose prefix ("school project — X", "coursework: X") — the concrete
+    # tech sits after the last separator.
+    for sep in ("—", "–", ":"):
+        if sep in inner:
+            inner = inner.rsplit(sep, 1)[1].strip()
+    return inner or None
+
+
+def _phrase_verified(phrase: str, blob: str) -> bool:
+    """A must-have phrase verifies against the profile when the profile
+    literally contains it, contains a peer-family sibling (PEER_FAMILIES —
+    the same table the score prompt promises to credit), or contains the
+    bridge named by the prompt's `(transferable: X)` annotation. Bogus
+    bridges fail closed: the named tech must itself be verified."""
+    if phrase_present(phrase, blob) or peer_match(phrase, blob):
+        return True
+    bridge = _bridge_of(phrase)
+    return bridge is not None and phrase_present(bridge, blob)
+
+
 def _verify_against_profile(
     llm_matched: list[str], llm_gaps: list[str], verified_blob: str
 ) -> tuple[list[str], list[str]]:
@@ -274,7 +353,7 @@ def _verify_against_profile(
         if not key or key in seen:
             continue
         seen.add(key)
-        (matched if phrase_present(phrase, blob) else gaps).append(phrase)
+        (matched if _phrase_verified(phrase, blob) else gaps).append(phrase)
     return matched, gaps
 
 

@@ -131,16 +131,20 @@ def is_management_title(title: str | None) -> bool:
 # never a fit (frontend / CMS / full-stack devs). Drops at ingest so the
 # scorer doesn't burn budget on roles it will deterministically decline.
 #
-# Matches: Applied Scientist, ML/AI Scientist, Machine Learning Engineer,
-# Research Engineer/Scientist, Data Scientist, Data Engineer, Data Platform,
+# Matches: Applied Scientist, ML/AI Scientist/Researcher, Research
+# Engineer/Scientist, Data Scientist, Data Engineer, Data Platform,
 # Quant / Quantitative Researcher.
 #
 # DOES NOT match plain "Engineer" or "Software Engineer" — only when paired
-# with a research/ML/data-platform qualifier.
+# with a research/data-platform qualifier. Since July 2026 it also does NOT
+# match "AI Engineer" / "ML Engineer" / "Machine Learning Engineer": those
+# titles increasingly mean LLM-integration full-stack work (Casey's AI lane —
+# Ollama, Claude API, agentic pipelines), so they flow through to the scorer,
+# which handles the genuinely research-flavored ones via gaps/declines.
 _RESEARCH_TITLE_RE = re.compile(
     r"\b(?:"
     r"applied\s+(?:ai/?ml\s+)?scientist"
-    r"|(?:ml|ai|machine\s+learning)\s+(?:scientist|engineer|researcher)"
+    r"|(?:ml|ai|machine\s+learning)\s+(?:scientist|researcher)"
     r"|research\s+(?:scientist|engineer)"
     r"|data\s+(?:scientist|engineer)"
     r"|data\s+platform"

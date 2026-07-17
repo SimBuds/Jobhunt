@@ -14,8 +14,6 @@ from jobhunt.ingest._filter import is_research_title
         ("ML Scientist", True),
         ("AI Scientist", True),
         ("Machine Learning Scientist", True),
-        ("Machine Learning Engineer", True),
-        ("ML Engineer", True),
         ("Senior Research Engineer, Foundation Models", True),
         ("Research Scientist", True),
         ("Data Scientist", True),
@@ -25,6 +23,13 @@ from jobhunt.ingest._filter import is_research_title
         ("Quantitative Researcher", True),
         ("Quant Developer", True),
         # Misses — legitimate IC roles that must pass through.
+        # July 2026: AI/ML Engineer titles now pass — they increasingly mean
+        # LLM-integration full-stack work (Casey's AI lane); the scorer
+        # handles the genuinely research-flavored ones.
+        ("Machine Learning Engineer", False),
+        ("ML Engineer", False),
+        ("AI Engineer", False),
+        ("Senior AI Engineer, Developer Tooling", False),
         ("Senior Software Engineer", False),
         ("Staff Engineer - Growth Platform", False),
         ("Frontend Engineer", False),
