@@ -90,9 +90,10 @@ def _resolve_ref(conn: sqlite3.Connection, ref: str) -> str:
 
 @app.command("applied", help="Log an application submitted outside the pipeline.")
 def applied(
-    ref: str = typer.Argument(
-        ...,
-        help="Posting URL, or an existing job id from `jobhunt list`.",
+    ref: str | None = typer.Argument(
+        None,
+        help="Posting URL, or an existing job id from `jobhunt list`. "
+        "Omit for --no-jd backfill of an expired posting with no URL.",
     ),
     channel: str = typer.Option(
         ..., "--channel", "-c",
@@ -105,6 +106,17 @@ def applied(
         help="Read the JD body from stdin (requires --title and --company). "
         "Strongly recommended — postings expire and interview-prep needs it.",
     ),
+    no_jd: bool = typer.Option(
+        False, "--no-jd",
+        help="Historical backfill: log without a JD (requires --title and "
+        "--company). Scoring and interview-prep stay unavailable for the row.",
+    ),
+    paste: bool = typer.Option(
+        False, "--paste",
+        help="Read a LinkedIn job-page paste from stdin and auto-extract "
+        "title/company/location — paste the whole page (header + 'About the "
+        "job') to store the JD too. Explicit --title/--company override.",
+    ),
     when: str | None = typer.Option(
         None, "--when", help="Backdate the application (YYYY-MM-DD, default today)."
     ),
@@ -115,9 +127,51 @@ def applied(
 ) -> None:
     import asyncio
 
+    from jobhunt.ingest.manual import build_stub_job
+
     if channel not in CHANNELS:
         typer.echo(
             f"error: invalid channel {channel!r}. Allowed: {', '.join(CHANNELS)}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if jd_from_stdin and (paste or no_jd):
+        typer.echo(
+            "error: --jd-from-stdin cannot be combined with --paste or --no-jd.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    p_location: str | None = None
+    if paste:
+        from jobhunt.ingest.manual import MIN_BODY_CHARS, parse_linkedin_paste
+
+        typer.echo("  reading LinkedIn paste from stdin (Ctrl-D to finish)...")
+        p_title, p_company, p_location, p_body = parse_linkedin_paste(sys.stdin.read())
+        title = title or p_title
+        company = company or p_company
+        if not title or not company:
+            typer.echo(
+                "error: could not extract title/company from the paste. "
+                "Re-run with --title and --company.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if p_body and len(p_body) >= MIN_BODY_CHARS:
+            paste_body: str | None = p_body
+        else:
+            paste_body = None
+            no_jd = True  # header-only paste: fall through to the stub path
+        typer.echo(
+            f"  parsed: {title} @ {company}"
+            + (f" ({p_location})" if p_location else "")
+            + (" [JD captured]" if paste_body else " [header only — no JD]")
+        )
+    else:
+        paste_body = None
+    if ref is None and not no_jd and paste_body is None:
+        typer.echo(
+            "error: a posting URL or job id is required (or pass --no-jd / "
+            "--paste for an expired or header-only posting).",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -126,10 +180,42 @@ def applied(
     cfg = load_config()
     conn = _connect_migrated(cfg)
     try:
-        existing = conn.execute("SELECT id FROM jobs WHERE id = ?", (ref,)).fetchone()
+        existing = (
+            conn.execute("SELECT id FROM jobs WHERE id = ?", (ref,)).fetchone()
+            if ref is not None
+            else None
+        )
         if existing is not None:
             job_id = existing["id"]
+        elif paste_body is not None:
+            from jobhunt.db import upsert_job
+            from jobhunt.ingest.manual import build_job_from_text
+
+            url = ref if ref and ref.lower().startswith(("http://", "https://")) else None
+            job = build_job_from_text(
+                description=paste_body,
+                title=title,
+                company=company,
+                url=url,
+                location=p_location,
+            )
+            with conn:
+                upsert_job(conn, job)
+            job_id = job.id
+        elif no_jd:
+            if not title or not company:
+                typer.echo("error: --no-jd requires --title and --company.", err=True)
+                raise typer.Exit(code=2)
+            url = ref if ref and ref.lower().startswith(("http://", "https://")) else None
+            job = build_stub_job(title=title, company=company, url=url, location=p_location)
+            from jobhunt.db import upsert_job
+
+            with conn:
+                upsert_job(conn, job)
+            job_id = job.id
+            typer.echo("  (no JD stored — scoring/interview-prep unavailable for this row)")
         else:
+            assert ref is not None
             if not ref.lower().startswith(("http://", "https://")):
                 typer.echo(
                     f"error: {ref!r} is neither a known job id nor a URL.", err=True

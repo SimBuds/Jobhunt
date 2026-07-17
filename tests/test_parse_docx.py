@@ -73,15 +73,22 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "FastAPI" not in facts.skills_core
 
     # PB3: the PROJECTS narrative section parses into structured projects.
-    # Baseline carries FOUR projects: Jobhunt + Auto-Agent (2026-06-18) and
-    # SEO-LLM + AI Context Stack (re-added 2026-06-23 at Casey's request). macOS
-    # Ventura on KVM + the Hybrid coding agent stay long-form-only in WORK.md,
-    # off the baseline.
-    assert len(facts.projects) == 4
+    # Baseline carries FIVE projects: Jobhunt + Auto-Agent (2026-06-18),
+    # SEO-LLM + AI Context Stack (re-added 2026-06-23 at Casey's request), and
+    # Portfolio (added 2026-07-17 — the Astro/nginx/GH-Actions deploy story that
+    # grounds Astro's move into skills_projects). macOS Ventura on KVM + the
+    # Hybrid coding agent stay long-form-only in WORK.md, off the baseline.
+    assert len(facts.projects) == 5
     names = [p.name for p in facts.projects]
     assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
     assert "SEO-LLM" in names
     assert "AI Context Stack" in names
+    portfolio = next(p for p in facts.projects if p.name == "Portfolio")
+    assert portfolio.url == "github.com/SimBuds/Portfolio"
+    assert "Astro" in portfolio.stack
+    # Astro is project-demonstrated now (moved from Familiar 2026-07-17).
+    assert "Astro" in facts.skills_projects
+    assert "Astro" not in facts.skills_familiar
     auto = next(p for p in facts.projects if p.name == "Auto-Agent")
     assert auto.url == "github.com/SimBuds/Auto-Agent"
     assert "FastAPI" in auto.stack
@@ -95,7 +102,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     payload = json.loads(out.read_text())
     assert payload["name"] == facts.name
     assert len(payload["work_history"]) == 4
-    assert len(payload["projects"]) == 4
+    assert len(payload["projects"]) == 5
     assert payload["projects"][0]["stack"]  # nested dataclass round-trips
 
     # KB markdown writer leaves five files (projects.md added when projects exist).

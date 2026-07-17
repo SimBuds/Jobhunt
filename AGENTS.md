@@ -260,6 +260,8 @@ src/jobhunt/
 │   ├── apply_cmd.py           # P3+P4: tailor + cover + audit + autofill
 │   ├── add_cmd.py             # URL → ATS slug → config.toml (primary slug-acquisition surface)
 │   ├── answer_cmd.py          # P11: application-form question assistant
+│   ├── track_cmd.py           # manual-application tracking: applied/response/interview/outcome (July 2026)
+│   ├── _manual_intake.py      # shared manual-job synth (apply --url, track applied, interview-prep)
 │   ├── resume_cmd.py          # lane base resumes from kb/lanes/ briefs (July 2026)
 │   ├── list_cmd.py            # P5: pipeline view + weekly rollup
 │   ├── discover_cmd.py        # legacy: harvest URLs + probe Greenhouse/Ashby/Lever/SmartRecruiters
@@ -281,7 +283,10 @@ src/jobhunt/
 │   ├── recruitee.py           # Recruitee public offers API (no key needed)
 │   ├── job_bank_ca.py         # Government of Canada Job Bank (HTML search-results scraper; RSS is dead)
 │   ├── rss_generic.py         # generic employer career RSS/Atom feeds
-│   └── manual.py              # --url: ad-hoc single-JD synth into a Job
+│   └── manual.py              # --url: ad-hoc single-JD synth into a Job;
+│                              # also parse_linkedin_paste (LinkedIn job-page
+│                              # paste → title/company/location/body) and
+│                              # build_stub_job (no-JD backfill rows)
 ├── gateway/                   # Ollama client + prompt loader
 │   ├── client.py              # complete_json (POST /api/chat with format=schema)
 │   └── prompts.py             # frontmatter-aware markdown prompt loader
@@ -312,7 +317,7 @@ src/jobhunt/
 
 ## Commands
 
-User-facing surface is **eleven** commands. `db` and `config` are hidden internals
+User-facing surface is **twelve** commands. `db` and `config` are hidden internals
 (except `config seed`, which is part of the user-facing onboarding flow).
 
 ```
@@ -329,6 +334,26 @@ jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor; prints `add` suggestion
 jobhunt add <URL>            # parse URL → write ATS slug to config.toml
+jobhunt track applied <url-or-id> --channel linkedin|indeed|referral|recruiter|company-site|other
+                             # log an application submitted OUTSIDE the pipeline
+                             # (July 2026). No LLM. Intake paths: existing job id;
+                             # URL fetch; --jd-from-stdin paste; --paste (LinkedIn
+                             # job-page paste → auto-extracts title/company/
+                             # location via ingest.manual.parse_linkedin_paste,
+                             # and the JD too when the paste includes "About the
+                             # job"); --no-jd stub for expired postings (tracking-
+                             # only row; scoring/interview-prep refuse it).
+                             # --when backdates applied_at. Channel lands on
+                             # applications.channel ('pipeline' default; a
+                             # re-tailor never reclassifies a manual channel).
+jobhunt track response <ref> [--when] [--recruiter-type ...]
+jobhunt track interview <ref> [--when]
+jobhunt track outcome <ref> offer|rejected|withdrawn|ghosted
+                             # lifecycle updates; <ref> is a job id OR a unique
+                             # case-insensitive company/title fragment (ambiguity
+                             # errors out listing candidates). Thin wrappers over
+                             # apply_cmd._run_lifecycle — one code path for
+                             # lifecycle writes.
 jobhunt answer "<question>" [--recall]
                              # draft a tailored response to a form question;
                              # with --recall, treats the argument as a phrase
@@ -368,11 +393,16 @@ jobhunt analyze validators [--window-days N] [--top N]
                              # which cover-letter validators fired most in
                              # audit.json files over the window. Use to
                              # find over-broad rules to prune.
-jobhunt analyze response-rate [--by score|ats]
+jobhunt analyze response-rate [--by score|ats|channel]
                              # interview/response rate per bucket (score
-                             # band or ATS source). Reads Phase 1's
-                             # response_received_at + post-applied statuses.
-                             # cert frequency, trends, and fit verdicts
+                             # band, ATS source, or application channel).
+                             # Reads response_received_at + post-applied
+                             # statuses.
+jobhunt analyze funnel [--by channel]
+                             # applied → responded → interviewed → offer
+                             # counts + rates + median days-to-response,
+                             # optionally split per channel (July 2026).
+                             # Deterministic, no LLM.
 jobhunt discover slugs       # legacy: harvest URLs in jobs DB + probe Greenhouse/Ashby
 jobhunt config seed --apply  # import kb/seeds/gta-employers.toml into config
 jobhunt config reprobe [--prune] [--force]
@@ -657,21 +687,45 @@ top-level commands that touch scoring/listing/applying must call it too.
      (score 55–70). At 5 YoE, "9+ years" declines; "7+ years" is
      borderline. Replaces the prior blanket 7+ rule.
    - **Senior-band titles** (Senior / Sr. / Lead / Staff / Principal /
-     Architect) decline when YoE < 4. When YoE ≥ 4, treat them as IC
-     roles and score in the 60–85 band; auto-decline only when the JD
-     body names hard people-management responsibilities (mentoring 4+
-     direct reports, owning headcount, performance reviews).
+     Architect) are treated as IC roles at any YoE (July 2026 — the
+     prior "decline when YoE < 4" rule cost all senior exposure while
+     recruiters were actively courting Casey for Senior roles). YoE ≥ 4
+     scores in the 60–85 band; YoE < 4 scores IC-coding-heavy senior JDs
+     in the 55–70 band. Auto-decline only when the JD body names hard
+     people-management responsibilities (mentoring 4+ direct reports,
+     owning headcount, performance reviews).
    - **Hard people-management titles** (Manager / Director / Head of /
      VP) always decline, regardless of YoE.
    - **4+ hard gaps** with at least one **Tier-1 ask** ("required", "5+
      years of", "strong production experience with") still declines.
      Vague "nice-to-haves" do not trigger.
 
-   The deterministic `_is_bogus_senior_decline` guard that previously
-   nullified Senior/Lead/Staff declines was removed (2026-05-22) — it
-   was protecting the *prior* "Senior is fine" calibration and is no
-   longer correct. The score prompt now emits these declines
-   legitimately, so no override is needed.
+   Two deterministic decline overrides exist in `pipeline.score` (both
+   title-gated — the title is the canonical band signal, JD-body
+   inference loses):
+   - **Junior-title override (2026-05-22):** a "Senior-band" decline on
+     an explicitly Junior/Intermediate/Mid/Co-op-titled posting is
+     nullified.
+   - **Senior conversion (July 2026):** a "Senior-band" decline on an
+     actually-senior title, with `applicant.include_senior_roles` on,
+     converts to a ≤70 confidence cap instead of a decline — same
+     posture as the thin-JD cap. qwen still emits the old decline
+     occasionally; the role stays applyable in the stretch band.
+
+   **Transferable crediting in the clamp (July 2026).**
+   `score._verify_against_profile` no longer demotes every phrase absent
+   from `verified.json` verbatim. A phrase verifies through any of:
+   literal `phrase_present`; `peer_match` against
+   `pipeline._keywords.PEER_FAMILIES` (the same table the prompt
+   promises); or the **annotation bridge** — `_bridge_of` extracts X from
+   `"(transferable: X)"` / `"(transferable: school project — X)"` and
+   credits the phrase iff X itself verifies against the profile. Bogus
+   bridges fail closed, and unannotated cross-language claims have no
+   path — the prompt's "ALWAYS annotate" instruction is load-bearing.
+   Cross-language families (Spring Boot↔Express, Java↔C#↔PHP↔TS) live
+   ONLY in the score prompt, deliberately NOT in `PEER_FAMILIES`: audit
+   coverage and tailor surface-forms stay strict, so a resume can never
+   claim Spring Boot on the strength of Express experience.
 
    **`pipeline.min_score` defaults to 55** (lowered from 65 in May 2026).
    The 55-59 band is the "stretch, tailor required" zone where a strong
@@ -700,18 +754,25 @@ top-level commands that touch scoring/listing/applying must call it too.
    existing queue. Both thresholds are config knobs; tune `thin_jd_score_cap`
    up if the thin-JD band looks under-ranked.
 
-   **Familiar-only-fit cap (Phase 10.2).** When every matched must-have
-   resolves into `verified.skills_familiar` (Java, Spring Boot, Angular, MCP
-   Servers, Agile/Scrum, Headless Architecture, Figma, Astro) and NOT into
-   any Core bucket, the deterministic post-filter in `pipeline.score`
-   (`_all_matched_are_familiar`) caps the score at 54 and sets
-   `decline_reason = "role's matched skills are all Familiar (academic/
-   light use only)..."`. Without this cap, qwen's transferable-skill
-   rubric over-credited a Java Developer role at score=78 and the tailor
-   shipped a resume containing ONLY a Familiar category — actively
-   misrepresenting Casey. Word-boundary matching is used so "Java" does
-   not match the "JavaScript" substring (which would incorrectly resolve
-   Java into skills_core and bypass the cap).
+   **Familiar-only-fit cap (Phase 10.2; senior-gated July 2026).** When
+   every matched must-have resolves into `verified.skills_familiar` (Java,
+   Spring Boot, Angular, MCP Servers, Agile/Scrum, Headless Architecture,
+   Figma, Astro) and NOT into any Core bucket
+   (`_all_matched_are_familiar`), the deterministic post-filter in
+   `pipeline.score` splits by title band:
+   - **Senior-band title:** cap 54 + decline (unchanged — the original
+     Ignite Talent protection: qwen over-credited a Java Developer role
+     at 78 and the tailor shipped a Familiar-only resume, actively
+     misrepresenting Casey).
+   - **Junior/mid title:** cap 58, NO decline — the role stays visible
+     in the 55-59 stretch band. Coursework fundamentals plus production
+     JS is a coachable-junior story, and the rendered Familiar section
+     makes no production claim. An LLM-emitted familiar decline on a
+     non-senior title is nullified first (qwen pattern-matches the
+     prompt's example string despite the senior-only instruction).
+   Word-boundary matching is used so "Java" does not match the
+   "JavaScript" substring (which would incorrectly resolve Java into
+   skills_core and bypass the cap).
 
    **`skills_projects` bucket (Phase PB1, 2026-06-01).** A verified skill
    bucket for skills demonstrated in Casey's shipped personal projects
@@ -780,6 +841,17 @@ to it without explicit discussion.
    description snippets where canonical tech names ("Java", "React") often
    only survive in the title. Adding new tailoring capabilities must not
    break this fallback path.
+
+   **Phrase normalization (2026-07-16).** `_keywords.phrase_present` strips
+   parenthetical qualifiers before matching (the score LLM decorates
+   must-haves with commentary — "WordPress (exact match)" — whose tokens can
+   never appear in a resume) and treats '/'-compounds as alternatives at both
+   token level ("css3/sass" matches a resume listing CSS3 and Sass apart) and
+   whole-phrase level ("Performance Optimization/Core Web Vitals" matches on
+   either side). Parts under 3 chars keep whole-token semantics so "CI/CD"
+   stays one concept. Root cause of the Rippling/Future Buildings false
+   block (46% measured vs 77% true coverage). Regression tests:
+   `tests/test_keywords_matching.py`.
 
    **Peer-family broadening (May 2026)** — when the JD is short (< 800 chars,
    signaling Adzuna) AND the score's matched-must-haves is empty, the
