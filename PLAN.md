@@ -25,10 +25,13 @@ guardrails, project structure). `README.md` is for end-users.
 4. **Honesty by construction.** Tailoring is constrained to facts in
    `verified.json`. Roles must match `(employer, dates)` exactly. "Familiar"
    skills can't be promoted into Core categories. The score prompt
-   auto-declines roles whose required years exceed the candidate's by more than
-   three (absent a transferable bridge), people-management titles (Manager /
-   Director / Head of / VP), and senior-band titles when the candidate is under
-   four years of experience.
+   auto-declines roles whose required years exceed the candidate's by more
+   than three (absent a transferable bridge) and people-management titles
+   (Manager / Director / Head of / VP). Senior-band titles are scored, not
+   declined (July 2026): IC-coding-heavy senior JDs land in the 55–70 band
+   under 4 YoE, 60–85 at 4+. Honesty applies to the *artifacts* — the resume
+   and cover can never claim beyond verified facts — while scoring
+   visibility is deliberately wider than it was.
 
 ## Design principles
 
@@ -116,6 +119,15 @@ in `AGENTS.md`):
 - LinkedIn, Indeed, Glassdoor, ZipRecruiter: ToS, brittle, litigated.
 - USAJobs and worldwide job APIs: out of GTA scope.
 
+Applications Casey submits ON those platforms are still first-class data:
+`jobhunt track` (July 2026) logs them without any scraping — paste-based
+intake (`--paste` parses a copied LinkedIn job page; `--jd-from-stdin` for a
+raw JD; `--no-jd` stubs an expired posting), channel attribution on the
+`applications` row, and lifecycle updates (response / interview / outcome)
+by company-name fragment. `analyze funnel` and `analyze response-rate
+--by channel` then answer the question the whole tool exists for: which
+channel actually converts to interviews.
+
 ## What this project deliberately doesn't do
 
 - Auto-submission of applications (ToS risk, human stays in the loop).
@@ -143,6 +155,12 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
   for cheap decline-pattern rollups.
 - `0008_answer_index.sql`: adds the `answers` table indexing saved
   `jobhunt answer` artifacts for `--recall` lookup.
+- `0009_application_channel.sql`: adds `applications.channel` ('pipeline'
+  default; linkedin / indeed / referral / recruiter / company-site / other)
+  so manual applications logged via `jobhunt track` split out in
+  `analyze funnel` and `analyze response-rate --by channel`. Channel is an
+  application property, not a job property — a scanned Greenhouse job can
+  still be applied to via LinkedIn Easy Apply.
 
 ## Honesty enforcement (the structural part)
 
@@ -192,6 +210,17 @@ in six places, not just the prompt:
    < 60 % → 64). The LLM cannot inflate its own band by listing missing
    must-haves as matched.
 
+   **Transferable crediting (July 2026):** the re-partition honors the same
+   transferable rules the prompt promises, instead of demoting them: a
+   phrase verifies via literal presence, a `PEER_FAMILIES` sibling
+   (Vue→React), or the `(transferable: X)` annotation bridge — where X
+   itself must verify against the profile, so bogus bridges fail closed.
+   Cross-language bridges (Spring Boot↔Express, Java↔C#↔PHP↔TS) exist only
+   in the prompt table + annotation path, deliberately not in
+   `PEER_FAMILIES`, so audit keyword coverage and tailor surface-forms stay
+   strict: the score can credit a bridge the resume is never allowed to
+   claim.
+
    **Tiny-denominator carve-out (May 2026):** when the LLM extracts fewer
    than 3 must-haves total (matched + gaps < 3), the clamp is skipped and
    the raw score stands. Adzuna's ~500-char snippets routinely yield 1-2
@@ -200,13 +229,15 @@ in six places, not just the prompt:
    must-haves still get clamped, which protects against the Pigment-style
    regression where the model lists missing tech as matched.
 
-   **Familiar-only-fit cap (Phase 10.2):** when EVERY phrase in `matched`
-   resolves only into `verified.skills_familiar` (and not into any Core
-   bucket), the score caps at 54 and a `decline_reason` is set. The
-   Java-Developer @ Ignite Talent case scored 78 and shipped a
-   Familiar-only-skills resume. This cap prevents that misrepresentation
-   pattern. Word-boundary matching is used so "Java" doesn't match
-   "JavaScript" in the Core bucket.
+   **Familiar-only-fit cap (Phase 10.2; senior-gated July 2026):** when
+   EVERY phrase in `matched` resolves only into `verified.skills_familiar`
+   (and not into any Core bucket), the outcome splits by title band:
+   senior-band titles cap at 54 with a `decline_reason` (the Java-Developer
+   @ Ignite Talent case scored 78 and shipped a Familiar-only-skills resume
+   — that misrepresentation pattern stays blocked), while junior/mid titles
+   cap at 58 with NO decline, keeping coursework-stack roles visible in the
+   55-59 stretch band. Word-boundary matching is used so "Java" doesn't
+   match "JavaScript" in the Core bucket.
 5. **Cover validator + retry.** `pipeline.cover_validate` catches banned
    phrases, structural violations, and unverified numeric claims.
    `pipeline.cover.write_cover_with_retry` re-prompts up to 3 times with the

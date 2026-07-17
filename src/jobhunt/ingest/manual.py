@@ -514,6 +514,99 @@ def _parse_html_for_job(
     return title, company, description, location
 
 
+# LinkedIn job-header noise, line-level. The copied header looks like:
+#   Company logo for, OpenTable.
+#   OpenTable
+#   Staff Frontend Software Engineer (Availability Planning & Experiences)
+#   Toronto, ON · Reposted 1 week ago · Over 100 people clicked apply
+#   Promoted by hirer · Responses managed off LinkedIn
+#   Full-time
+# Company = first surviving line, title = second; the location rides the
+# first "·"-separated metadata line. Anything after an "About the job"
+# marker is the JD body.
+_LI_NOISE_RE = re.compile(
+    r"^(?:company logo|promoted\b|responses managed|easy apply|apply now|"
+    r"see who .* has hired|saved?\b|share\b|show more options|"
+    r"(?:full|part)[-\s]?time|contract|internship|temporary|"
+    r"\d+\s+(?:applicants?|people clicked apply))"
+    r"|\b(?:people clicked apply|ago)\s*$",
+    re.IGNORECASE,
+)
+_LI_ABOUT_RE = re.compile(r"^about the (?:job|role)\b", re.IGNORECASE)
+
+
+def parse_linkedin_paste(
+    text: str,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Parse a LinkedIn job-page paste into (title, company, location, body).
+
+    Header-only pastes yield body=None; a full-page paste (header + "About
+    the job" section) yields the JD body too. Every field is best-effort
+    None — callers keep their explicit --title/--company overrides.
+    """
+    lines = [ln.strip() for ln in text.strip().splitlines()]
+    company: str | None = None
+    title: str | None = None
+    location: str | None = None
+    body_lines: list[str] | None = None
+
+    for i, ln in enumerate(lines):
+        if body_lines is not None:
+            body_lines.append(ln)
+            continue
+        if _LI_ABOUT_RE.match(ln):
+            body_lines = []
+            continue
+        if not ln:
+            continue
+        if "·" in ln:
+            # Metadata line: "Toronto, ON · Reposted 1 week ago · …". Handle
+            # before the noise check — the full line usually ends in a noise
+            # suffix, but its leading segment is the location.
+            head = ln.split("·", 1)[0].strip().rstrip(".")
+            if location is None and head and not _LI_NOISE_RE.search(head):
+                location = head
+            continue
+        if _LI_NOISE_RE.search(ln):
+            continue
+        if company is None:
+            company = ln.rstrip(".")
+        elif title is None:
+            title = ln
+        # Header lines after title (benefits blurbs, hirer names) are ignored
+        # until an "About the job" marker starts the body.
+
+    body = "\n".join(body_lines).strip() if body_lines else None
+    return title, company, location, body or None
+
+
+def build_stub_job(
+    *,
+    title: str,
+    company: str,
+    url: str | None = None,
+    location: str | None = None,
+) -> Job:
+    """Minimal manual Job for historical application backfill
+    (`track applied --no-jd`): the posting has expired and no JD was saved.
+    Tracking-only — scoring and interview-prep need a description, so those
+    commands will refuse this row until one is added. The id is derived from
+    url (when given) or title|company, so re-logging the same application
+    dedupes onto the same row."""
+    job_id = _synth_id(url, title, company, "")
+    return Job(
+        id=job_id,
+        source="manual",
+        external_id=job_id.split(":", 1)[1],
+        company=company,
+        title=title,
+        location=location,
+        remote_type="unknown",
+        description=None,
+        url=url,
+    )
+
+
 def build_job_from_text(
     *,
     description: str,

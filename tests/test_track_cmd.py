@@ -232,3 +232,173 @@ def test_track_applied_non_url_non_id_errors(isolated_env: Path) -> None:
     )
     assert result.exit_code == 2
     assert "neither a known job id nor a URL" in result.output
+
+
+# --- --no-jd historical backfill ---
+
+
+def test_track_applied_no_jd_backfill_writes_stub_row(isolated_env: Path) -> None:
+    result = runner.invoke(
+        track_cmd.app,
+        [
+            "applied", "--no-jd",
+            "--channel", "indeed",
+            "--title", "Web Developer",
+            "--company", "Oldco",
+            "--when", "2026-06-02",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "no JD stored" in result.output
+
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT a.channel, a.applied_at, j.description, j.company
+        FROM applications a JOIN jobs j ON j.id = a.job_id
+        """
+    ).fetchone()
+    conn.close()
+    assert row["channel"] == "indeed"
+    assert row["applied_at"] == "2026-06-02"
+    assert row["description"] is None
+    assert row["company"] == "Oldco"
+
+
+def test_track_applied_no_jd_dedupes_on_same_title_company(isolated_env: Path) -> None:
+    args = [
+        "applied", "--no-jd", "--channel", "indeed",
+        "--title", "Web Developer", "--company", "Oldco",
+    ]
+    assert runner.invoke(track_cmd.app, args).exit_code == 0
+    assert runner.invoke(track_cmd.app, args).exit_code == 0
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    n_jobs, n_apps = conn.execute(
+        "SELECT (SELECT COUNT(*) FROM jobs), (SELECT COUNT(*) FROM applications)"
+    ).fetchone()
+    conn.close()
+    assert (n_jobs, n_apps) == (1, 1)
+
+
+def test_track_applied_no_jd_requires_title_company(isolated_env: Path) -> None:
+    result = runner.invoke(
+        track_cmd.app, ["applied", "--no-jd", "--channel", "indeed"]
+    )
+    assert result.exit_code == 2
+    assert "--no-jd requires --title and --company" in result.output
+
+
+def test_track_applied_no_jd_conflicts_with_stdin(isolated_env: Path) -> None:
+    result = runner.invoke(
+        track_cmd.app,
+        ["applied", "--no-jd", "--jd-from-stdin", "--channel", "indeed"],
+    )
+    assert result.exit_code == 2
+    assert "cannot be combined" in result.output
+
+
+def test_track_applied_no_ref_without_no_jd_errors(isolated_env: Path) -> None:
+    result = runner.invoke(track_cmd.app, ["applied", "--channel", "indeed"])
+    assert result.exit_code == 2
+    assert "URL or job id is required" in result.output
+
+
+# --- --paste: LinkedIn job-page paste intake ---
+
+_LI_HEADER = """Company logo for, OpenTable.
+OpenTable
+
+
+Staff Frontend Software Engineer (Availability Planning & Experiences)
+
+Toronto, ON · Reposted 1 week ago · Over 100 people clicked apply
+
+Promoted by hirer · Responses managed off LinkedIn
+
+Full-time"""
+
+
+def test_parse_linkedin_paste_header_only() -> None:
+    from jobhunt.ingest.manual import parse_linkedin_paste
+
+    title, company, location, body = parse_linkedin_paste(_LI_HEADER)
+    assert title == "Staff Frontend Software Engineer (Availability Planning & Experiences)"
+    assert company == "OpenTable"
+    assert location == "Toronto, ON"
+    assert body is None
+
+
+def test_parse_linkedin_paste_with_about_the_job_body() -> None:
+    from jobhunt.ingest.manual import parse_linkedin_paste
+
+    text = _LI_HEADER + "\n\nAbout the job\nWe build availability planning tools.\nYou will ship React features."
+    title, company, location, body = parse_linkedin_paste(text)
+    assert company == "OpenTable"
+    assert body is not None
+    assert "availability planning tools" in body
+    assert "About the job" not in body
+
+
+def test_parse_linkedin_paste_city_ending_in_ago_is_not_noise() -> None:
+    from jobhunt.ingest.manual import parse_linkedin_paste
+
+    text = "Acme\nBackend Developer\nChicago · 2 weeks ago"
+    title, company, location, body = parse_linkedin_paste(text)
+    assert (title, company, location) == ("Backend Developer", "Acme", "Chicago")
+
+
+def test_track_applied_paste_header_only_creates_stub(isolated_env: Path) -> None:
+    result = runner.invoke(
+        track_cmd.app,
+        ["applied", "--channel", "linkedin", "--paste", "--when", "2026-07-12"],
+        input=_LI_HEADER,
+    )
+    assert result.exit_code == 0, result.output
+    assert "header only" in result.output
+
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT a.channel, a.applied_at, j.title, j.company, j.location, j.description
+        FROM applications a JOIN jobs j ON j.id = a.job_id
+        """
+    ).fetchone()
+    conn.close()
+    assert row["company"] == "OpenTable"
+    assert row["location"] == "Toronto, ON"
+    assert row["description"] is None
+    assert row["applied_at"] == "2026-07-12"
+
+
+def test_track_applied_paste_full_page_stores_jd(isolated_env: Path) -> None:
+    jd = (
+        "About the job\n"
+        + "We build availability planning and dining experiences at scale. "
+        "You will ship React and TypeScript features, own frontend architecture, "
+        "and collaborate with design and product on guest-facing surfaces. " * 4
+    )
+    result = runner.invoke(
+        track_cmd.app,
+        ["applied", "--channel", "linkedin", "--paste"],
+        input=_LI_HEADER + "\n\n" + jd,
+    )
+    assert result.exit_code == 0, result.output
+    assert "JD captured" in result.output
+
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT description FROM jobs").fetchone()
+    conn.close()
+    assert row["description"] and "availability planning" in row["description"]
+
+
+def test_track_applied_paste_conflicts_with_jd_from_stdin(isolated_env: Path) -> None:
+    result = runner.invoke(
+        track_cmd.app,
+        ["applied", "--channel", "linkedin", "--paste", "--jd-from-stdin"],
+        input="x",
+    )
+    assert result.exit_code == 2
+    assert "cannot be combined" in result.output

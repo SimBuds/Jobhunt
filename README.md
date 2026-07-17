@@ -15,6 +15,11 @@ form. It never clicks Submit.
 Everything runs locally. No resume or job data leaves your hardware. Zero
 cloud LLM calls in the runtime path.
 
+Applications made *outside* the pipeline (LinkedIn Easy Apply, Indeed,
+referrals, recruiter outreach) are tracked too: `jobhunt track` logs them
+without scraping — paste the posting, tag the channel — and
+`jobhunt analyze funnel` shows which channel actually converts.
+
 ## Non-goals
 
 - **No LinkedIn / Indeed / Glassdoor scraping.** Public ATS APIs only.
@@ -122,6 +127,13 @@ jobhunt apply --url https://jobs.example.com/p/12345   # one-off posting, bypass
 jobhunt answer "Why are you interested in this role?" --job <id>   # free-form form question
 jobhunt apply --set-status interviewing <job-id>       # when an interview lands
 jobhunt interview-prep <job-id> --stage agency --research
+
+# Applied somewhere outside the pipeline (LinkedIn / Indeed / referral)?
+# Copy the job page (Ctrl-A on the posting), then:
+jobhunt track applied --channel linkedin --paste       # paste, Ctrl-D to finish
+jobhunt track response opentable --recruiter-type internal_recruiter
+jobhunt track interview opentable --when 2026-07-24
+jobhunt track outcome opentable rejected
 ```
 
 A batch `apply --top N` / `apply --best` run prints a one-line summary
@@ -136,7 +148,8 @@ act on them.
 jobhunt list --week 0                          # current-week pipeline rollup
 jobhunt list --no-reply --older-than 14d       # applied, no reply, >14d (nudge candidates)
 jobhunt config reprobe --prune                 # re-probe configured slugs; prune dead ones
-jobhunt analyze response-rate --by score       # interview rate per score band
+jobhunt analyze funnel --by channel            # applied → response → interview → offer per channel
+jobhunt analyze response-rate --by score       # interview rate per score band (also --by channel)
 jobhunt analyze certs --trend --min-score 55   # cert intel + per-cert verdict
 jobhunt analyze employers                      # surfaces configured-but-silent slugs
 jobhunt analyze validators                     # which cover-letter validators fired most
@@ -159,6 +172,7 @@ the full option list. The commands below are the ones you usually need.
 | `answer` | Draft a form-question response | `jobhunt answer "Question" --job <job-id>` |
 | `interview-prep` | Draft an interview prep note | `jobhunt interview-prep <job-id> --research` |
 | `resume` | Regenerate the three lane base resumes for manual channels | `jobhunt resume`, `jobhunt resume --focus ai` |
+| `track` | Log + update applications made outside the pipeline (no LLM) | `jobhunt track applied --channel linkedin --paste`, `jobhunt track response <company>` |
 | `add` | Add an ATS source from a career URL | `jobhunt add <URL>` |
 | `analyze` | Run deterministic job-search reports | `jobhunt analyze certs`, `jobhunt analyze employers` |
 | `convert-resume` | Rebuild `kb/profile/` from the baseline resume | `jobhunt convert-resume` |
@@ -182,6 +196,10 @@ jobhunt apply --set-status interviewing <job-id>
 jobhunt interview-prep <job-id> --stage hiring_manager --research
 jobhunt apply --url <URL> --title "Role" --company "Company"
 jobhunt apply --url <URL> --stdin --title "Role" --company "Company"
+jobhunt track applied --channel linkedin --paste          # paste the copied LinkedIn page
+jobhunt track applied --channel indeed --no-jd --title "Role" --company "Co" --when 2026-06-02
+jobhunt track outcome "company fragment" ghosted
+jobhunt analyze funnel --by channel
 ```
 
 Notes:
@@ -193,6 +211,10 @@ Notes:
 - `apply --best` opens an interactive picker over the top scored jobs.
 - `apply --url` creates a tracked `manual:` job for a one-off posting.
 - `--stdin` is the paste-JD path for pages that do not render cleanly.
+- `track` never runs an LLM and never scrapes: `--paste` parses a page YOU
+  copied. Pasting the full page (with "About the job") stores the JD, which
+  `interview-prep` needs later — worth the extra Ctrl-A. `--no-jd` backfills
+  expired postings as tracking-only rows.
 - `analyze` is deterministic. It uses regex and counters, not an LLM.
 - `add`, `config seed --apply`, and `discover slugs --apply` rewrite
   `config.toml` and create a `.bak` snapshot.
