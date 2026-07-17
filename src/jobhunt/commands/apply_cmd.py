@@ -1114,6 +1114,9 @@ def _record_application(
                 cover_path=str(cover_docx_path),
                 fill_plan_path=str(plan_path) if plan_path else None,
                 applied_week=week_label,
+                # channel stays None: new rows default to 'pipeline', and a
+                # re-tailor of a job first logged via `track applied` keeps
+                # its manual channel instead of being reclassified.
             )
     finally:
         conn.close()
