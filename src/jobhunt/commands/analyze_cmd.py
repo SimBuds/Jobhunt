@@ -622,7 +622,7 @@ def funnel(
         typer.echo("no submitted applications yet. Apply to some jobs first.")
         return
 
-    def _as_date(raw: str | None):
+    def _as_date(raw: str | None) -> date | None:
         from datetime import date as _date
 
         if not raw:

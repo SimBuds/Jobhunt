@@ -493,7 +493,19 @@ async def _ingest_all(
             producers = [asyncio.create_task(drain(s)) for s in streams]
 
             async def closer() -> None:
-                await asyncio.gather(*producers, return_exceptions=False)
+                # return_exceptions=True guarantees we reach put(None). If a
+                # producer died and this gather re-raised, the sentinel would
+                # never be enqueued and the drain loop below would block on
+                # queue.get() forever (the classic ingest hang). _safe_stream
+                # already contains adapter failures, so a surviving exception
+                # here is a bug in our own plumbing — surface it, don't swallow
+                # it silently, but never let it deadlock the consumer.
+                outcomes = await asyncio.gather(*producers, return_exceptions=True)
+                for out in outcomes:
+                    if isinstance(out, BaseException) and not isinstance(
+                        out, asyncio.CancelledError
+                    ):
+                        print(f"  ! ingest: producer crashed: {out!r}", file=sys.stderr)
                 await queue.put(None)
 
             closer_task = asyncio.create_task(closer())
@@ -648,12 +660,19 @@ async def _safe_stream(
             st["jobs"] = int(st["jobs"]) + 1
             _refresh_source_row(progress, st, source)
             yield job
-    except IngestError as e:
+    except Exception as e:  # noqa: BLE001 — one bad source must never kill the scan
+        # Contain ANY adapter failure, not just IngestError: a raw
+        # httpx.HTTPStatusError or JSONDecodeError escaping the HTTP helpers
+        # (or any other adapter bug) would otherwise kill this producer task
+        # and deadlock the ingest drain loop. BaseException (CancelledError,
+        # GeneratorExit on early consumer exit) still propagates. IngestError
+        # keeps its clean message; anything else is tagged with its type.
         st["errors"] = int(st["errors"]) + 1
         st["done"] = int(st["done"]) + 1
         _refresh_source_row(progress, st, source)
         progress.advance(overall_id)
-        results[(source, label)] = (n, str(e))
+        msg = str(e) if isinstance(e, IngestError) else f"{type(e).__name__}: {e}"
+        results[(source, label)] = (n, msg)
         return
     st["done"] = int(st["done"]) + 1
     _refresh_source_row(progress, st, source)

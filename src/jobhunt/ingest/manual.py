@@ -550,7 +550,7 @@ def parse_linkedin_paste(
     location: str | None = None
     body_lines: list[str] | None = None
 
-    for i, ln in enumerate(lines):
+    for ln in lines:
         if body_lines is not None:
             body_lines.append(ln)
             continue

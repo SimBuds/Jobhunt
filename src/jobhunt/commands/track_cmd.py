@@ -23,7 +23,7 @@ from datetime import date
 import typer
 
 from jobhunt.commands._manual_intake import synth_manual_job
-from jobhunt.config import load_config
+from jobhunt.config import Config, load_config
 from jobhunt.db import connect, migrate, upsert_application
 
 app = typer.Typer(
@@ -36,7 +36,7 @@ app = typer.Typer(
 CHANNELS = ("linkedin", "indeed", "referral", "recruiter", "company-site", "other")
 
 
-def _connect_migrated(cfg) -> sqlite3.Connection:
+def _connect_migrated(cfg: Config) -> sqlite3.Connection:
     """Connect and apply pending migrations — `track` may be the first
     command run after an upgrade, same defensive posture as scan_cmd."""
     conn = connect(cfg.paths.db_path)
@@ -85,7 +85,7 @@ def _resolve_ref(conn: sqlite3.Connection, ref: str) -> str:
         for h in hits:
             typer.echo(f"  {h['job_id']}  {h['company']} — {h['title']}", err=True)
         raise typer.Exit(code=1)
-    return hits[0]["job_id"]
+    return str(hits[0]["job_id"])
 
 
 @app.command("applied", help="Log an application submitted outside the pipeline.")
@@ -191,6 +191,9 @@ def applied(
             from jobhunt.db import upsert_job
             from jobhunt.ingest.manual import build_job_from_text
 
+            # paste_body is only ever set after the paste branch's
+            # title/company guard above, so both are present here.
+            assert title is not None and company is not None
             url = ref if ref and ref.lower().startswith(("http://", "https://")) else None
             job = build_job_from_text(
                 description=paste_body,

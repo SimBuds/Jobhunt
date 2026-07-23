@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from jobhunt.commands import track_cmd
@@ -119,7 +120,7 @@ def test_resolve_ref_unique_fragment(conn) -> None:
 def test_resolve_ref_ambiguous_lists_candidates(conn, capsys) -> None:
     _seed_application(conn, "greenhouse:acme:1", "Acme", "Backend Developer")
     _seed_application(conn, "manual:xyz", "Globex", "Frontend Developer")
-    with pytest.raises(Exception):  # typer.Exit
+    with pytest.raises(typer.Exit):
         track_cmd._resolve_ref(conn, "developer")
     err = capsys.readouterr().err
     assert "ambiguous" in err
@@ -127,7 +128,7 @@ def test_resolve_ref_ambiguous_lists_candidates(conn, capsys) -> None:
 
 
 def test_resolve_ref_no_match_errors(conn, capsys) -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(typer.Exit):
         track_cmd._resolve_ref(conn, "nonexistent")
     assert "no tracked application" in capsys.readouterr().err
 
@@ -332,7 +333,11 @@ def test_parse_linkedin_paste_header_only() -> None:
 def test_parse_linkedin_paste_with_about_the_job_body() -> None:
     from jobhunt.ingest.manual import parse_linkedin_paste
 
-    text = _LI_HEADER + "\n\nAbout the job\nWe build availability planning tools.\nYou will ship React features."
+    text = (
+        _LI_HEADER
+        + "\n\nAbout the job\nWe build availability planning tools."
+        + "\nYou will ship React features."
+    )
     title, company, location, body = parse_linkedin_paste(text)
     assert company == "OpenTable"
     assert body is not None

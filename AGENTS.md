@@ -1038,6 +1038,7 @@ to it without explicit discussion.
 - Do not add a web framework. CLI only for now.
 - Do not write scrapers for LinkedIn, Indeed, Glassdoor, or any site that prohibits it in ToS. If asked, refuse and reference this file.
 - Do not bypass the gateway for LLM calls.
+- Do not commit for the user. Agents never run `git commit`, `git push`, or rewrite git history on the user's behalf — leave every change in the working tree (staged or unstaged) for the human to review and commit. History operations (rebase, `filter-branch`, force-push) happen only when the user explicitly asks for them in that request.
 - Do not commit anything in `data/`, `~/.config/jobhunt/`, or files matching `*.secret.*`.
 - Do not auto-submit applications. Ever.
 
