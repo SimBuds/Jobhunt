@@ -106,8 +106,9 @@ async def fetch_feed(
         if r.status_code == 429 or r.status_code >= 500:
             await asyncio.sleep(2**attempt)
             continue
-        if r.status_code == 404:
-            raise IngestError(f"404 {url}")
-        r.raise_for_status()
+        if r.status_code >= 400:
+            # 404 and any other non-retryable 4xx. Surface as IngestError so a
+            # raw HTTPStatusError can't escape and deadlock the ingest drain.
+            raise IngestError(f"{r.status_code} {url}")
         return r.text
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")

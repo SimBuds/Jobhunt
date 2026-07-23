@@ -61,10 +61,15 @@ async def get_json(
         if r.status_code == 429 or r.status_code >= 500:
             await asyncio.sleep(2**attempt)
             continue
-        if r.status_code == 404:
-            raise IngestError(f"404 {url}")
-        r.raise_for_status()
-        return r.json()
+        if r.status_code >= 400:
+            # 404 and any other non-retryable 4xx (401/403/405/410/…). Surface
+            # as IngestError so _safe_stream marks the slug failed; a raw
+            # HTTPStatusError escaping here would deadlock the ingest drain loop.
+            raise IngestError(f"{r.status_code} {url}")
+        try:
+            return r.json()
+        except ValueError as e:
+            raise IngestError(f"invalid JSON from {url}: {e}") from e
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
 
@@ -100,9 +105,10 @@ async def get_text(
         if r.status_code == 429 or r.status_code >= 500:
             await asyncio.sleep(2**attempt)
             continue
-        if r.status_code == 404:
-            raise IngestError(f"404 {url}")
-        r.raise_for_status()
+        if r.status_code >= 400:
+            # 404 and any other non-retryable 4xx. Surface as IngestError so a
+            # raw HTTPStatusError can't escape and deadlock the ingest drain.
+            raise IngestError(f"{r.status_code} {url}")
         return r.text
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
@@ -138,8 +144,14 @@ async def post_json(
             # IngestError so _safe_stream marks the slug failed instead of
             # killing the whole scan via an uncaught HTTPStatusError.
             raise IngestError(f"422 {url} (body rejected — skipping)")
-        r.raise_for_status()
-        return r.json()
+        if r.status_code >= 400:
+            # Any other non-retryable 4xx (400/405/410/…): don't let
+            # raise_for_status leak a raw HTTPStatusError into the drain loop.
+            raise IngestError(f"{r.status_code} {url}")
+        try:
+            return r.json()
+        except ValueError as e:
+            raise IngestError(f"invalid JSON from {url}: {e}") from e
     raise IngestError(f"failed after {max_retries} retries: {url} ({last_exc})")
 
 
