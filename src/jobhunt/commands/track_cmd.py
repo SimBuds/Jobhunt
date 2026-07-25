@@ -23,6 +23,7 @@ from datetime import date
 import typer
 
 from jobhunt.commands._manual_intake import synth_manual_job
+from jobhunt.commands._refs import resolve_job_ref
 from jobhunt.config import Config, load_config
 from jobhunt.db import connect, migrate, upsert_application
 
@@ -55,37 +56,12 @@ def _valid_date(value: str, flag: str) -> str:
 def _resolve_ref(conn: sqlite3.Connection, ref: str) -> str:
     """Resolve a job reference to a job_id with an application row.
 
-    Exact job id wins; otherwise a case-insensitive substring match over
-    company + title of application rows. Ambiguity is an error that lists
-    the candidates rather than guessing.
+    Thin delegate to `commands._refs.resolve_job_ref`, kept so the lifecycle
+    subcommands (and their tests) have a stable local name. The logic moved out
+    verbatim so `apply` and `interview-prep` can share it under the `jobs`
+    scope.
     """
-    row = conn.execute(
-        "SELECT job_id FROM applications WHERE job_id = ?", (ref,)
-    ).fetchone()
-    if row is not None:
-        return ref
-    hits = conn.execute(
-        """
-        SELECT a.job_id, j.company, j.title
-        FROM applications a JOIN jobs j ON j.id = a.job_id
-        WHERE LOWER(COALESCE(j.company,'') || ' ' || COALESCE(j.title,'')) LIKE ?
-        ORDER BY a.applied_at DESC
-        """,
-        (f"%{ref.lower()}%",),
-    ).fetchall()
-    if not hits:
-        typer.echo(
-            f"error: no tracked application matches {ref!r}. "
-            "Log it first with `jobhunt track applied`.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    if len(hits) > 1:
-        typer.echo(f"error: {ref!r} is ambiguous — matches:", err=True)
-        for h in hits:
-            typer.echo(f"  {h['job_id']}  {h['company']} — {h['title']}", err=True)
-        raise typer.Exit(code=1)
-    return str(hits[0]["job_id"])
+    return resolve_job_ref(conn, ref, scope="applied")
 
 
 @app.command("applied", help="Log an application submitted outside the pipeline.")
@@ -323,6 +299,90 @@ def interview(
         set_outcome=None,
         recruiter_type=None,
     )
+
+
+def _stale_no_response(
+    conn: sqlite3.Connection, cutoff_iso: str
+) -> list[sqlite3.Row]:
+    """Applications submitted before `cutoff_iso` that never drew a response.
+
+    Deliberately narrow: `status = 'applied'` only. A row already moved to
+    `interviewing`/`offer`/`rejected` has a known outcome, and a `drafted` row
+    was never submitted — neither is silence.
+    """
+    return list(
+        conn.execute(
+            """
+            SELECT a.job_id, a.applied_at, j.company, j.title
+            FROM applications a JOIN jobs j ON j.id = a.job_id
+            WHERE a.status = 'applied'
+              AND a.response_received_at IS NULL
+              AND a.outcome IS NULL
+              AND a.applied_at IS NOT NULL
+              AND DATE(a.applied_at) < DATE(?)
+            ORDER BY a.applied_at
+            """,
+            (cutoff_iso,),
+        )
+    )
+
+
+@app.command(
+    "sweep",
+    help="List applications with no response past a threshold; mark them ghosted.",
+)
+def sweep(
+    older_than: str = typer.Option(
+        "21d", "--older-than", help="Age threshold, e.g. '14d' or '3w'."
+    ),
+    apply_: bool = typer.Option(
+        False, "--apply", help="Record outcome 'ghosted' for every row listed."
+    ),
+) -> None:
+    """Close the loop on silence.
+
+    Nothing else in the tool ever records a non-response, so applications sit
+    in `applied` forever and `analyze funnel` reads permanent silence as
+    "still pending" — which is what made the pipeline's 0% response rate
+    ambiguous in the 2026-07-24 audit. Bare `sweep` only reports.
+    """
+    from jobhunt.commands.apply_cmd import _run_lifecycle
+    from jobhunt.commands.list_cmd import _parse_older_than
+
+    cutoff = _parse_older_than(older_than)
+    assert cutoff is not None  # _parse_older_than only returns None for a None spec
+    cfg = load_config()
+    conn = _connect_migrated(cfg)
+    try:
+        rows = _stale_no_response(conn, cutoff)
+    finally:
+        conn.close()
+
+    if not rows:
+        typer.echo(f"sweep: no applications older than {older_than} awaiting a response.")
+        return
+
+    typer.echo(f"no response in {older_than} ({len(rows)}):")
+    for r in rows:
+        applied = str(r["applied_at"])[:10]
+        typer.echo(f"  {applied}  {r['company']} — {r['title']}")
+        typer.echo(f"              {r['job_id']}")
+
+    if not apply_:
+        typer.echo("\nsweep: dry run — pass --apply to mark these ghosted.")
+        return
+
+    typer.echo("")
+    for r in rows:
+        _run_lifecycle(
+            str(r["job_id"]),
+            set_status=None,
+            mark_response=None,
+            mark_interview=None,
+            set_outcome="ghosted",
+            recruiter_type=None,
+        )
+    typer.echo(f"\nsweep: marked {len(rows)} application(s) ghosted.")
 
 
 @app.command("outcome", help="Record the terminal outcome of an application.")

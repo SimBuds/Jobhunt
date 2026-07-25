@@ -30,6 +30,7 @@ import typer
 
 from jobhunt.browser import autofill
 from jobhunt.commands._manual_intake import synth_manual_job
+from jobhunt.commands._refs import resolve_job_ref
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
     connect,
@@ -439,16 +440,23 @@ async def _resolve_manual(
 
 
 def _resolve_by_id(conn: sqlite3.Connection, job_id: str) -> list[sqlite3.Row]:
+    """Resolve an exact job id *or* a company/title fragment to its row.
+
+    `jobhunt apply faire` now works the same way `jobhunt track response faire`
+    already did. An exact id still wins outright — including for a declined
+    job, which the fragment path deliberately skips.
+    """
+    resolved = resolve_job_ref(conn, job_id, scope="jobs")
     rows = list(
         conn.execute(
             "SELECT j.*, s.score AS score FROM jobs j "
             "LEFT JOIN scores s ON s.job_id = j.id "
             "WHERE j.id = ?",
-            (job_id,),
+            (resolved,),
         )
     )
     if not rows:
-        typer.echo(f"error: no job with id {job_id!r}", err=True)
+        typer.echo(f"error: no job with id {resolved!r}", err=True)
         raise typer.Exit(code=1)
     return rows
 
@@ -892,6 +900,17 @@ async def _apply_io_phase(
     )
     typer.echo(f"    + {resume_path.name}")
     typer.echo(f"    + {cover_docx_path.name}")
+
+    # Persist a `drafted` row the moment artifacts exist on disk. Everything
+    # below can exit the process — a Playwright crash, a Ctrl-C at the submit
+    # prompt — and until this write moved up, that lost the entire tailoring
+    # run from tracking while its .docx files sat in data/applications/. Found
+    # 2026-07-24: 11 orphan dirs, 3 holding complete `ship`-verdict artifact
+    # sets. `drafted` keeps the job eligible for re-selection
+    # (`_unapplied_top_query` admits `a.status = 'drafted'`), and the upsert is
+    # idempotent on job_id, so the post-prompt write below simply overwrites
+    # the status and fills in fill_plan_path.
+    _record_application(cfg, job, "drafted", resume_path, cover_docx_path, None)
 
     plan_path = await _run_browser_step(
         cfg, job, resume_path=resume_path, cover_path=cover_docx_path,

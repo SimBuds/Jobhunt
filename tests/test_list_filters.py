@@ -10,6 +10,7 @@ import pytest
 
 from jobhunt.commands.list_cmd import (
     VALID_VERDICTS,
+    _action_board_counts,
     _AuditSummary,
     _load_audit_summary,
     _parse_older_than,
@@ -266,3 +267,60 @@ def test_load_audit_summary_rejects_unknown_verdict(tmp_path: Path) -> None:
 
 def test_valid_verdicts_constant() -> None:
     assert set(VALID_VERDICTS) == {"ship", "revise", "block"}
+
+
+# --- Phase A6: action board -------------------------------------------------
+
+
+def _age(conn, job_id: str, days: int) -> None:
+    conn.execute(
+        "UPDATE applications SET applied_at = DATE('now', ?) WHERE job_id = ?",
+        (f"-{days} days", job_id),
+    )
+
+
+def test_action_board_counts_the_three_queues(conn) -> None:
+    # ready: scored >= 55, no application row, not declined
+    for suffix in ("a", "b"):
+        upsert_job(conn, _job(suffix))
+        _score(conn, f"greenhouse:acme:{suffix}", 80)
+    # declined + scored: not ready
+    upsert_job(conn, _job("c"))
+    _score(conn, "greenhouse:acme:c", 90)
+    conn.execute(
+        "UPDATE jobs SET decline_reason = 'wrong_domain' WHERE id = 'greenhouse:acme:c'"
+    )
+    # below the floor: not ready
+    upsert_job(conn, _job("d"))
+    _score(conn, "greenhouse:acme:d", 30)
+    # drafted, not submitted
+    upsert_job(conn, _job("e"))
+    _score(conn, "greenhouse:acme:e", 80)
+    _apply(conn, "greenhouse:acme:e", status="drafted")
+    # applied 30d ago, silent
+    upsert_job(conn, _job("f"))
+    _apply(conn, "greenhouse:acme:f", status="applied")
+    _age(conn, "greenhouse:acme:f", 30)
+    # applied 2d ago — too recent to count as silent
+    upsert_job(conn, _job("g"))
+    _apply(conn, "greenhouse:acme:g", status="applied")
+    _age(conn, "greenhouse:acme:g", 2)
+
+    counts = _action_board_counts(conn, 55)
+    assert counts == {"ready": 2, "drafted": 1, "silent": 1}
+
+
+def test_action_board_silent_excludes_answered_applications(conn) -> None:
+    upsert_job(conn, _job("a"))
+    _apply(conn, "greenhouse:acme:a", status="applied")
+    _age(conn, "greenhouse:acme:a", 30)
+    mark_response_received(conn, "greenhouse:acme:a", date.today().isoformat(), None)
+
+    assert _action_board_counts(conn, 55)["silent"] == 0
+
+
+def test_action_board_honors_min_score_floor(conn) -> None:
+    upsert_job(conn, _job("a"))
+    _score(conn, "greenhouse:acme:a", 60)
+    assert _action_board_counts(conn, 55)["ready"] == 1
+    assert _action_board_counts(conn, 70)["ready"] == 0

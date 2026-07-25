@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -407,3 +408,87 @@ def test_track_applied_paste_conflicts_with_jd_from_stdin(isolated_env: Path) ->
     )
     assert result.exit_code == 2
     assert "cannot be combined" in result.output
+
+
+# --- Phase A5: sweep (stale no-response applications) ---
+
+
+def _seed_aged(conn, id_: str, company: str, *, days_ago: int, **cols: object) -> str:
+    """Seed an applied row backdated `days_ago`, plus any column overrides."""
+    _seed_application(conn, id_, company, "Dev")
+    with conn:
+        conn.execute(
+            "UPDATE applications SET applied_at = DATE('now', ?) WHERE job_id = ?",
+            (f"-{days_ago} days", id_),
+        )
+        for col, val in cols.items():
+            conn.execute(
+                f"UPDATE applications SET {col} = ? WHERE job_id = ?", (val, id_)
+            )
+    return id_
+
+
+def test_sweep_selects_only_silent_applications(conn) -> None:
+    _seed_aged(conn, "greenhouse:a:1", "Stale", days_ago=30)
+    _seed_aged(conn, "greenhouse:a:2", "Recent", days_ago=5)
+    _seed_aged(conn, "greenhouse:a:3", "Answered", days_ago=30,
+               response_received_at="2026-07-01")
+    _seed_aged(conn, "greenhouse:a:4", "Closed", days_ago=30, outcome="rejected")
+    _seed_aged(conn, "greenhouse:a:5", "Interviewing", days_ago=30,
+               status="interviewing")
+
+    cutoff = (date.today() - timedelta(days=21)).isoformat()
+    hits = {r["job_id"] for r in track_cmd._stale_no_response(conn, cutoff)}
+    assert hits == {"greenhouse:a:1"}
+
+
+def test_sweep_dry_run_lists_without_writing(isolated_env: Path) -> None:
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_aged(conn, "greenhouse:a:1", "Stale", days_ago=30)
+    conn.close()
+
+    result = runner.invoke(track_cmd.app, ["sweep"])
+    assert result.exit_code == 0, result.output
+    assert "Stale" in result.output
+    assert "dry run" in result.output
+
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    row = conn.execute("SELECT outcome FROM applications").fetchone()
+    conn.close()
+    assert row[0] is None
+
+
+def test_sweep_apply_marks_ghosted(isolated_env: Path) -> None:
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_aged(conn, "greenhouse:a:1", "Stale", days_ago=30)
+    _seed_aged(conn, "greenhouse:a:2", "Recent", days_ago=5)
+    conn.close()
+
+    result = runner.invoke(track_cmd.app, ["sweep", "--apply"])
+    assert result.exit_code == 0, result.output
+    assert "marked 1 application(s) ghosted" in result.output
+
+    conn = sqlite3.connect(isolated_env / "jobhunt.db")
+    conn.row_factory = sqlite3.Row
+    rows = {r["job_id"]: r["outcome"] for r in conn.execute(
+        "SELECT job_id, outcome FROM applications"
+    )}
+    conn.close()
+    assert rows["greenhouse:a:1"] == "ghosted"
+    assert rows["greenhouse:a:2"] is None  # too recent to sweep
+
+
+def test_sweep_honors_older_than(isolated_env: Path) -> None:
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_aged(conn, "greenhouse:a:1", "Week old", days_ago=10)
+    conn.close()
+
+    assert "no applications older than 21d" in runner.invoke(
+        track_cmd.app, ["sweep"]
+    ).output
+    assert "Week old" in runner.invoke(
+        track_cmd.app, ["sweep", "--older-than", "7d"]
+    ).output

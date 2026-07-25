@@ -93,3 +93,43 @@ def test_list_default_targets_include_drafted_but_exclude_submitted_states(conn)
         "greenhouse:acme:drafted",
         "greenhouse:acme:plain",
     ]
+
+
+# --- Phase A4: company/title fragments accepted where a job id is expected ---
+
+
+def test_resolve_by_id_accepts_company_fragment(conn) -> None:
+    """`jobhunt apply acme` resolves like `jobhunt track response acme` does."""
+    _seed(conn, "77", score=80)
+    rows = apply_cmd._resolve_by_id(conn, "dev 77")
+    assert len(rows) == 1
+    assert rows[0]["id"] == "greenhouse:acme:77"
+
+
+def test_resolve_by_id_still_takes_exact_id(conn) -> None:
+    _seed(conn, "78", score=80)
+    rows = apply_cmd._resolve_by_id(conn, "greenhouse:acme:78")
+    assert rows[0]["id"] == "greenhouse:acme:78"
+
+
+def test_resolve_by_id_ambiguous_fragment_exits(conn, capsys) -> None:
+    import typer
+
+    _seed(conn, "79", score=80)
+    _seed(conn, "80", score=80)
+    with pytest.raises(typer.Exit) as e:
+        apply_cmd._resolve_by_id(conn, "acme")
+    assert e.value.exit_code == 1
+    assert "ambiguous" in capsys.readouterr().err
+
+
+def test_resolve_by_id_exact_id_wins_for_declined_job(conn) -> None:
+    """The fragment path skips declined jobs; an explicit id must not."""
+    _seed(conn, "81", score=80)
+    with conn:
+        conn.execute(
+            "UPDATE jobs SET decline_reason = 'wrong_domain' WHERE id = ?",
+            ("greenhouse:acme:81",),
+        )
+    rows = apply_cmd._resolve_by_id(conn, "greenhouse:acme:81")
+    assert rows[0]["id"] == "greenhouse:acme:81"

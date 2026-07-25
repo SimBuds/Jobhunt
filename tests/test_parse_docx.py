@@ -202,6 +202,34 @@ def test_skill_label_aliases(tmp_path: Path):
     assert warnings == []
 
 
+def test_compound_skill_labels_map_to_buckets(tmp_path: Path):
+    """A9: compound labels must not drop their whole bucket.
+
+    Regression for 2026-07-24, when a reformatted baseline used 'Languages &
+    Frameworks' and 'AI & Automation'. Neither was an alias, so both buckets
+    were dropped silently — verified.json reported zero core and zero AI
+    skills, and the fabrication guard then rejected real skills as unverified.
+    Both '&' and 'and' spellings are covered.
+    """
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL SKILLS")
+    doc.add_paragraph("Languages & Frameworks: TypeScript, Next.js")
+    doc.add_paragraph("AI and Automation: Claude API, Ollama")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert warnings == []
+    assert "TypeScript" in facts.skills_core
+    assert "Next.js" in facts.skills_core
+    assert "Claude API" in facts.skills_ai
+    assert "Ollama" in facts.skills_ai
+
+
 def test_classifies_generic_certs(tmp_path: Path):
     """RP2: certs are detected by generic keywords (certified / certification /
     badge), not Casey-specific literals. The 'Associate' cert tier must not be
