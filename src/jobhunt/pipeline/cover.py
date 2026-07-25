@@ -101,11 +101,20 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         body = [body]
     cleaned_body = [_strip_trailing_signoff(str(p).strip(), profile_name) for p in body]
     cleaned_body = [p for p in cleaned_body if p]
-    default_signoff = f"Best,\n{profile_name}" if profile_name else "Best,"
+    # The sign-off is identity, not prose. When the verified profile carries a
+    # name, that name IS the sign-off — the model's value is discarded rather
+    # than merely defaulted over. Until 2026-07-25 the system prompt hard-coded
+    # one candidate's name and this line only used the profile as a fallback,
+    # so any other user's letter shipped signed with that name (A11a).
+    sign_off = (
+        f"Best,\n{profile_name}"
+        if profile_name
+        else str(raw.get("sign_off") or "Best,")
+    )
     return CoverLetter(
         salutation=str(raw.get("salutation") or "Dear Hiring Team,"),
         body=cleaned_body,
-        sign_off=str(raw.get("sign_off") or default_signoff),
+        sign_off=sign_off,
         model=model,
     )
 

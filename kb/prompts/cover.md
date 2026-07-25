@@ -159,11 +159,14 @@ Hard rules:
    real variance. Some sentences should be under 10 words. If three
    sentences in a row are over 25 words, rewrite.
 10. Salutation: "Dear Hiring Team," unless the JD names a specific person.
-11. Sign-off: the `sign_off` field is "Best,\nCasey Hsu". The `body`
-    paragraphs MUST NOT contain a sign-off line — do **not** end the last
-    paragraph with "Best,", "Regards,", "Sincerely,", "Cheers,", or
-    Casey's name. The sign-off is rendered separately; including it in
-    `body` produces a duplicate sign-off and is rejected by the validator.
+11. Sign-off: set `sign_off` to "Best," followed by the candidate's full
+    name exactly as it appears in the `name` field of the Verified facts
+    JSON below. (The pipeline overwrites this field from the verified
+    profile anyway, so never invent a name.) The `body` paragraphs MUST NOT
+    contain a sign-off line — do **not** end the last paragraph with
+    "Best,", "Regards,", "Sincerely,", "Cheers,", or the candidate's name.
+    The sign-off is rendered separately; including it in `body` produces a
+    duplicate sign-off and is rejected by the validator.
 
 ## USER
 # Verified facts

@@ -52,18 +52,26 @@ def _step_db_init() -> None:
 
 
 def _step_resume_present() -> Path | None:
+    from jobhunt.errors import PipelineError
+    from jobhunt.resume.locate import describe_choice, find_baseline_resume
+
     _header("Step 2/6: resume file")
-    docx = Path("Baseline_Resume.docx")
-    if docx.exists():
-        typer.echo(f"found {docx.resolve()}")
-        return docx
-    typer.echo(f"missing {docx.resolve()}")
-    if not typer.confirm("place your baseline resume there now and continue?", default=False):
-        typer.echo("setup paused — re-run `jobhunt setup` once the resume is added.")
-        return None
-    if not docx.exists():
-        typer.echo(f"still missing {docx}. aborting.")
-        return None
+    try:
+        docx = find_baseline_resume()
+    except PipelineError:
+        typer.echo(
+            "no resume found here. Drop a .docx with 'resume' in the filename "
+            "(e.g. Baseline_Resume.docx) into this directory."
+        )
+        if not typer.confirm("place your baseline resume there now and continue?", default=False):
+            typer.echo("setup paused — re-run `jobhunt setup` once the resume is added.")
+            return None
+        try:
+            docx = find_baseline_resume()
+        except PipelineError:
+            typer.echo("still no resume found. aborting.")
+            return None
+    typer.echo(describe_choice(docx))
     return docx
 
 
