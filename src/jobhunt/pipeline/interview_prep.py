@@ -26,6 +26,7 @@ from typing import Any
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
+from jobhunt.pipeline._recap import recap_tokens
 from jobhunt.pipeline.cover_validate import (
     _DEFENSIVE_PATTERNS,
     _DIGIT_CLUSTER_RE,
@@ -352,7 +353,7 @@ def validate_prep_sections(
             continue
         violations.append(f"unverified number: {cluster!r}")
 
-    for token in ("coursework", "george brown", "dean's list", "diploma"):
+    for token in recap_tokens(verified, extra=("coursework",)):
         if token in body_lower:
             violations.append(f"interview-prep education recap: {token!r}")
 
@@ -773,7 +774,7 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
         )
     if any("education recap" in v.lower() for v in violations):
         lines.append(
-            "Do not mention George Brown, diploma, Dean's List, or coursework "
+            "Do not mention the school name, diploma, honours, or coursework "
             "inside interview prep answers. That material belongs on the resume."
         )
     if any("availability claim" in v.lower() for v in violations):

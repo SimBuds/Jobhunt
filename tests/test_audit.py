@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from jobhunt.pipeline.audit import (
     AuditResult,
     _derive_project_anchors,
@@ -19,45 +14,10 @@ from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.score import ScoreResult
 from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume, TailoredRole
 
-VERIFIED_PATH = Path(__file__).parent.parent / "kb" / "profile" / "verified.json"
-
 _MUST_HAVES = ["TypeScript", "React", "Node.js", "GitHub Actions", "Shopify"]
 
-
-@pytest.fixture
-def verified() -> dict:
-    if VERIFIED_PATH.is_file():
-        return json.loads(VERIFIED_PATH.read_text())
-    return {
-        "summary": "Full-stack developer with 2+ years experience.",
-        "work_history": [
-            {
-                "employer": "Custom Jewelry Brand (NDA)",
-                "dates": "2023 – Present",
-                "bullets": ["Built 16+ page Shopify storefront on a customized Dawn 2.0 theme."],
-            },
-            {
-                "employer": "AI Agency (NDA)",
-                "dates": "2026 – Present",
-                "bullets": ["Cut page load time by 30%."],
-            },
-            {
-                "employer": "Vintage Gaming Retailer (NDA)",
-                "dates": "2024",
-                "bullets": ["Built custom Shopify page layouts."],
-            },
-            {
-                "employer": "Multiple Venues, Toronto",
-                "dates": "2015 – 2024",
-                "bullets": ["Led teams of 5–20."],
-            },
-        ],
-        "skills_core": ["TypeScript", "React", "Node.js"],
-        "skills_cms": ["Shopify (Liquid, Custom Themes)"],
-        "skills_data_devops": ["GitHub Actions CI/CD"],
-        "skills_ai": [],
-        "skills_familiar": ["Python"],
-    }
+# `verified` comes from tests/conftest.py — the fictional fixture profile.
+# See the note there on why the repo's own kb/profile/verified.json is not used.
 
 
 # Per-role (title, first bullet) by index. Employer + dates are pulled from the
@@ -429,9 +389,9 @@ def test_audit_long_jd_does_not_use_peer_broadening(verified: dict) -> None:
 
 
 def test_audit_alignment_flags_drift_between_resume_and_cover(verified: dict) -> None:
-    """Cover middle paragraph anchors on Atelier Dacko (custom jewellery),
-    but tailored resume's first role's first bullet anchors on HubSpot.
-    The alignment check should flag a `revise` (not block)."""
+    """Cover middle paragraph anchors on the Shopify storefront, but the
+    tailored resume's first role leads with HubSpot. The alignment check should
+    flag a `revise` (not block)."""
     tailored = _minimal_tailored(verified)
     # Re-anchor lead bullet to HubSpot instead of Shopify.
     tailored.roles[0] = TailoredRole(
@@ -441,12 +401,12 @@ def test_audit_alignment_flags_drift_between_resume_and_cover(verified: dict) ->
         bullets=["Built a custom 8-page HubSpot theme with HubL modules."],
     )
     cover = _good_cover()
-    # Cover middle paragraph names the Atelier Dacko ring builder (atelier
-    # anchor). Uses verified-spelling terms now that anchors are derived from
-    # verified.json rather than a hard-coded variant list.
+    # Cover leads on the Northwind Shopify build. Uses verified-spelling terms,
+    # since anchors are derived from verified.json rather than a hard-coded
+    # variant list.
     cover.body[1] = (
-        "The centrepiece project is the Atelier Dacko ring builder, a 14+ "
-        "page Shopify storefront I built over 2+ years."
+        "The centrepiece project is the Northwind Jewellery storefront, a 16+ "
+        "page Shopify build I owned over 2+ years."
     )
     cover.body[2] = "A second project: bulk JSON data migrations."  # no hubspot
     result = audit(

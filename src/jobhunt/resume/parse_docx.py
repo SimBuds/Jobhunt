@@ -2,7 +2,8 @@
 
 The output of this module is the single source of truth for tailoring. Downstream
 prompts must only use facts present in `verified.json` — that is the structural
-enforcement of the no-fabrication rule from `Resume_Tailoring_Instructions.md` §2.
+enforcement of the no-fabrication rule in `kb/policies/tailoring-rules.md`
+("Hard prohibitions").
 """
 
 from __future__ import annotations
@@ -55,6 +56,11 @@ _SECTION_ALIASES: dict[str, str] = {
     "personal projects": "PROJECTS",
     "selected projects": "PROJECTS",
     "side projects": "PROJECTS",
+    "technical projects": "PROJECTS",
+    "key projects": "PROJECTS",
+    "notable projects": "PROJECTS",
+    "open source": "PROJECTS",
+    "open-source projects": "PROJECTS",
 }
 
 
@@ -81,8 +87,9 @@ class Role:
 class Project:
     """A personal-project entry from the `PROJECTS` docx section. Distinct from
     `Role` (employment): projects are genuine work but not employment, so the
-    tailor never renders employer-style metrics on them. See WORK.md Section 1
-    and `Resume_Tailoring_Instructions.md` Section 2."""
+    tailor never renders employer-style metrics on them. Long form lives in
+    `kb/profile/work-long-form.md`; claimability notes in
+    `kb/profile/verified-notes.md` (both gitignored, agent-reference only)."""
 
     name: str
     url: str
@@ -169,15 +176,42 @@ _ROLE_LINE_RE = re.compile(
 
 
 def _is_project_header(text: str) -> bool:
-    """A PROJECTS-section header is ``Name | url`` — a line containing ``|`` whose
-    right-hand side is a single whitespace-free token (the repo URL). Bullets are
-    prose: they rarely contain ``|``, and if they do the right side has spaces, so
-    they are not mistaken for headers. The ``Stack:`` line is handled separately."""
-    if "|" not in text:
+    """A PROJECTS-section header ends in a repo URL after a separator.
+
+    Two accepted forms:
+
+    - ``Name | url`` — the original. A line containing ``|`` whose right-hand
+      side is a single whitespace-free token.
+    - ``Name — Description — url`` — em-dash form (2026-07). Split on the
+      *last* em-dash so an em-dash inside the description is not the split
+      point, and additionally require the tail to look like a URL (a ``.`` or
+      ``/``). Prose bullets in this section routinely contain em-dashes, and
+      without the URL test a bullet ending in a single word would be misread
+      as a header.
+
+    Bullets are prose: the token after the separator has spaces, so they are
+    not mistaken for headers. The ``Stack:`` line is handled separately.
+    """
+    parts = _split_project_header(text)
+    if parts is None:
         return False
-    _, right = text.split("|", 1)
-    right = right.strip()
-    return bool(right) and " " not in right
+    _, right = parts
+    if "|" in text:
+        return bool(right) and " " not in right
+    return bool(right) and " " not in right and ("." in right or "/" in right)
+
+
+def _split_project_header(text: str) -> tuple[str, str] | None:
+    """Split a project header into ``(name, url)``. None when there is no
+    separator. Shared by the predicate and its consumer so the two can never
+    disagree about where the split falls."""
+    if "|" in text:
+        name, url = text.split("|", 1)
+        return name.strip(), url.strip()
+    if "—" in text:
+        name, url = text.rsplit("—", 1)
+        return name.strip(), url.strip()
+    return None
 
 
 # Generic credential classifier for the CERTIFICATIONS & EDUCATION section.
@@ -396,7 +430,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
                 current_project.stack = _split_skills(text[len("Stack:") :].strip())
             continue
         if _is_project_header(text):
-            name_part, url_part = text.split("|", 1)
+            name_part, url_part = _split_project_header(text)  # type: ignore[misc]
             # Project urls keep the docx's visible bare-domain form; the
             # hyperlink-target substitution upstream may have swapped in a
             # scheme-prefixed target, so strip the scheme back off here.
@@ -506,7 +540,7 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
         proj_lines = [
             "# Projects\n",
             "Personal projects (genuine work, not employment). No employer-style\n"
-            "metrics. See `WORK.md` Section 1 for the long form.\n",
+            "metrics. See `work-long-form.md` in this directory for the long form.\n",
         ]
         for p in facts.projects:
             proj_lines.append(f"## {p.name}")

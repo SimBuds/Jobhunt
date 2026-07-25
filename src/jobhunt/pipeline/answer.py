@@ -26,6 +26,7 @@ from typing import Any
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
+from jobhunt.pipeline._recap import recap_tokens
 from jobhunt.pipeline.cover_validate import (
     _BRIDGE_PATTERNS,
     _DEFENSIVE_PATTERNS,
@@ -115,7 +116,9 @@ _WORD_RE = re.compile(r"\b\w+\b")
 _LEADING_FILLER_RE = re.compile(
     r"^(?:hello,?\s*|hi,?\s*|dear[^,\.]*,?\s*)+", re.IGNORECASE
 )
-_RECAP_TOKENS = ("dean's list", "george brown", "diploma", "coursework:")
+# Institution names come from the verified profile via `_recap.recap_tokens`;
+# "coursework:" is this validator's own marker (the resume's literal label).
+_RECAP_EXTRA = ("coursework:",)
 
 
 def _word_count(text: str) -> int:
@@ -184,7 +187,7 @@ def validate_answer(
 
     # Resume-recap suppression. Answers should NOT cite the GBC diploma /
     # coursework — that material lives on the resume.
-    for token in _RECAP_TOKENS:
+    for token in recap_tokens(verified, extra=_RECAP_EXTRA):
         if token in body_lower:
             violations.append(f"answer recaps resume material: {token!r}")
             break

@@ -14,8 +14,16 @@ humans edit `policies/`.
     `projects.md` (when the resume has a PROJECTS section): human-readable
     mirror of the same data.
 - `policies/`: hand-edited rules.
-  - `tailoring-rules.md`: prompt-injectable mirror of
-    `Resume_Tailoring_Instructions.md` (root-level source of truth).
+  - `tailoring-rules.md`: hard prohibitions, ATS constraints, and auto-decline
+    triggers. **Prompt-injected** — loaded by `pipeline/tailor.py` and
+    `pipeline/score.py`, and part of the prompt hash. Keep it tight; every line
+    costs tokens on every scored job.
+  - `authoring.md`: workflow policy for a human or agent producing a resume
+    **by hand**, outside the pipeline — required inputs, the tailoring step
+    order, what may be adjusted, the pre-delivery pitfall audit, and cover-note
+    rules. **Not prompt-injected**, deliberately: these are process rules an
+    agent acts on, not constraints the model applies. Contains no personal
+    data; facts come from `profile/verified.json`.
 - `prompts/`: task prompts loaded by the gateway. Frontmatter declares model,
   temperature, and JSON schema.
 - `lanes/`: hand-edited pseudo-JD briefs (`ai-automation.md`,
@@ -29,11 +37,16 @@ humans edit `policies/`.
 
 ## Editing workflow
 
-- **To update profile facts:** edit `Baseline_Resume.docx`, then run
-  `jobhunt convert-resume`. Never edit `profile/*.md` by hand. They
-  get overwritten.
-- **To update tailoring rules:** edit `Resume_Tailoring_Instructions.md` (the
-  source of truth), then sync the trimmed mirror in `policies/tailoring-rules.md`.
+- **To update profile facts:** edit the baseline resume (any root-level
+  `.docx` with "resume" in the name — see `resume/locate.py`), then run
+  `jobhunt convert-resume`. Never edit `profile/*.md` by hand; they get
+  overwritten. `convert-resume` refuses to write when the parser drops any
+  skill bucket or role, so a partial profile is never published silently.
+- **To update the rules:** edit `policies/tailoring-rules.md` (model-facing) or
+  `policies/authoring.md` (agent-facing) directly. Both are tracked and
+  self-contained. They are the source of truth — earlier revisions kept the
+  canonical copy in an untracked root-level document, which meant a fresh
+  clone had no rules at all.
 - **To update the employer seed list:** edit the `CANDIDATES` dict in
   `scripts/verify_seeds.py`, run the script, paste the verified TOML block
   into `seeds/gta-employers.toml`. Never hand-edit the seed file with

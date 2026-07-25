@@ -595,6 +595,39 @@ So the role half of this phase is a **document** fix, not a code fix, and the
   warnings 12 -> 10. The residual 10 are all role headers.
 - Gates: `uv run pytest` 999 passed; `ruff check` clean; `mypy src` clean.
 
+**Agent verification pass (2026-07-25 00:3x):**
+- Independently confirmed the above against `Casey_Hsu_Resume.docx` (the
+  baseline was renamed mid-phase and is now found via the new
+  `resume/locate.py`): `skills_core` 13, `skills_ai` 6, `skills_cms` 6,
+  `skills_data_devops` 12, `skills_familiar` 8, `projects` 2, warnings 10.
+- A9b guard confirmed live: `jobhunt convert-resume` exits 1 and writes
+  nothing.
+- The agent had started a competing `_lossy_warnings` guard in
+  `convert_resume_cmd.py` before noticing A9b already existed, and
+  **reverted it**. Net agent change to that file this pass: none.
+- Suite now **3 failures / 1022 passed** (was 11 / 993): `test_parse_docx` x2,
+  `test_query_planner` x1 - all downstream of the missing role titles.
+  `ruff` clean; `mypy` clean, 78 files.
+
+**STILL UNSAFE TO RUN `scan` / `apply` / `resume`.** The guard blocks a *new*
+bad write; it does not repair the existing one. `kb/profile/verified.json` on
+disk is still the 22:02 snapshot - 0 core skills, 0 AI skills, 0 projects, and
+one "Sous Chef & Team Lead" role. It is repaired only once the role titles land
+and `convert-resume` completes successfully.
+
+### Phase A9d - Make the convert-resume guard fail closed (low priority)
+
+**Goal:** Treat any non-benign parse warning as data loss, rather than
+allow-listing the words "dropped"/"skipped".
+
+`_dropped_content_warnings` currently matches on two words. A future warning
+kind that discards content without using either would pass the guard silently -
+the exact failure class A9b exists to prevent. Inverting the polarity (benign
+markers listed explicitly, everything else blocks) is a ~5-line change. Only
+one benign kind exists today: `"defaulted to education"`.
+
+**Status:** [ ] not started - low priority, no known trigger
+
 **Remaining (document half, owner: Casey):** restore the four role titles in
 `Baseline_Resume.docx` using the pipe form, then re-run `convert-resume`.
 Suggested titles chosen for lane coverage rather than repeating one label
@@ -610,6 +643,33 @@ Sous Chef & Team Lead           | JOEY Restaurant Group…, Toronto           Fe
 Note: `Resume_Tailoring_Instructions.md` lines 37-39 currently name Dacko "CMS
 / E-commerce Developer (Contract)". If the full-stack label is adopted, update
 that table too so one file stays the source of truth.
+
+**Result - second code pass (2026-07-24), two further silent failures found:**
+
+While swapping a project entry, `projects` parsed as **0** with **zero
+warnings** - a silent drop the A9b guard cannot catch, and worse than the noisy
+one. Two causes, both fixed:
+
+1. `_SECTION_ALIASES` had `personal/selected/side projects` but not
+   **`technical projects`**, the heading actually used. The heading was
+   therefore not a section boundary, and because `Sous Chef | JOEY …` *does*
+   match the role regex, the heading and every project line were absorbed as
+   bullets on the sous-chef role. Added `technical projects`, `key projects`,
+   `notable projects`, `open source`, `open-source projects`.
+2. `_is_project_header` required `Name | url`; the resume uses
+   `Name — Description — url`. Widened to accept the em-dash form, splitting on
+   the **last** em-dash and additionally requiring the tail to look like a URL
+   (`.` or `/`) - prose bullets in this section routinely contain em-dashes,
+   and without the URL test a bullet ending in one word would parse as a
+   header. New `_split_project_header` is shared by the predicate and its
+   consumer so the two cannot disagree about the split point.
+
+Measured after: `projects` 0 -> 2, each with stack (5) and bullets (2);
+warnings back to 10, all `PROFESSIONAL EXPERIENCE`. Two tests added, including
+one asserting the role does **not** swallow the projects section.
+
+Gates: `uv run pytest` 1014 passed, 9 failed (all the corrupted-profile set),
+2 skipped; `ruff check` clean; `mypy src` clean.
 
 **Status:** [~] code half done; blocked on the document edit
 
@@ -676,7 +736,452 @@ existing fixture helpers cover the replacements.
   move to fixture / legitimately personal, leave).
 - Follow-up phases filed for each disposition group.
 
-**Status:** [ ] not started - blocked on A9 (the parser fix changes the surface)
+**Result - inventory (2026-07-24):**
+
+Search: `grep -rniE "casey|hsu|joey|dacko|neurative|geeked out|george brown|
+416-500|outlook\.com|simbuds|caseyhsu"` over `src/`, `tests/`, `kb/prompts/`,
+`kb/policies/`, `kb/lanes/`, `kb/seeds/`. 102 hits in src+kb, ~85 in tests.
+Sorted into four dispositions, filed as A11-A14 below.
+
+**D1 - Behavioral coupling (HIGH).** Personal facts hard-coded inside logic or
+prompt text. These do not merely read oddly for another user - they *silently
+no-op*, because the literal never matches:
+- `pipeline/cover_validate.py:481` - `recap_tokens` contains `"george brown"`
+- `pipeline/answer.py:118` - `_RECAP_TOKENS` contains `"george brown"`
+- `pipeline/interview_prep.py:355` - token loop contains `"george brown"`
+- `pipeline/interview_prep.py:776` - prompt names George Brown / Dean's List
+- `kb/prompts/cover.md:28`, `answer.md:89` - same school, in prompt text
+- `kb/prompts/tailor.md:86` - the full George Brown education line verbatim
+- `kb/prompts/cover.md:162` - `sign_off` hard-coded to `"Best,\nCasey Hsu"`
+- `kb/prompts/{answer,cover,interview-prep}.md` - "Atelier Dacko" named as the
+  canonical anchor project (4 sites)
+- `kb/policies/tailoring-rules.md:12` - the Familiar bucket enumerated inline
+All of these already exist in `verified.json` (`education`, `work_history`,
+`projects`, `skills_familiar`) or `cfg.applicant.full_name`. -> **Phase A11**
+
+**D2 - Tests read live personal data (HIGH).** Six files load
+`Baseline_Resume.docx` or `kb/profile/verified.json` from the repo root rather
+than a fixture: `test_parse_docx`, `test_query_planner`, `test_audit`,
+`test_cover_validate`, `test_analyze_expansion`, `test_setup_wizard`.
+Consequence, demonstrated today: editing a personal, **gitignored** document
+broke 11 tests across 4 of those files, and CI on another machine would fail
+or pass depending on whose resume is checked out. -> **Phase A12**
+
+**D3 - Prompt voice / identity (MEDIUM).** ~40 hits across `kb/prompts/*.md`
+and `kb/policies/tailoring-rules.md` of the form "Casey's voice", "Write a
+cover letter for Casey", "Casey is an IC engineer". Behaviourally harmless
+(the model reads a name it also receives in the payload) but they make the
+prompt library one person's. Replace with "the candidate" plus the injected
+name. -> **Phase A13**
+
+**D4 - Comments (LOW).** ~30 in `src/`, e.g. `cover_validate.py:291`
+("Casey has Express, not these"), `config.py:142`, `apply_cmd.py:578`. No
+behavior. They encode assumptions that mislead a maintainer working for a
+different user. -> **Phase A14**
+
+**D5 - Leave as-is.** `kb/seeds/gta-employers.toml` curation notes: the file is
+documented as a cold-start aid and its comments are dated provenance, which is
+worth keeping. `Baseline_Resume.docx`, `WORK.md`,
+`Resume_Tailoring_Instructions.md`, `kb/profile/`, `data/` are inputs and are
+*supposed* to be personal.
+
+**Adjacent finding, out of scope, filed for the record:** personalization is
+not only identity. The tool hard-codes a *geography* (GTA + 100 km, Job Bank
+CA, Adzuna CA, `kb/seeds/gta-employers.toml`) and a currency
+(`salary_expectation_cad`). A user outside Ontario has a second, larger
+problem that this sweep does not touch. Not filed as a phase - it needs its own
+plan.
+
+**Status:** [x] done - inventory complete, A11-A14 filed
+
+**Agent verification pass (2026-07-25).** Ran the sweep independently over the
+same scope; the inventory above reproduces. Three implementation details it
+does not record, all of which change how A11 should be sequenced:
+
+1. **D1 contains one hit that does *not* no-op.** The rest of D1 fails open -
+   `"george brown"` simply never matches another user's profile, so a guard
+   silently does nothing. `kb/prompts/cover.md:162` is the opposite: it fixes
+   `sign_off` to the literal `"Best,\nCasey Hsu"`, nothing downstream rewrites
+   it (`render_cover_docx.py:66` renders `cover.sign_off` verbatim), and
+   `grep -rn full_name src/jobhunt/pipeline src/jobhunt/gateway` returns
+   **nothing** - the applicant's name is never injected into any prompt today.
+   So another user's cover letter ships *signed with Casey's name*. Failing
+   open is a dormant bug; this one emits wrong output into an employer-facing
+   document. **Do it first in A11.**
+2. **The substitution mechanism already exists.** `gateway/prompts.py:25`
+   does `user_template.format(**vars)` and raises `PipelineError` on a missing
+   key. A11b is therefore a parameter change (`{full_name}` in the template +
+   one kwarg at the call site), not new plumbing.
+3. **Do not "fix" the `cover_validate` overreach watchlist under A14.** The
+   Casey-specific *comments* around it (lines 291, 297, 307) are D4 cosmetics,
+   but the token list beneath them (`bun`, `hono`, `trpc`, `prisma`, `kotlin`,
+   `swift`, `gcp`, `langchain`, `pinecone`, …) is behavioral and is
+   **already user-generic**: `cover_validate.py:145-152` suppresses a violation
+   when the matched phrase appears in the verified-skill blob, so the list
+   self-corrects per profile. Reword the comments; leave the list.
+
+### Phase A11 - Route hard-coded personal facts through the verified snapshot
+
+**Goal:** Replace every personal literal that participates in behavior with a
+lookup against `verified.json` or `cfg.applicant`.
+
+**Files to touch:** `pipeline/cover_validate.py`, `pipeline/answer.py`,
+`pipeline/interview_prep.py`, `kb/prompts/{cover,answer,tailor,interview-prep}.md`,
+`kb/policies/tailoring-rules.md`
+
+**Note:** exceeds the 5-file budget; split at implementation time into
+A11a (the three `pipeline/` recap-token sites, one shared helper) and
+A11b (prompt/policy text). Recorded rather than silently exceeded.
+
+**Verification:**
+- A fixture profile with a different school/employer produces the same guard
+  behavior the Casey profile does today.
+- `scripts/eval_tailor.py` golden set shows no verdict regressions.
+
+**Result - A11a, the sign-off (2026-07-25):**
+
+Resequenced to run first: every other D1 hit fails *open* (a literal that never
+matches simply no-ops), but this one emitted wrong output into an
+employer-facing document.
+
+- `kb/prompts/cover.md:162` no longer names a candidate. The rule now points at
+  the `name` field of the Verified facts JSON and states that the pipeline
+  overwrites the field regardless, so the model is never the authority.
+- `pipeline/cover.py` - the verified name was *already* read (for the sign-off
+  strip regex) and *already* composed into `default_signoff`, but line 108 used
+  it only as `raw.get("sign_off") or default_signoff`. The model's value won,
+  and the prompt told it to emit "Best,\nCasey Hsu". Now the verified name wins
+  outright when present; the model's value is used only when the profile
+  carries no name.
+- Chose deterministic override over prompt-instruction, matching the repo's
+  structural-enforcement posture (AGENTS.md: honesty enforcement is
+  structural). A name is identity, not prose - it should not depend on
+  instruction-following.
+- Tests in `tests/test_cover_signoff_strip.py`: a profile named "Jane Dev"
+  overrides a model emitting "Best,\nCasey Hsu"; a nameless profile still falls
+  back. Regression confirmed by `git stash` round-trip - fails without the
+  change, passes with it.
+- Gates: 66 cover-related tests pass; `ruff check` clean; `mypy src` clean,
+  78 files. Full-suite run deferred at Casey's request while the resume is open
+  for editing (the 3 known content failures are unrelated to this change).
+- Out of scope, deliberately left: the ~10 remaining "Casey" mentions in
+  `cover.md` are prompt *voice* (D3 -> A13), not identity emission.
+
+**Result - A11b, the recap tokens (2026-07-25):**
+
+- `pipeline/_recap.py` added: `recap_tokens(verified, *, extra=())` derives
+  institution names from `verified.json`'s `education` entries and unions them
+  with person-independent markers (`dean's list`, `diploma`).
+- Handles every education shape observed or plausible: free-text with an
+  em-dash separator (the live format), dict entries
+  (`institution`/`school`/`name`), a bare string, and missing/empty.
+- Emits both the full name and the short form (`waterloo university` +
+  `waterloo`), because people write both. Sorted longest-first so a violation
+  message quotes the full name.
+- `extra` exists to avoid a silent behavior change: `answer.py` matched
+  `"coursework:"` (the resume's literal label) while the other two matched the
+  bare word `"coursework"`. Unifying them would have widened one validator as a
+  side effect of a refactor, so each call site passes its own marker.
+- Wired into all three sites: `answer.py:187`, `cover_validate.py:481`,
+  `interview_prep.py:355`. Also fixed `interview_prep.py:777`, a *retry-hint
+  prompt string* that named the school in code - now "the school name,
+  diploma, honours, or coursework".
+- `grep -rniE "george brown" src/` returns **nothing**.
+- Regression test asserts the derived set is a superset of each validator's
+  previous hard-coded tuple, so no validator lost sensitivity.
+- Gates: 122 tests across the affected surface pass (9 new in
+  `tests/test_recap_tokens.py`); `ruff check` clean; `mypy src` clean, 79 files.
+- Left for A13 (prompt voice, not identity data): `interview_prep.py:783`
+  ("Do not claim Casey can start immediately") and the 3 remaining school
+  references in `kb/prompts/`.
+
+**Status:** [x] A11a + A11b done; prompt/policy voice remains as A13
+
+**Status:** [ ] not started
+
+### Phase A12 - Decouple the test suite from the live baseline resume
+
+**Goal:** Point every test at a committed fixture profile instead of the
+user's personal `Baseline_Resume.docx` / `kb/profile/verified.json`.
+
+**Files to touch:** `tests/fixtures/profile/` (new: a fixture .docx + its
+verified.json), `tests/test_parse_docx.py`, `tests/test_query_planner.py`,
+`tests/test_audit.py`, `tests/test_cover_validate.py`,
+`tests/test_analyze_expansion.py`, `tests/test_setup_wizard.py`
+
+**Note:** also exceeds the file budget; split per test file at implementation
+time. Keep **one** deliberately-live smoke test that parses the real baseline
+and asserts `warnings == []`, so a real regression still surfaces - just not
+as 11 opaque assertion failures.
+
+**Verification:**
+- `git stash` the baseline resume; the suite still passes.
+- The 11 failures from 2026-07-24 become impossible by construction.
+
+**Correction to the A10 inventory:** the coupling was **4 files, not 6**.
+`test_analyze_expansion` and `test_setup_wizard` write their own
+`verified.json` into tmp and merely *mention* the filename - they were false
+positives from a filename-only grep.
+
+**Result - A12a (2026-07-24):**
+- `tests/fixtures/profile/verified.json` added: one fictional candidate ("Jane
+  Dev", Northwind/Contoso/Fabrikam) rich enough to serve both suites - includes
+  AWS **and** Azure, which the peer-broadening dedupe test needs.
+- `tests/conftest.py` now owns the shared `verified` fixture. The two local
+  copies in `test_audit` / `test_cover_validate` are deleted, along with their
+  `if VERIFIED_PATH.is_file()` branches - that branch was the actual bug: the
+  live file won even when corrupted, and the stub only ran when it was absent.
+- **68 tests in those two files now pass**, including all 8 that were red.
+- `test_audit_alignment_flags_drift_between_resume_and_cover` re-anchored onto
+  fixture-world names. **Proved non-vacuous**: with the HubSpot/Shopify drift
+  removed the test fails, with it present it passes - so it still exercises the
+  alignment check rather than passing by accident on a profile that no longer
+  contains the old anchor.
+- `test_parse_docx.BASELINE` now resolves via
+  `resume.locate.find_baseline_resume()`, converting A15's two **silent skips**
+  back into real guards. They fail right now, correctly, on the 10 pending
+  role-header warnings.
+- Suite: **1022 passed, 3 failed** (was 9 failed). `ruff check` clean after
+  removing imports the deletions orphaned; `mypy src` clean.
+
+**Remaining for A12b** (2 genuinely-coupled tests left):
+- `test_parse_docx::test_parse_baseline_positioning_and_atomic_skills` asserts
+  *content* of the live resume ("Dawn survives the parse", lead-role retitle).
+  Needs a fixture `.docx` so content assertions leave the personal document.
+- `test_query_planner::test_derive_from_current_baseline` reads the live
+  `verified.json` and asserts specific derived queries. Split it: fixture-based
+  coverage of the derivation *logic*, plus an explicitly-marked config check
+  that the user's own profile yields the queries they expect.
+
+`test_parse_baseline_round_trip` **stays live by design** - it is the one
+deliberate smoke test asserting the real resume parses cleanly.
+
+**Status:** [~] A12a done; A12b outstanding
+
+### Phase A13 - Depersonalize prompt and policy voice
+
+**Goal:** Replace "Casey" with "the candidate" plus the injected name across
+`kb/prompts/` and `kb/policies/`.
+
+**Verification:** `scripts/eval_tailor.py` golden set shows no verdict or
+score regressions vs. a pre-change run.
+
+**Status:** [ ] not started
+
+### Phase A14 - Depersonalize source comments
+
+**Goal:** Rewrite the ~30 `src/` comments that assert facts about one specific
+user. No behavior change; `git diff --stat` should show comments only.
+
+**Status:** [ ] not started - lowest priority
+
+### Phase A15 - Discover the baseline resume by filename pattern
+
+**Requested 2026-07-24.** The path is hard-coded to `Baseline_Resume.docx` in
+four places. Renaming the file to `Casey_Hsu_Resume.docx` (done at 22:00) broke
+`convert-resume` outright - it now exits file-not-found, and `setup` would too.
+
+**Goal:** Locate the baseline resume by matching any root-level `.docx`/`.pdf`
+whose filename contains "resume", instead of requiring one exact name.
+
+**Files to touch:**
+- src/jobhunt/resume/locate.py - new
+- src/jobhunt/commands/convert_resume_cmd.py - default via the locator
+- src/jobhunt/commands/setup_cmd.py - same (line 56)
+- tests/test_resume_locate.py - new
+
+**Functions to add/change:**
+- `resume.locate.find_baseline_resume(root, explicit=None)` - add - returns the
+  chosen path; raises a `PipelineError` naming candidates when none match.
+
+**Selection rule (deterministic, must be stated in output):** an explicit
+`--docx` always wins. Otherwise, among root-level files matching
+`*resume*.{docx,pdf}` case-insensitively: prefer a name containing "baseline",
+then `.docx` over `.pdf`, then most-recently-modified. Word lock files (`~$…`)
+are excluded. The chosen path is always echoed, because silently picking one of
+several resumes is worse than picking the wrong one loudly.
+
+**Search is non-recursive**, deliberately: `data/resumes/` holds generated lane
+resumes (`Casey_Hsu_Resume_AI_Automation.docx`) and `data/applications/<id>/`
+holds tailored per-application copies. A recursive search would pick a
+generated artifact as the source of truth for regenerating itself.
+
+**Reuse audit:**
+- Search terms: `grep -rn "Baseline_Resume.docx" src/`
+- Candidates found: `setup_cmd.py:56`, `convert_resume_cmd.py:127` (the typer
+  default), plus docstrings at `convert_resume_cmd.py:3,26`,
+  `parse_docx.py:1`, `interview_prep.py:1073`.
+- Why not reused: there is no existing locator - the literal is repeated. This
+  phase introduces the single source and the two behavioral sites call it.
+
+**PDF caveat:** `pyproject.toml` declares `python-docx` only; nothing can read
+a PDF today. Discovery recognizes `.pdf` so the file is *found* and the failure
+is explicit, but parsing needs a new dependency - a risky-tier decision, asked
+separately rather than slipped in.
+
+**Verification:**
+- Live: `jobhunt convert-resume` finds `Casey_Hsu_Resume.docx` with no flag.
+- Test: name variants, `.pdf` preference order, lock-file exclusion, and the
+  no-match error.
+
+**Result (2026-07-24):**
+- `resume/locate.py` added (`find_baseline_resume`, `describe_choice`); wired
+  into `convert_resume_cmd` (typer default is now `None`) and
+  `setup_cmd._step_resume_present`.
+- Live: `jobhunt convert-resume` with no flag prints
+  `resume: Casey_Hsu_Resume.docx` and proceeds - the file-not-found is gone.
+  A9b's guard then still blocks the write, correctly, since titles are missing.
+- 13 tests in `tests/test_resume_locate.py`, including the non-recursive
+  guarantee (a `data/resumes/` lane resume must never be picked as the source
+  of truth for regenerating itself).
+- PDF is *discovered* but rejected at parse time with an actionable message;
+  adding a PDF reader is a dependency decision, raised separately.
+- Gates: `uv run pytest` 1012 passed, 9 failed, 2 skipped; `ruff check` clean;
+  `mypy src` clean, 78 files.
+
+**Side effect worth acting on (feeds A12).** The failure count moved 11 -> 9
+not because anything was fixed, but because
+`tests/test_parse_docx.py` computes `BASELINE = REPO_ROOT /
+"Baseline_Resume.docx"` and is `skipif(not BASELINE.is_file())`. The rename
+turned two real regression guards into **silent skips**:
+
+```
+SKIPPED [1] tests/test_parse_docx.py:45: baseline .docx not present
+SKIPPED [1] tests/test_parse_docx.py:120: baseline .docx not present
+```
+
+A skip is worse than a failure here - it is invisible. Those two tests should
+call `find_baseline_resume()` instead of hard-coding the name. Folded into A12
+rather than done here, since `tests/test_parse_docx.py` is outside this phase's
+declared surface.
+
+**Status:** [x] done
+
+### Phase A16 - Make the KB self-sufficient without WORK.md / Resume_Tailoring_Instructions.md
+
+**Requested 2026-07-24.** "Ensure we can reliably pull everything we need
+without having to use `Resume_Tailoring_Instructions.md` and `WORK.md`."
+
+**Finding that reframes the request: the runtime pipeline already does not read
+either file.** `grep -rn "WORK.md\|Resume_Tailoring_Instructions" src/` returns
+only comments and docstrings (`render_docx.py:3`, `parse_docx.py:5,89,90,541`).
+The only policy input the pipeline loads is `kb/policies/tailoring-rules.md`
+(`tailor.py:76`, `score.py:44`, and `score.py:394`'s prompt-hash list). So the
+dependency is in the **authoring** workflow - what a human or agent must read
+to do resume work - not in the code path.
+
+**Gap analysis:**
+
+`Resume_Tailoring_Instructions.md` (300 lines) splits cleanly:
+- §2 "Verified Facts About Casey" (~97 lines: work history, skills, certs,
+  coursework, quantified outcomes, projects, "what Casey has NOT done") -
+  **personal data that duplicates `verified.json`**, and can drift from it.
+- §1, §3, §4, §7, §9, §10 (~110 lines: inputs to demand, tailoring workflow,
+  what's OK to adjust, common pitfalls, output format, cover notes) -
+  **generic tool policy that is NOT in the runtime mirror.**
+- §5, §6, §8 - already mirrored into `kb/policies/tailoring-rules.md`.
+
+The 109-line mirror therefore covers roughly half the policy. The uncovered
+half is the part agents most need and most often re-derive.
+
+`WORK.md` (342 lines) is a deliberate **superset** of the resume: per-role long
+form, projects not on the baseline (macOS-on-KVM, hybrid coding agent), full
+coursework, plus "how to use X in tailoring" guidance. None of it reaches the
+pipeline today.
+
+**Proposed shape:**
+1. `kb/policies/authoring.md` - the ~110 lines of uncovered policy, agent-facing
+   and **not** prompt-injected (injecting it would cost tokens for rules the
+   model does not act on).
+2. `kb/profile/supplemental.json` - the WORK.md facts that are genuinely extra,
+   as structured data next to `verified.json`.
+3. Root docs become derived or deleted; `AGENTS.md` documentation map updated.
+
+**Open decision - must be answered before coding.** `verified.json` currently
+means exactly "what is on the baseline resume", and the fabrication guard
+checks generated claims against it. Promoting WORK.md's extra projects into the
+verified set would let the tailor surface work that is *not* on the baseline.
+That may be wanted (WORK.md already annotates entries "on the baseline as of
+2026-06-23", implying deliberate curation) but it **changes the honesty
+guarantee**, so it is not a call to make silently. Options:
+ (a) supplemental facts are agent-reference only, never fed to the tailor -
+     guarantee unchanged, richness preserved for humans;
+ (b) supplemental facts are merged into the verified set - richer tailoring,
+     but "verified" no longer means "on the resume";
+ (c) supplemental is a separate prompt input with its own weaker guard.
+
+**Verification:**
+- `grep -rn "WORK.md\|Resume_Tailoring_Instructions" src/ kb/` returns nothing
+  load-bearing.
+- An agent given only `AGENTS.md` + `kb/` can complete a tailoring task.
+- `scripts/eval_tailor.py` golden set shows no verdict regressions.
+
+**Decision (2026-07-24): option (a).** Supplemental long-form facts are
+agent-reference only and are never fed to the tailor. `verified.json` continues
+to mean exactly "what is on the baseline resume", so the fabrication guard's
+guarantee is unchanged.
+
+**Result - A16a, policy extraction (2026-07-24):**
+- Discovery that sharpens the phase: **both root docs are untracked**
+  (`.gitignore` lines 14-18 cover `kb/profile/`, `data/`, `*.docx`, `*.pdf`,
+  `WORK.md`; `Resume_Tailoring_Instructions.md` is simply not committed). So a
+  fresh clone already had **no** copy of the ~110 lines of generic policy. The
+  gap was not theoretical - it was total, for every user but this one.
+- `kb/policies/authoring.md` added (tracked): required inputs, the 10-step
+  tailoring workflow, the may-adjust table, the 12-point pre-delivery pitfall
+  audit, output/delivery rules, and cover-note rules. Extracted **and
+  depersonalized** - `grep -cniE "casey|hsu|george brown|gbc|dacko|neurative|
+  joey|geeked"` returns **0**. Facts are sourced from `verified.json`.
+- Verified non-injected: the only policy loads are
+  `pipeline/tailor.py:76` and `pipeline/score.py:44`, both naming
+  `tailoring-rules.md` explicitly, and `score.py:394`'s prompt-hash list is a
+  fixed tuple. No glob over `kb/policies/`, so adding a file there cannot
+  silently enter a prompt or change the prompt hash.
+- `kb/README.md` updated: documents the injected/not-injected split and drops
+  the instruction to treat the untracked root doc as source of truth.
+
+**Result - A16b, migrate then delete both root docs (2026-07-25):**
+
+Casey asked for both root docs to be removed. Both were **untracked and not
+gitignored**, so `rm` would have been unrecoverable - git never held them.
+Migrated first, deleted second.
+
+- `WORK.md` -> `kb/profile/work-long-form.md` (whole-file move, 342 lines).
+  All of it is supplemental personal reference and none of it was duplicated
+  elsewhere, so a move preserves everything with zero transcription risk.
+- `Resume_Tailoring_Instructions.md` §2 -> `kb/profile/verified-notes.md`
+  (113 lines, extracted by line range, not retyped). Only §2 was unique: §1,
+  §3, §4, §7, §9, §10 already live in `kb/policies/authoring.md` (A16a) and
+  §5, §6, §8 in `kb/policies/tailoring-rules.md`. Keeping the whole file would
+  have left a second copy of the policy to drift.
+  Preserved and spot-checked: the canonical role-title table (the A9 source),
+  quantified outcomes, and "What Casey has NOT done" - the negative facts that
+  exist nowhere else.
+- `Resume_Tailoring_Instructions.md` **deleted**. Repo root is now
+  `AGENTS.md`, `IMPLEMENT.md`, `PLAN.md`, `README.md` only.
+- Both new files confirmed covered by `.gitignore:14` (`kb/profile/`), which
+  keeps A16 decision (a) honest: personal, untracked, never tailor input.
+- Re-pointed 8 code/test citations + 5 doc references: `render_docx.py:3`,
+  `parse_docx.py:5,89,541` (541 *writes* a pointer into generated
+  `kb/profile/projects.md`, so a stale path would have propagated),
+  `test_query_planner.py:30`, `test_parse_docx.py:82,101`,
+  `kb/policies/tailoring-rules.md:3`, `README.md` (data-layout table + doc
+  map), `AGENTS.md:175`, `PLAN.md:167`.
+- Remaining mentions are deliberate history: `IMPLEMENT.md` phase records and
+  `authoring.md:182`'s provenance line.
+
+**Side effect worth knowing.** `kb/policies/tailoring-rules.md` is in
+`score.prompt_hash`'s input tuple (`score.py:394`) *and* is injected verbatim on
+every tailor call (`tailor.py:76`). Editing its header therefore invalidates
+every existing score - the next `scan` re-scores. A first draft of that edit
+added a 6-line historical footnote; it was trimmed to 3 lines because injected
+text costs tokens on every call. (A re-score is coming regardless: `verified.json`
+is also a hash input and changes when the resume is fixed.)
+
+- Gates: `ruff check` clean; `mypy src` clean, 79 files. Tests unchanged at the
+  3 known content failures from the missing role titles.
+
+**Status:** [x] A16a + A16b done
 
 ## Completed
 

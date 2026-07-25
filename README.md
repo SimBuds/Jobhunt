@@ -367,10 +367,12 @@ adzuna_app_key = "..."
 
 | Path | What lives there |
 |---|---|
-| `Baseline_Resume.docx` | Source-of-truth resume. Hand-edited. |
-| `Resume_Tailoring_Instructions.md` | Hard rules (no fabrication, ATS-safe, auto-decline). |
+| `*Resume*.docx` | Source-of-truth resume. Hand-edited. Any root-level `.docx` with "resume" in the name is found automatically; a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
-| `kb/policies/tailoring-rules.md` | Prompt-injectable mirror of the tailoring rules. |
+| `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |
+| `kb/policies/authoring.md` | Agent-facing resume-authoring policy. Not injected. |
+| `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
+| `kb/profile/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
 | `kb/lanes/{ai-automation,cms-ecommerce,technical-seo}.md` | Pseudo-JD briefs for `jobhunt resume` lane base resumes. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
@@ -426,11 +428,9 @@ convention.
 - [README.md](README.md): install, usage, and maintainer entry point.
 - [IMPLEMENT.md](IMPLEMENT.md): execution engine. Phase-by-phase task
   breakdown, progress checkboxes, current state.
-- [Resume_Tailoring_Instructions.md](Resume_Tailoring_Instructions.md):
-  honesty rules enforced by the tailor pipeline. Bucket placements,
-  things Casey hasn't done, when to tell Casey "no".
-- [WORK.md](WORK.md): long-form work, projects, and education knowledge base
-  for human and agent resume work.
+- [kb/policies/authoring.md](kb/policies/authoring.md): agent-facing resume
+  authoring policy — inputs to demand, the tailoring workflow, what may be
+  adjusted, the pre-delivery pitfall audit. Not prompt-injected.
 - [kb/README.md](kb/README.md): map for the tracked knowledge base.
 - [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md):
   prompt-injectable mirror of the tailoring rules.

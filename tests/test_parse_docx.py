@@ -15,10 +15,31 @@ from jobhunt.resume.parse_docx import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BASELINE = REPO_ROOT / "Baseline_Resume.docx"
-LEGACY_BASELINE = REPO_ROOT / "Resume.docx"
-if not BASELINE.is_file() and LEGACY_BASELINE.is_file():
-    BASELINE = LEGACY_BASELINE
+
+
+def _live_baseline() -> Path | None:
+    """The real baseline resume, or None when the repo has none.
+
+    Resolved through `resume.locate` rather than a hard-coded filename: on
+    2026-07-24 the file was renamed and the previous `REPO_ROOT /
+    "Baseline_Resume.docx"` turned two regression guards into silent skips,
+    which is strictly worse than a failure because nothing surfaces it.
+
+    These are the **only** tests that touch the user's real resume, and they
+    assert it parses cleanly rather than asserting its content. Content
+    assertions belong on the fictional fixture profile (tests/conftest.py).
+    """
+    from jobhunt.errors import PipelineError
+    from jobhunt.resume.locate import find_baseline_resume
+
+    try:
+        found = find_baseline_resume(REPO_ROOT)
+    except PipelineError:
+        return None
+    return found if found.suffix.lower() == ".docx" else None
+
+
+BASELINE = _live_baseline() or REPO_ROOT / "Baseline_Resume.docx"
 
 
 def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
@@ -58,7 +79,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert "Atelier Dacko, Custom Jewelry Brand" in employers
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
-    # Familiar must stay separate. Bucket layout per Resume_Tailoring_Instructions §2:
+    # Familiar must stay separate. Bucket layout per kb/profile/verified-notes.md:
     # Java/Spring Boot are Familiar (coursework-only); Python is Core (data_devops
     # bucket) — Casey writes and operates this CLI in Python daily, not Familiar.
     assert "Java" in facts.skills_familiar
@@ -77,7 +98,8 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # SEO-LLM + AI Context Stack (re-added 2026-06-23 at Casey's request), and
     # Portfolio (added 2026-07-17 — the Astro/nginx/GH-Actions deploy story that
     # grounds Astro's move into skills_projects). macOS Ventura on KVM + the
-    # Hybrid coding agent stay long-form-only in WORK.md, off the baseline.
+    # Hybrid coding agent stay long-form-only in kb/profile/work-long-form.md,
+    # off the baseline.
     assert len(facts.projects) == 5
     names = [p.name for p in facts.projects]
     assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
@@ -228,6 +250,62 @@ def test_compound_skill_labels_map_to_buckets(tmp_path: Path):
     assert "Next.js" in facts.skills_core
     assert "Claude API" in facts.skills_ai
     assert "Ollama" in facts.skills_ai
+
+
+def test_technical_projects_heading_is_recognized(tmp_path: Path):
+    """A9: an unaliased projects heading is absorbed *silently*.
+
+    Regression for 2026-07-24: the resume used 'TECHNICAL PROJECTS', which was
+    not an alias, so the heading and every project line became bullets on the
+    preceding role — with **zero warnings**, so the convert-resume guard could
+    not catch it. Silent absorption is the worst failure mode here.
+    """
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("PROFESSIONAL EXPERIENCE")
+    doc.add_paragraph("Dev | Acme   Jan 2024 – Present")
+    doc.add_paragraph("Shipped a thing.")
+    doc.add_paragraph("TECHNICAL PROJECTS")
+    doc.add_paragraph("Widget | github.com/jane/widget")
+    doc.add_paragraph("Stack: Python, SQLite")
+    doc.add_paragraph("Built the widget.")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert warnings == []
+    assert len(facts.projects) == 1
+    assert facts.projects[0].name == "Widget"
+    # The role must NOT have swallowed the projects section.
+    assert facts.work_history[0].bullets == ["Shipped a thing."]
+
+
+def test_em_dash_project_header_parses(tmp_path: Path):
+    """A9: `Name — Description — url` headers, not just `Name | url`."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL PROJECTS")
+    doc.add_paragraph("Widget — A Small Tool  —  github.com/jane/widget")
+    doc.add_paragraph("Stack: Python, SQLite")
+    doc.add_paragraph("Built it — and shipped it to production users.")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert warnings == []
+    assert len(facts.projects) == 1
+    assert facts.projects[0].name == "Widget — A Small Tool"
+    assert facts.projects[0].url == "github.com/jane/widget"
+    # The em-dash inside a prose bullet must not read as a header.
+    assert facts.projects[0].bullets == [
+        "Built it — and shipped it to production users."
+    ]
 
 
 def test_classifies_generic_certs(tmp_path: Path):

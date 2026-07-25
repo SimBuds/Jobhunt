@@ -1,6 +1,8 @@
 """`jobhunt convert-resume`.
 
-Parse Baseline_Resume.docx into kb/profile/*.md + verified.json.
+Parse the baseline resume into kb/profile/*.md + verified.json. The file is
+located by `resume.locate` (any root-level .docx/.pdf named *resume*), not by
+one hard-coded filename.
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ import tomli_w
 import typer
 
 from jobhunt.config import config_path, load_config
+from jobhunt.errors import PipelineError
+from jobhunt.resume.locate import describe_choice, find_baseline_resume
 from jobhunt.resume.parse_docx import (
     VerifiedFacts,
     parse_baseline,
@@ -123,10 +127,13 @@ def _dropped_content_warnings(warnings: list[str]) -> list[str]:
 
 @app.callback(invoke_without_command=True)
 def run(
-    docx: Path = typer.Option(
-        Path("Baseline_Resume.docx"),
+    docx: Path | None = typer.Option(
+        None,
         "--docx",
-        help="Path to the baseline resume .docx.",
+        help=(
+            "Path to the baseline resume. Default: the newest root-level "
+            ".docx/.pdf with 'resume' in the filename."
+        ),
     ),
     force: bool = typer.Option(
         False,
@@ -135,6 +142,21 @@ def run(
     ),
 ) -> None:
     cfg = load_config()
+    try:
+        docx = find_baseline_resume(explicit=docx)
+    except PipelineError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    typer.echo(describe_choice(docx))
+
+    if docx.suffix.lower() == ".pdf":
+        typer.echo(
+            f"error: {docx.name} is a PDF; only .docx can be parsed today. "
+            "Export the resume to .docx, or pass --docx <file.docx>.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     facts, warnings = parse_baseline(docx)
 
     dropped = _dropped_content_warnings(warnings)

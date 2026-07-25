@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from jobhunt.pipeline._recap import recap_tokens
 from jobhunt.pipeline.cover import CoverLetter
 
 # From cover.md §7. Lowercased; matched as case-insensitive substrings on a
@@ -478,11 +479,11 @@ def validate_cover(
     # coursework. Originally only checked the last paragraph; extended to all
     # non-lead paragraphs because the model started placing recap in paragraph 3
     # of 4 to evade the check.
-    recap_tokens = ("dean's list", "coursework", "george brown", "diploma")
+    tokens = recap_tokens(verified, extra=("coursework",))
     if len(cover.body) >= 3:
         for para in cover.body[1:]:  # skip lead
             para_lower = _normalize(para)
-            for token in recap_tokens:
+            for token in tokens:
                 if token in para_lower:
                     violations.append(f"body recaps resume material: {token!r}")
                     break

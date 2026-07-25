@@ -11,11 +11,7 @@ __pycache__/
 .codex/
 
 # Personal & PII
-personal/
 kb/profile/
 data/
 *.docx
 *.pdf
-WORK.md
-Resume_Tailoring_Instructions.md
-Baseline_Resume.docx

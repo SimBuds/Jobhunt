@@ -2,36 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.cover_validate import _verified_skill_blob, validate_cover
 
-VERIFIED_PATH = Path(__file__).parent.parent / "kb" / "profile" / "verified.json"
-
-
-@pytest.fixture
-def verified() -> dict:
-    if VERIFIED_PATH.is_file():
-        return json.loads(VERIFIED_PATH.read_text())
-    # Minimal stub if kb/ not present in CI.
-    return {
-        "work_history": [
-            {
-                "bullets": [
-                    (
-                        "Built and maintained a 16+ page Shopify storefront on "
-                        "a customized Dawn 2.0 theme."
-                    ),
-                    "Cut page load time by 30%.",
-                ]
-            }
-        ],
-        "summary": "Full-stack developer with 3+ years experience.",
-    }
+# `verified` comes from tests/conftest.py — the fictional fixture profile.
+# Deliberately NOT the repo's kb/profile/verified.json: that file is personal,
+# gitignored, and hand-edited, so binding tests to it makes a resume rewrite
+# look like a code regression (2026-07-24).
 
 
 def _good_cover(company: str = "Acme Corp") -> CoverLetter:

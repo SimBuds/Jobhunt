@@ -1,0 +1,104 @@
+{
+  "_comment": "Fictional test profile. Tests MUST use this instead of the repo's kb/profile/verified.json, which is personal, gitignored, and hand-edited — a resume edit must never turn into a wall of red assertions. See tests/conftest.py::verified.",
+  "name": "Jane Dev",
+  "contact_line": "Toronto, ON  |  jane@example.com  |  linkedin.com/in/jane-dev",
+  "summary": "Full-stack developer (TypeScript, React, Node.js) specializing in CMS and e-commerce delivery, with 3+ years of contract work.",
+  "skills_core": [
+    "TypeScript",
+    "JavaScript (ES6+)",
+    "React",
+    "Node.js",
+    "Express",
+    "Python"
+  ],
+  "skills_cms": [
+    "Shopify (Liquid, Custom Themes)",
+    "HubSpot CMS (HubL)",
+    "WordPress",
+    "Contentful"
+  ],
+  "skills_data_devops": [
+    "PostgreSQL",
+    "MongoDB",
+    "Docker",
+    "GitHub Actions CI/CD",
+    "AWS",
+    "Azure",
+    "Playwright",
+    "Jest"
+  ],
+  "skills_ai": [
+    "Ollama (local LLM hosting)",
+    "prompt engineering"
+  ],
+  "skills_projects": [],
+  "skills_familiar": [
+    "Java",
+    "Spring Boot",
+    "Angular",
+    "Figma"
+  ],
+  "work_history": [
+    {
+      "title": "CMS / E-commerce Developer (Contract)",
+      "employer": "Northwind Jewellery",
+      "dates": "2023 – Present",
+      "bullets": [
+        "Built and maintained a 16+ page Shopify storefront on a customized Dawn 2.0 theme.",
+        "Migrated the catalog and media assets from WordPress to Shopify."
+      ]
+    },
+    {
+      "title": "CMS Developer (Contract)",
+      "employer": "Contoso AI",
+      "dates": "2026",
+      "bullets": [
+        "Built a custom 8-page HubSpot theme with HubL modules.",
+        "Cut page load time by 30%.",
+        "Set up GitHub Actions CI with automated linting."
+      ]
+    },
+    {
+      "title": "Shopify Developer (Contract)",
+      "employer": "Fabrikam Games",
+      "dates": "2024",
+      "bullets": [
+        "Built custom Shopify page layouts.",
+        "Built a validation pipeline for CSV inventory exports."
+      ]
+    },
+    {
+      "title": "Sous Chef & Team Lead",
+      "employer": "Multiple Venues, Toronto",
+      "dates": "2015 – 2024",
+      "bullets": [
+        "Led teams of 5–20."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Ledger — Local LLM Toolkit",
+      "url": "github.com/janedev/ledger",
+      "stack": [
+        "Python",
+        "Ollama",
+        "SQLite"
+      ],
+      "bullets": [
+        "Local-first CLI running a quantized model with schema-constrained JSON output."
+      ]
+    }
+  ],
+  "certifications": [
+    "Contentful Certified Professional (2025) — headless CMS content modeling."
+  ],
+  "education": [
+    "Computer Programming & Analysis, Advanced Diploma — Riverdale College (2021 – 2024). Dean's List, all terms."
+  ],
+  "coursework_baseline": [
+    "Data Structures & Algorithms",
+    "Database Management",
+    "Full-Stack Development"
+  ]
+}

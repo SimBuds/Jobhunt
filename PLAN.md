@@ -164,7 +164,7 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
 
 ## Honesty enforcement (the structural part)
 
-The "no fabrication" rule from `Resume_Tailoring_Instructions.md` is enforced
+The "no fabrication" rule from `kb/policies/tailoring-rules.md` is enforced
 in six places, not just the prompt:
 
 1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.

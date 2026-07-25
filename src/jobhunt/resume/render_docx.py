@@ -1,6 +1,6 @@
 """Render a TailoredResume to an ATS-safe .docx (Calibri, single-column, real bullets).
 
-ATS rules enforced (Resume_Tailoring_Instructions.md §5):
+ATS rules enforced (`kb/policies/tailoring-rules.md`, "ATS-safe output"):
 - Single column. No tables for layout. No graphics, headers, or footers.
 - Calibri 10–11pt body, 14–16pt name.
 - Real bullet list style (not typed asterisks).

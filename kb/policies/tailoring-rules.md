@@ -1,7 +1,8 @@
 # Tailoring rules (prompt-injectable)
 
-Source of truth: `Resume_Tailoring_Instructions.md` at the repo root. This file is
-a trimmed, prompt-injectable mirror — keep it short. Update both when rules change.
+Source of truth for the injected rules. Keep it short — this file is injected on
+every tailor call and feeds the score prompt hash. Agent-facing companion (not
+injected): `kb/policies/authoring.md`.
 
 ## Hard prohibitions (no fabrication)
 

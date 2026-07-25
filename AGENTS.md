@@ -172,7 +172,9 @@ than working around it.
   skeleton only. Durable decisions and facts discovered during the work must be
   reflected in the appropriate source docs before cleanup. Do not leave
   completed phase logs in `IMPLEMENT.md`.
-- `Resume_Tailoring_Instructions.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). Mirrored at `kb/policies/tailoring-rules.md` for prompt injection.
+- `kb/policies/tailoring-rules.md` — honest-tailoring rules (no fabrication, ATS-safe formatting, auto-decline triggers). **Prompt-injected** on every tailor call and part of the score prompt hash, so edits re-score existing jobs. Keep it short.
+- `kb/policies/authoring.md` — the longer agent-facing authoring policy (inputs, workflow, may-adjust table, pitfall audit). Deliberately **not** injected.
+- `kb/profile/verified-notes.md`, `kb/profile/work-long-form.md` — personal long-form reference, gitignored, agent-reference only; never fed to the tailor (IMPLEMENT.md A16 decision (a)).
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is maintained.
 - `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never hand-add unverified entries.
 
