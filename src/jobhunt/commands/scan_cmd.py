@@ -155,7 +155,16 @@ async def _run(
                 typer.echo(f"ingest: filtered {' + '.join(parts)} job(s)")
 
             if cfg.ingest.auto_discover and not no_discover and inserted:
-                await _auto_discover(cfg, conn)
+                if _backlog_blocks_discovery(cfg, conn):
+                    ceiling = cfg.ingest.discover_backlog_ceiling
+                    typer.echo(
+                        f"discover: skipped — {_ready_backlog(cfg, conn)} unapplied "
+                        f"job(s) at or above min_score already queued "
+                        f"(ceiling {ceiling}; raise [ingest] "
+                        f"discover_backlog_ceiling or set 0 to disable)"
+                    )
+                else:
+                    await _auto_discover(cfg, conn)
         else:
             typer.echo("ingest: skipped")
 
@@ -222,6 +231,24 @@ async def _run(
 _AUTO_DISCOVER_ATSES = (
     "greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee",
 )
+
+
+def _ready_backlog(cfg: Config, conn: sqlite3.Connection) -> int:
+    """Actionable, unconsumed jobs — the same queue `list`'s action board counts.
+
+    Shared deliberately: "ready to apply" must mean one thing across the tool,
+    or the gate throttles against a number the user never sees.
+    """
+    from jobhunt.commands.list_cmd import _action_board_counts
+
+    return _action_board_counts(conn, cfg.pipeline.min_score)["ready"]
+
+
+def _backlog_blocks_discovery(cfg: Config, conn: sqlite3.Connection) -> bool:
+    ceiling = cfg.ingest.discover_backlog_ceiling
+    if ceiling <= 0:
+        return False
+    return _ready_backlog(cfg, conn) >= ceiling
 
 
 async def _auto_discover(cfg: Config, conn: sqlite3.Connection) -> None:

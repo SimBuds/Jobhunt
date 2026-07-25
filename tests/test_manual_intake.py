@@ -101,9 +101,60 @@ def test_resolve_job_id_rejects_neither(tmp_path: Path) -> None:
 
 
 def test_resolve_job_id_passthrough_existing_id(tmp_path: Path) -> None:
+    """No DB yet: the raw ref passes through so `_load_job` owns the error.
+
+    Phase A4 routes the positional through `_refs.resolve_job_ref`, which needs
+    a queryable DB. This case has none, and the fallback is what keeps the
+    authoritative "no such job" error in one place downstream.
+    """
     cfg = _cfg(tmp_path)
     out = _resolve_job_id(
         cfg, job_id="adzuna_ca:1", url=None, title=None, company=None,
         description_from_stdin=False, force_robots=False,
     )
     assert out == "adzuna_ca:1"
+
+
+def test_resolve_job_id_accepts_company_fragment(
+    tmp_path: Path, migrations_dir: Path
+) -> None:
+    """`jobhunt interview-prep opentable` — no job id needed."""
+    cfg = _cfg(tmp_path)
+    c = connect(cfg.paths.db_path)
+    migrate(c, migrations_dir)
+    with c:
+        c.execute(
+            "INSERT INTO jobs (id, source, external_id, company, title) "
+            "VALUES ('manual:abc', 'manual', 'abc', 'OpenTable', 'Frontend Developer')"
+        )
+    c.close()
+
+    out = _resolve_job_id(
+        cfg, job_id="opentable", url=None, title=None, company=None,
+        description_from_stdin=False, force_robots=False,
+    )
+    assert out == "manual:abc"
+
+
+def test_resolve_job_id_ambiguous_fragment_exits(
+    tmp_path: Path, migrations_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _cfg(tmp_path)
+    c = connect(cfg.paths.db_path)
+    migrate(c, migrations_dir)
+    with c:
+        for n, company in (("1", "Acme One"), ("2", "Acme Two")):
+            c.execute(
+                "INSERT INTO jobs (id, source, external_id, company, title) "
+                "VALUES (?, 'manual', ?, ?, 'Developer')",
+                (f"manual:{n}", n, company),
+            )
+    c.close()
+
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_job_id(
+            cfg, job_id="acme", url=None, title=None, company=None,
+            description_from_stdin=False, force_robots=False,
+        )
+    assert exc.value.exit_code == 1
+    assert "ambiguous" in capsys.readouterr().err

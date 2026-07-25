@@ -118,6 +118,7 @@ browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
 
 ```bash
 jobhunt scan                       # ingest + score + auto-discover new slugs
+jobhunt list                       # action board + top unapplied targets
 jobhunt list --min-score 70        # high-fit subset
 jobhunt apply --best               # tailor + draft the day's picks (browser opens; you submit)
 jobhunt apply --set-status applied <job-id>   # after you submit each one
@@ -147,6 +148,7 @@ act on them.
 ```bash
 jobhunt list --week 0                          # current-week pipeline rollup
 jobhunt list --no-reply --older-than 14d       # applied, no reply, >14d (nudge candidates)
+jobhunt track sweep                            # silent >21d; --apply marks them ghosted
 jobhunt config reprobe --prune                 # re-probe configured slugs; prune dead ones
 jobhunt analyze funnel --by channel            # applied → response → interview → offer per channel
 jobhunt analyze response-rate --by score       # interview rate per score band (also --by channel)
@@ -184,8 +186,17 @@ Hidden maintenance groups are still callable:
 jobhunt config show
 jobhunt config seed --apply
 jobhunt config reprobe --prune
+jobhunt db gc                  # reconcile data/applications/ with the DB
+jobhunt db gc --adopt --prune  # recover orphaned docs, delete empty shells
 jobhunt db reset
 ```
+
+`db gc` diffs `data/applications/` against the `applications` table and sorts
+what it finds: **adoptable** dirs hold rendered `.docx` files with no row (real
+work that was generated and then lost — `--adopt` recovers them as `drafted`),
+**stale** dirs hold no rendered docs (`--prune` deletes them), and **blocked**
+dirs are left alone because a `block` verdict writing `audit.json` with no row
+is the correct outcome, not an orphan. Bare `gc` only reports.
 
 Common patterns:
 
@@ -204,10 +215,19 @@ jobhunt analyze funnel --by channel
 
 Notes:
 
+- Anywhere a `<job-id>` is accepted, a company or title fragment works too:
+  `jobhunt apply shopify`, `jobhunt interview-prep opentable`,
+  `jobhunt track response faire`. An exact id always wins; an ambiguous
+  fragment errors and lists the candidates rather than guessing. The fragment
+  path skips declined postings, so a declined job needs its full id.
 - `apply` fills forms, but you review and submit manually.
 - If the submit prompt is answered `no` or cancelled, `apply` records a
   `drafted` row and keeps the job eligible for another apply run. Choose
   `withdrawn` only when you want to remove it from default targets.
+- Bare `jobhunt list` prints an action board above the rows — *ready to apply*
+  (scored at or above `[pipeline] min_score`, no application row, not
+  declined), *drafted, not submitted*, and *no reply >14d* — with the command
+  for each non-empty queue. Any explicit filter flag suppresses it.
 - `apply --best` opens an interactive picker over the top scored jobs.
 - `apply --url` creates a tracked `manual:` job for a one-off posting.
 - `--stdin` is the paste-JD path for pages that do not render cleanly.
@@ -215,6 +235,10 @@ Notes:
   copied. Pasting the full page (with "About the job") stores the JD, which
   `interview-prep` needs later — worth the extra Ctrl-A. `--no-jd` backfills
   expired postings as tracking-only rows.
+- `track sweep` is the only thing that records a *non*-response. Without it,
+  applications sit in `applied` forever and `analyze funnel` reads permanent
+  silence as "still pending", so response rates read low for the wrong reason.
+  Run it weekly; bare `sweep` only reports.
 - `analyze` is deterministic. It uses regex and counters, not an LLM.
 - `add`, `config seed --apply`, and `discover slugs --apply` rewrite
   `config.toml` and create a `.bak` snapshot.
@@ -250,6 +274,13 @@ job_bank_ca          = []     # full jobbank.gc.ca HTML *search* URLs, one per r
                               # the adapter scrapes results + GTA-filters client-side, and
                               # honors the site's Crawl-delay: 5)
 rss                  = []     # generic employer career-page RSS/Atom URLs
+discover_backlog_ceiling = 40 # skip the post-ingest discovery probe while this
+                              # many scored, unapplied, non-declined jobs are
+                              # already queued (the "ready to apply" count on
+                              # `jobhunt list`). Widening intake past this point
+                              # produces candidates nothing consumes. 0 disables
+                              # the gate. Composes with auto_discover: false
+                              # there still means "never probe".
 auto_discover        = true   # post-ingest probe new companies + append hits.
                               # Disable for narrow profiles where the GTA
                               # Greenhouse universe (Staff IC / ML / data

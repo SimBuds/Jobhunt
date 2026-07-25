@@ -199,3 +199,61 @@ def test_apply_one_no_browser_skips_autofill(
     asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
     assert calls["autofill"] == 0
     assert calls["prompt"] == 0  # no plan_path → no submission prompt
+
+
+def _app_rows(db_path: Path) -> list[sqlite3.Row]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return list(conn.execute("SELECT * FROM applications"))
+    finally:
+        conn.close()
+
+
+def test_apply_one_records_drafted_before_browser_crash(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash in the browser step must not lose the tailoring run.
+
+    Regression for the 11 orphan artifact dirs found 2026-07-24: the
+    application row used to be written only after the browser step and the
+    submit prompt, so an uncaught failure in either left finished .docx files
+    on disk with nothing in `applications` pointing at them. `BrowserError` is
+    handled by `_run_browser_step`'s retry loop; this simulates the unhandled
+    class (a hard Playwright fault, or a Ctrl-C at the prompt).
+    """
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+
+    async def exploding_autofill(**kwargs: Any) -> Path:
+        raise RuntimeError("playwright died")
+
+    monkeypatch.setattr(apply_cmd, "autofill", exploding_autofill)
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
+
+    rows = _app_rows(cfg.paths.db_path)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "drafted"
+    assert rows[0]["job_id"] == "test:1"
+    # Artifacts the run produced are now reachable from the row.
+    assert rows[0]["resume_path"].endswith("Resume.docx")
+
+
+def test_apply_one_confirmed_status_overwrites_early_draft(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The post-prompt write wins: one row, final status, fill-plan attached."""
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    # `_confirm_submission_status` short-circuits to 'drafted' off a tty, which
+    # would pass this test for the wrong reason — force the interactive path.
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "y")
+
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
+
+    rows = _app_rows(cfg.paths.db_path)
+    assert len(rows) == 1  # upsert on job_id, not a second row
+    assert rows[0]["status"] == "applied"
+    assert rows[0]["applied_at"] is not None
+    assert rows[0]["fill_plan_path"].endswith("fill-plan.json")

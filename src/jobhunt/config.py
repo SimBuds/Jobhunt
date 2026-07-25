@@ -81,6 +81,13 @@ class IngestConfig(BaseModel):
     # and append hits to config.toml so the next scan pulls deep JDs natively.
     # Toggle off if you want the legacy maintenance-only `discover slugs` flow.
     auto_discover: bool = True
+    # Skip the post-ingest discovery probe while the actionable backlog (scored
+    # at or above `[pipeline] min_score`, unapplied, not declined) is already
+    # this deep. Widening intake past this point produces candidates that are
+    # never consumed — the 2026-07-24 audit found a 113-job backlog draining at
+    # roughly zero while discovery kept running. 0 disables the gate.
+    # Composes with `auto_discover`: False there still means "never probe".
+    discover_backlog_ceiling: int = 40
     # Profile-specific filter: drop ML scientist / research engineer / data
     # platform / quant titles at ingest. Off by default — only enable for
     # profiles (e.g. frontend / CMS / full-stack) where these roles are never

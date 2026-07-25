@@ -109,6 +109,18 @@ def _sync_applicant(facts: VerifiedFacts) -> tuple[list[str], list[str]]:
     return filled, still_missing
 
 
+def _dropped_content_warnings(warnings: list[str]) -> list[str]:
+    """Warnings that mean resume content was *discarded*, not merely noted.
+
+    `parse_baseline` phrases every lossy outcome with 'dropped' or 'skipped'
+    (unrecognized skill label, bullet before any role header, unparseable role
+    header, non 'Label: items' line). Anything else is advisory and must not
+    block a write — the guard exists to stop silent data loss, not to demand a
+    perfectly clean parse.
+    """
+    return [w for w in warnings if "dropped" in w or "skipped" in w]
+
+
 @app.callback(invoke_without_command=True)
 def run(
     docx: Path = typer.Option(
@@ -116,9 +128,34 @@ def run(
         "--docx",
         help="Path to the baseline resume .docx.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Write kb/profile/ even when the parser dropped skills or roles.",
+    ),
 ) -> None:
     cfg = load_config()
     facts, warnings = parse_baseline(docx)
+
+    dropped = _dropped_content_warnings(warnings)
+    if dropped and not force:
+        typer.echo(
+            f"error: parser dropped content from {docx} "
+            f"({len(dropped)} of {len(warnings)} warning(s)). "
+            "kb/profile/ NOT written.",
+            err=True,
+        )
+        for w in dropped:
+            typer.echo(f"  - {w}", err=True)
+        typer.echo(
+            "\nA partial profile is worse than none: scoring and tailoring "
+            "treat kb/profile/verified.json as the whole truth, and the "
+            "fabrication guard rejects any skill missing from it. Fix the "
+            "resume formatting (or the parser), then re-run. "
+            "Use --force only if the dropped content is genuinely unwanted.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
     write_verified_json(facts, verified)

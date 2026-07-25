@@ -257,7 +257,7 @@ def _resolve_job_id(
         )
         raise typer.Exit(code=2)
     if job_id:
-        return job_id
+        return _resolve_positional(cfg, job_id)
 
     description: str | None = None
     if description_from_stdin:
@@ -282,6 +282,27 @@ def _resolve_job_id(
     )
     typer.echo(f"  intake: {job.id} ({job.company} — {job.title})")
     return job.id
+
+
+def _resolve_positional(cfg: Config, ref: str) -> str:
+    """Accept a company/title fragment wherever a job id is expected.
+
+    Falls back to the raw ref when the DB can't be queried (file absent or
+    schema not yet migrated): `_load_job` downstream owns the authoritative
+    "no such job" error, and this is only an ergonomic shortcut on top of it.
+    An ambiguous or unmatched fragment still exits via `resolve_job_ref`.
+    """
+    import sqlite3
+
+    from jobhunt.commands._refs import resolve_job_ref
+
+    conn = connect(cfg.paths.db_path)
+    try:
+        return resolve_job_ref(conn, ref, scope="jobs")
+    except sqlite3.Error:
+        return ref
+    finally:
+        conn.close()
 
 
 def _load_job(cfg: Config, job_id: str) -> dict[str, str]:

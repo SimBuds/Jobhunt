@@ -103,6 +103,8 @@ def run(
             or no_reply
             or older_than_iso is not None
         )
+        if default_apply_targets:
+            _render_action_board(conn, min_score or cfg.pipeline.min_score)
         rows = _query(
             conn,
             week_label=target_week,
@@ -291,6 +293,59 @@ def _render_rows(
         typer.echo(f"           {r['source']} | {r['location']} | {r['id']}")
         if r["url"]:
             typer.echo(f"           {r['url']}")
+
+
+def _action_board_counts(conn: sqlite3.Connection, min_score: int) -> dict[str, int]:
+    """The three queues that actually need a human decision.
+
+    Deliberately not "everything in the DB": the 2026-07-24 audit found a
+    95-job backlog invisible behind three separate flag combinations
+    (`--min-score`, `--drafted`, `--no-reply --older-than`). One default line
+    beats three commands nobody remembers to run.
+    """
+    ready = conn.execute(
+        "SELECT COUNT(*) AS n FROM jobs j "
+        "JOIN scores s ON s.job_id = j.id "
+        "LEFT JOIN applications a ON a.job_id = j.id "
+        "WHERE s.score >= ? "
+        "  AND (j.decline_reason IS NULL OR j.decline_reason = '') "
+        "  AND a.id IS NULL",
+        (min_score,),
+    ).fetchone()
+    drafted = conn.execute(
+        "SELECT COUNT(*) AS n FROM applications WHERE status = 'drafted'"
+    ).fetchone()
+    cutoff = (date.today() - timedelta(days=14)).isoformat()
+    silent = conn.execute(
+        "SELECT COUNT(*) AS n FROM applications "
+        "WHERE status = 'applied' AND response_received_at IS NULL "
+        "  AND outcome IS NULL AND applied_at IS NOT NULL "
+        "  AND DATE(applied_at) < DATE(?)",
+        (cutoff,),
+    ).fetchone()
+    return {
+        "ready": ready["n"] if ready else 0,
+        "drafted": drafted["n"] if drafted else 0,
+        "silent": silent["n"] if silent else 0,
+    }
+
+
+def _render_action_board(conn: sqlite3.Connection, min_score: int) -> None:
+    """One line answering 'what do I do today', with the command for each queue."""
+    c = _action_board_counts(conn, min_score)
+    typer.echo(
+        f"ready to apply: {c['ready']}"
+        f"  |  drafted, not submitted: {c['drafted']}"
+        f"  |  no reply >14d: {c['silent']}"
+    )
+    hints = []
+    if c["drafted"]:
+        hints.append("`list --drafted`")
+    if c["silent"]:
+        hints.append("`track sweep`")
+    if hints:
+        typer.echo(f"  → {' · '.join(hints)}")
+    typer.echo("")
 
 
 def _render_weekly_footer(conn: sqlite3.Connection, week_label: str) -> None:

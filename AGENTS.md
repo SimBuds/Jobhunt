@@ -348,6 +348,18 @@ jobhunt track applied <url-or-id> --channel linkedin|indeed|referral|recruiter|c
                              # re-tailor never reclassifies a manual channel).
 jobhunt track response <ref> [--when] [--recruiter-type ...]
 jobhunt track interview <ref> [--when]
+jobhunt track sweep [--older-than 21d] [--apply]
+                             # applications still `applied` with no response
+                             # past the threshold. Bare = report; `--apply`
+                             # records outcome 'ghosted' for each via
+                             # `apply_cmd._run_lifecycle`. Selection is
+                             # deliberately narrow (status='applied', no
+                             # response_received_at, no outcome): an
+                             # interviewing/rejected row has a known outcome
+                             # and a drafted row was never submitted. This is
+                             # the ONLY writer of non-responses — without it
+                             # `analyze funnel` cannot distinguish silence
+                             # from pending.
 jobhunt track outcome <ref> offer|rejected|withdrawn|ghosted
                              # lifecycle updates; <ref> is a job id OR a unique
                              # case-insensitive company/title fragment (ambiguity
@@ -533,6 +545,17 @@ a `.bak` snapshot then atomically renames a `.tmp` over the original, but
 comment-preserving). Surface this in command output near any programmatic
 write so the user isn't surprised. The README repeats the warning at the
 config section.
+
+**Job references (July 2026).** `commands/_refs.py:resolve_job_ref(conn, ref,
+scope=...)` is the single resolver behind every command that takes a job
+reference. Exact id wins; otherwise a case-insensitive substring match over
+company + title, with ambiguity erroring and listing up to 10 candidates.
+Two scopes: `applied` joins `applications` (the lifecycle commands can only
+update something already logged) and `jobs` matches any non-declined row
+(`apply` / `interview-prep`, whose targets have no application row yet).
+`track_cmd._resolve_ref` and `apply_cmd._resolve_by_id` are thin delegates —
+new commands taking a job reference must call the shared resolver, not
+re-implement the LIKE query.
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
