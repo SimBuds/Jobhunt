@@ -11,6 +11,7 @@ from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
+from jobhunt.pipeline._profile import first_name as _first_name
 from jobhunt.pipeline.score import MAX_DESC_CHARS, truncate
 
 # Trailing sign-off closer ("Best,", "Regards,", "Sincerely,", etc.). The
@@ -74,6 +75,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         profile_name = ""
 
     prompt = load_prompt(cfg.paths.kb_dir, "cover")
+    system = prompt.render_system(candidate_name=_first_name(profile_name))
     user = prompt.render_user(
         verified_facts=verified_raw,
         title=job.title or "(unknown)",
@@ -86,7 +88,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
-        system=prompt.system,
+        system=system,
         user=user,
         schema=prompt.schema,
         temperature=prompt.temperature,

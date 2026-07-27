@@ -488,7 +488,7 @@ def test_validator_catches_likely_beat_that_mirrors_unverified_jd_phrase() -> No
         verified=VERIFIED,
         job_description="Own quality end-to-end with zero errors on client sites.",
     )
-    assert any("casey claim mirrors unverified jd phrase" in s.lower() for s in v)
+    assert any("candidate claim mirrors unverified jd phrase" in s.lower() for s in v)
 
 
 def test_validator_passes_title_phrase_as_context() -> None:
@@ -569,7 +569,7 @@ def test_validator_catches_gap_reframe_with_scripts_api_jd_phrase() -> None:
         verified=VERIFIED,
         job_description="Develop and maintain scripts and API integrations.",
     )
-    assert any("casey claim mirrors unverified jd phrase" in s.lower() for s in v)
+    assert any("candidate claim mirrors unverified jd phrase" in s.lower() for s in v)
 
 
 def test_blocking_violations_include_unusable_or_unsafe_output() -> None:
@@ -583,7 +583,7 @@ def test_blocking_violations_include_unusable_or_unsafe_output() -> None:
         "honest gap 1 reframe mirrors unverified JD phrase: 'full automation'"
     ])
     assert has_blocking_prep_violations([
-        "casey claim mirrors unverified JD phrase: 'zero errors'"
+        "candidate claim mirrors unverified JD phrase: 'zero errors'"
     ])
     assert has_blocking_prep_violations(["unverified anchor: 'Kubernetes'"])
     assert not has_blocking_prep_violations(["banned phrase: 'spearheaded'"])

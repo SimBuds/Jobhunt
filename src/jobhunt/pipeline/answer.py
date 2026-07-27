@@ -19,6 +19,7 @@ loaded from the jobs table) modes share the same pipeline.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,7 @@ from typing import Any
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
+from jobhunt.pipeline._profile import candidate_name
 from jobhunt.pipeline._recap import recap_tokens
 from jobhunt.pipeline.cover_validate import (
     _BRIDGE_PATTERNS,
@@ -63,6 +65,12 @@ async def write_answer(
     verified_text = verified_path.read_text(encoding="utf-8")
 
     prompt = load_prompt(cfg.paths.kb_dir, "answer")
+    # `max_words` also appears in the SYSTEM half. Until the system prompt was
+    # rendered, that placeholder shipped to the model verbatim as the literal
+    # text `{max_words}` — the cap only landed because the USER half repeats
+    # it. Rendering both halves fixes the instruction the model actually reads.
+    name = candidate_name(json.loads(verified_text))
+    system = prompt.render_system(candidate_name=name, max_words=str(max_words))
     # The answer prompt uses single-brace placeholders rendered by
     # `prompt.render_user` (frontmatter loader's str.format). Same convention
     # as score/tailor/cover — including the `{revisions}` slot which is
@@ -86,7 +94,7 @@ async def write_answer(
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
-        system=prompt.system,
+        system=system,
         user=user,
         schema=prompt.schema,
         temperature=temperature,

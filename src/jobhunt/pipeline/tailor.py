@@ -484,7 +484,7 @@ def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
     Returns True if a bullet was dropped, False if no role has spare bullets.
 
     May 2026 guard: never trim a role whose `dates` contains "Present" while
-    any older role still has > 1 bullet to give. Casey's current contract is
+    any older role still has > 1 bullet to give. The candidate's current contract is
     the most recent, JD-relevant signal — its trailing bullets are the last
     things that should shrink.
     """

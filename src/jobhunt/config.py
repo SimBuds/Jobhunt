@@ -115,7 +115,7 @@ class GatewayConfig(BaseModel):
             # (qwen-custom only worked by baking num_ctx). Single hot model across
             # all slots; no intra-scan reload churn. Quality backed by
             # deterministic post-processing (score clamp, cover validator + retry,
-            # audit). (qwen-custom remains Casey's general chat model in ~/ai.)
+            # audit). (qwen-custom remains the candidate's general chat model in ~/ai.)
             "score": "qwen3.5:9b",
             "tailor": "qwen3.5:9b",
             "cover": "qwen3.5:9b",
@@ -139,7 +139,7 @@ class PipelineConfig(BaseModel):
     # behavioural questions land closer to 150-200. 200 is a sane default
     # that the CLI's `--max-words` flag overrides per-call.
     answer_max_words: int = 200
-    # Default lowered from 65 to 55 in May 2026. Casey's interview-rate problem
+    # Default lowered from 65 to 55 in May 2026. The candidate's interview-rate problem
     # is volume-of-good-applications, not noise-in-the-list — the 55-65 band is
     # the "stretch, tailor required" zone where a strong AI/LLM cover hook can
     # break through. Raise back to 65 via config.toml if the list gets noisy.

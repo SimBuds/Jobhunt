@@ -86,7 +86,7 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     # pre-sales/SE roles that aren't a fit, so surfacing them is safe.
     (lambda v: bool(v.get("skills_cms")), ["solutions engineer", "implementation specialist"]),
     (_has_ai_signal,                       ["ai engineer"]),
-    # Casey's SEO experience is technical (audits + security hardening), not
+    # The candidate's SEO experience is technical (audits + security hardening), not
     # marketing/content. `seo specialist` returned 5/5 declines on the first
     # auto-derived scan — all non-IC marketing or content roles. Narrowing
     # the query to "technical seo developer" filters to engineering postings.

@@ -16,7 +16,7 @@ from typing import Any
 FALLBACK_NAME = "the candidate"
 
 
-def candidate_name(verified: Mapping[str, Any]) -> str:
+def first_name(full_name: str) -> str:
     """First name, in prose case, for interpolation into prompt text.
 
     Resume headers are routinely all-caps ("CASEY HSU"), which reads as
@@ -25,11 +25,29 @@ def candidate_name(verified: Mapping[str, Any]) -> str:
     rendered prompt must stay byte-identical to the hard-coded version it
     replaces, so the golden-set numbers cannot move.
     """
-    raw = str(verified.get("name") or "").strip()
+    raw = (full_name or "").strip()
     if not raw:
         return FALLBACK_NAME
     first = raw.split()[0]
     return first.capitalize() if first.isupper() else first
+
+
+def candidate_name(verified: Mapping[str, Any]) -> str:
+    """`first_name` sourced from a parsed verified-profile mapping."""
+    return first_name(str(verified.get("name") or ""))
+
+
+def display_name(verified: Mapping[str, Any]) -> str:
+    """Full name in prose case, for the few prompt lines that use both names.
+
+    Resume headers are usually all-caps ("CASEY HSU"); only those are
+    re-cased, so a name that is already mixed-case ("Jane McDonald") is left
+    exactly as the profile spells it.
+    """
+    raw = str(verified.get("name") or "").strip()
+    if not raw:
+        return FALLBACK_NAME
+    return " ".join(t.capitalize() if t.isupper() else t for t in raw.split())
 
 
 def render_policy(policy: str, *, name: str) -> str:

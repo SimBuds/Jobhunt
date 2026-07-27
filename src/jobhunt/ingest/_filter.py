@@ -138,7 +138,7 @@ def is_management_title(title: str | None) -> bool:
 # DOES NOT match plain "Engineer" or "Software Engineer" — only when paired
 # with a research/data-platform qualifier. Since July 2026 it also does NOT
 # match "AI Engineer" / "ML Engineer" / "Machine Learning Engineer": those
-# titles increasingly mean LLM-integration full-stack work (Casey's AI lane —
+# titles increasingly mean LLM-integration full-stack work (the candidate's AI lane —
 # Ollama, Claude API, agentic pipelines), so they flow through to the scorer,
 # which handles the genuinely research-flavored ones via gaps/declines.
 _RESEARCH_TITLE_RE = re.compile(

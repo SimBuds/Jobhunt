@@ -575,7 +575,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
         verified = _json.loads(verified_path.read_text(encoding="utf-8"))
 
     # Warm the model once before the per-job loop. All task slots (score,
-    # tailor, cover) share the same model on Casey's setup, so warming any
+    # tailor, cover) share the same model on the candidate's setup, so warming any
     # one of them keeps the others warm. Saves the cold-load cost on the
     # first real call.
     await warm_model(cfg, task="score")

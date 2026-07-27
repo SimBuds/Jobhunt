@@ -138,13 +138,13 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
 
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
     # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...
-    # — academic / light-use only), the role is at most a stretch — Casey
+    # — academic / light-use only), the role is at most a stretch — the candidate
     # would be misrepresenting himself if the tailored resume claimed Core
     # expertise. Cap the score at 55 and set a decline reason so the role
     # drops out of the default min_score=55 selection band.
     # Reasoning: the May 2026 Java Developer @ Ignite Talent case scored 78
     # (transferable coursework matching let it through) and shipped a
-    # Familiar-only-skills resume that misrepresented Casey to any human
+    # Familiar-only-skills resume that misrepresented the candidate to any human
     # reviewer. This guard catches that pattern at the score boundary.
     # July 2026: the prompt now reserves the Familiar-only decline for
     # Senior-band titles, but qwen3.5:9b still emits it on junior/mid

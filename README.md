@@ -173,7 +173,7 @@ the full option list. The commands below are the ones you usually need.
 | `apply` | Tailor docs and open the browser autofill flow | `jobhunt apply <job-id>`, `jobhunt apply --best`, `jobhunt apply --url <URL>` |
 | `answer` | Draft a form-question response | `jobhunt answer "Question" --job <job-id>` |
 | `interview-prep` | Draft an interview prep note | `jobhunt interview-prep <job-id> --research` |
-| `resume` | Regenerate the three lane base resumes for manual channels | `jobhunt resume`, `jobhunt resume --focus ai` |
+| `resume` | Regenerate the lane base resumes for manual channels | `jobhunt resume`, `jobhunt resume --focus ai` |
 | `track` | Log + update applications made outside the pipeline (no LLM) | `jobhunt track applied --channel linkedin --paste`, `jobhunt track response <company>` |
 | `add` | Add an ATS source from a career URL | `jobhunt add <URL>` |
 | `analyze` | Run deterministic job-search reports | `jobhunt analyze certs`, `jobhunt analyze employers` |
@@ -374,7 +374,7 @@ adzuna_app_key = "..."
 | `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
 | `kb/profile/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
-| `kb/lanes/{ai-automation,cms-ecommerce,technical-seo}.md` | Pseudo-JD briefs for `jobhunt resume` lane base resumes. |
+| `kb/lanes/{ai-automation,cms-ecommerce}.md` | Pseudo-JD briefs for `jobhunt resume` lane base resumes. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
 | `~/.config/jobhunt/config.toml` | Sources, models, applicant profile, paths. |
 | `~/.config/jobhunt/secrets.toml` | API keys (Adzuna), mode 0600. |

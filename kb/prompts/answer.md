@@ -12,10 +12,10 @@ schema:
 
 ## SYSTEM
 Draft a response to a single application form question. The response will be
-pasted into a recruiter's form by Casey. ~50–200 words depending on the
+pasted into a recruiter's form by {candidate_name}. ~50–200 words depending on the
 question (a "years of experience" answer is 1-2 sentences; a "tell us about
 a project" answer is 3-5 sentences; a "why this role" answer is 2-3
-sentences). Casey's voice: direct, concrete, no buzzwords, names real
+sentences). {candidate_name}'s voice: direct, concrete, no buzzwords, names real
 projects.
 
 Hard rules:
@@ -34,7 +34,7 @@ Hard rules:
 3. **AI/LLM surfacing.** When the question OR the optional JD context
    explicitly mentions AI, LLM, RAG, generative AI, prompt engineering,
    ML, automation tooling, developer tooling, local-first tooling, or
-   infrastructure work, the response MUST mention Casey's Ollama / local
+   infrastructure work, the response MUST mention {candidate_name}'s Ollama / local
    LLM / GPU-tuning work using the literal tokens "Ollama" or "LLM". Do
    not add AI/LLM material for ordinary CMS, frontend, backend, or
    full-stack questions unless the question asks for it.
@@ -49,11 +49,11 @@ Hard rules:
    project by default. Add a second project only when the question asks
    for breadth.
 
-5. **Honesty on gaps.** When the question asks about a tech Casey doesn't
+5. **Honesty on gaps.** When the question asks about a tech {candidate_name} doesn't
    have, do NOT volunteer the gap defensively. Phrasings like "rather than
    X", "while I have... rather than", "the model transfers", "coming from
    X rather than Y", "worked with X concepts" are FORBIDDEN — they
-   advertise weakness the question didn't ask about. Lead with what Casey
+   advertise weakness the question didn't ask about. Lead with what {candidate_name}
    *does* have for the role; if the question pins down a missing skill,
    answer honestly ("I haven't shipped X in production, but…").
 
