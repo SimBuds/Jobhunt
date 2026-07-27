@@ -1,10 +1,11 @@
 # Jobhunt AI Buddy
 
 A local-first CLI that runs a job hunt end to end: ingest, fit-scoring,
-tailored documents, and assisted form-fill. Pulls jobs from public
-ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable,
-Recruitee, Job Bank Canada, generic RSS, Adzuna CA), scoped by default to
-GTA + 100 km and Remote-Canada postings — both configurable. After each scan, the tool probes public
+tailored documents, and assisted form-fill. Pulls jobs from nine ATS
+integrations plus generic RSS (Greenhouse, Lever, Ashby, SmartRecruiters,
+Workday, Workable, Recruitee, Job Bank Canada, Adzuna CA, and any RSS feed),
+scoped by default to GTA + 100 km and Remote-Canada postings — both
+configurable. After each scan, the tool probes public
 ATS APIs for slugs of newly-seen companies and auto-appends hits to
 `config.toml`, so the next scan pulls deep JDs natively and slug curation is
 mostly automatic. Fit-scores them against the parsed baseline resume using local
@@ -59,17 +60,17 @@ ingest ──▶ discover ──▶ score ──▶ tailor ──▶ audit ─�
 
 | Stage | Module | Responsibility |
 | --- | --- | --- |
-| Ingest | `ingest/` | 10 public ATS sources over async httpx with per-host rate limiting |
-| Discover | `discover/` | Deterministic URL → `(ats, slug, site, host)` parsing, async ATS probing, auto-appends new slugs to `config.toml` |
-| LLM boundary | `gateway/` | Single `complete_json` entry point — `POST /api/chat` with `format=<schema>` |
-| Score | `pipeline/score.py` | Fit score against the verified resume snapshot |
-| Generate | `pipeline/tailor.py`, `cover.py`, `answer.py` | Per-role resume, cover letter, form answers |
-| Verify | `pipeline/audit.py`, `cover_validate.py` | Deterministic. No LLM in the QA path. |
-| Submit | `browser/` | Per-ATS Playwright handlers + generic fallback. Fills; never clicks Submit. |
+| `ingest` | `ingest/` | Nine ATS integrations plus generic RSS, over async httpx with per-host rate limiting |
+| `discover` | `discover/` | Deterministic URL → `(ats, slug, site, host)` parsing, async ATS probing, auto-appends new slugs to `config.toml` |
+| `score` | `pipeline/score.py` | Fit score against the verified resume snapshot |
+| `tailor` | `pipeline/tailor.py`, `cover.py`, `answer.py` | Per-role resume, cover letter, form answers |
+| `audit` | `pipeline/audit.py`, `cover_validate.py` | Deterministic. No LLM in the QA path. |
+| `autofill` | `browser/` | Per-ATS Playwright handlers + generic fallback. Fills; never clicks Submit. |
 
-**Every LLM call is schema-bounded.** `gateway/client.py` is the only place the
-model is reached, and it always sends a JSON schema in `format`. There is no
-free-text completion path in the runtime.
+Cutting across all of them: **`gateway/` is the only place the model is
+reached.** Every LLM call goes through one `complete_json` entry point
+(`POST /api/chat` with `format=<schema>`), and every call is schema-bounded —
+there is no free-text completion path in the runtime.
 
 **The load-bearing setting is `num_ctx=32768`,** pinned app-side in
 `gateway.client._DEFAULT_OPTIONS` rather than in the Ollama server environment.
@@ -141,14 +142,12 @@ ollama pull nomic-embed-text     # embeddings (reserved for future use)
 ```
 
 Default model in config is base `qwen3.5:9b` (Q4_K_M). The gateway supplies its
-own task prompt and its own options, notably `num_ctx=32768` and
-`presence_penalty=0`, so behavior is defined in-repo and no custom Modelfile is
-needed. The `num_ctx` pin is essential: these prompts exceed Ollama's 4096
-default, and without it they truncate and the model returns prose instead of
-JSON. It is set to 32768 because the model stays 100% GPU-resident at 32k on
-this card (~5.6 GB), so the headroom is free. See [AGENTS.md](AGENTS.md)
-Hardware context for the full rationale, including why the q8_0 build was
-rejected (it spills to CPU here).
+own task prompt and its own options, so behavior is defined in-repo and no
+custom Modelfile is needed. Q4_K_M stays 100% GPU-resident at ~5.6 GB on a 10 GB
+card; the `q8_0` build was evaluated and rejected because it spills to CPU with
+no quality gain. The `num_ctx=32768` pin is load-bearing — see
+[Architecture](#architecture) above for why, and [AGENTS.md](AGENTS.md)
+Hardware context for the full rationale.
 
 ### Ollama systemd settings
 
@@ -164,7 +163,7 @@ Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_KEEP_ALIVE=10m"
 ```
 
-`OLLAMA_CONTEXT_LENGTH` is intentionally NOT set: context is owned at the app
+`OLLAMA_CONTEXT_LENGTH` is intentionally NOT set — context is owned at the app
 level (the gateway's `num_ctx`) so each project sharing this box picks its own
 window.
 
