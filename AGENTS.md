@@ -23,7 +23,7 @@ This project strictly adheres to a 4-pillar documentation system. You must read 
 1. **`AGENTS.md`**: The absolute source of truth for agent behavior, workflow constraints, and project-specific rules. (You are reading it now).
 2. **`PLAN.md`**: The high-level blueprint. Contains the full idea of the application, core features, architecture decisions, and scope.
 3. **`README.md`**: The developer-facing and user-facing entry point. Explains what the application is, how it works, and how to run it.
-4. **`IMPLEMENT.md`**: The execution engine. Contains the granular, phase-by-phase breakdown of tasks, checkboxes for progress, and current state. 
+4. **`IMPLEMENT.md`**: The execution engine. Contains the granular, phase-by-phase breakdown of tasks, checkboxes for progress, and current state. **Untracked and gitignored** — it is the working file of whoever is mid-task, not a repo artifact. A fresh clone has none; create it at Phase 2. Its absence means "no work in flight", not "state lost". Because it does not survive a clone, anything durable learned during a phase must land in pillars 1-3 before cleanup. 
 
 ---
 
@@ -168,6 +168,7 @@ than working around it.
 - `PLAN.md` — pillar 2: design rationale. The *why* decisions were made.
 - `README.md` — pillar 3: install + usage for developers running the app locally.
 - `IMPLEMENT.md` — pillar 4: the execution engine. Phase-by-phase task breakdown, progress checkboxes, current state.
+  **Untracked and gitignored**, unlike pillars 1-3 — see the pillar list above.
   When the user approves work as complete, clean `IMPLEMENT.md` back to the
   skeleton only. Durable decisions and facts discovered during the work must be
   reflected in the appropriate source docs before cleanup. Do not leave
@@ -561,12 +562,20 @@ re-implement the LIKE query.
 
 Subcommand groups map to modules in `commands/`. Keep `cli.py` to wiring only.
 
-**Hidden internals:**
-- `jobhunt db init|migrate|reset` — `reset` wipes DB, `data/applications/`,
+**Admin commands** (visible in `--help`; they were hidden until 2026-07-26,
+which made `db reset` — the documented recovery path — undiscoverable at the
+one moment a user needs it):
+- `jobhunt db init|migrate|reset|gc` — `reset` wipes DB, `data/applications/`,
   `data/cache/`, `data/interview-prep/`, `data/answers/`, the Playwright
   profile, **and** `kb/profile/`, then re-runs migrations. Use `--force` to
   skip the confirmation prompt.
-- `jobhunt config show|path|calibrate`.
+  **`reset` is a data-loss path for hand-authored profile files.** It removes
+  `kb/profile/` wholesale, but `convert-resume` only regenerates
+  `verified.json` plus the five markdown sidecars. `verified-notes.md` and
+  `work-long-form.md` are hand-migrated and gitignored, so a reset destroys
+  them unrecoverably. It also does *not* clear `data/resumes/`, leaving lane
+  resumes built against the previous profile.
+- `jobhunt config show|path|seed|reprobe|calibrate`.
 
 **Profile guard.** `scan`, `list`, `apply`, and `resume` call `ensure_profile(cfg)` from
 `commands/__init__.py` at the top of their callbacks. If

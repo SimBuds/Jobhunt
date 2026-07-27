@@ -34,11 +34,31 @@ app = typer.Typer(
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{7,}\d)")
-_LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/\S+", re.IGNORECASE)
-_GITHUB_RE = re.compile(r"https?://(?:www\.)?github\.com/\S+", re.IGNORECASE)
-_PORTFOLIO_RE = re.compile(r"https?://\S+", re.IGNORECASE)
-_CITY_REGION_RE = re.compile(r"^\s*([A-Za-z][A-Za-z .'-]+?)\s*,\s*([A-Za-z]{2,})")
 
+# The `https?://` scheme is OPTIONAL on every URL pattern below. Resumes
+# overwhelmingly print bare domains — `linkedin.com/in/name`, `github.com/user`
+# — because a printed page has no link to click, so requiring the scheme meant
+# `linkedin_url`/`github_url` were never extracted from a conventionally
+# formatted resume. Since both are in `_REQUIRED_FIELDS`, that failure exited
+# `convert-resume` 1 for essentially every new user. Matches are normalised
+# back to an absolute URL by `_normalize_url`.
+_LINKEDIN_RE = re.compile(r"(?:https?://)?(?:www\.)?linkedin\.com/\S+", re.IGNORECASE)
+_GITHUB_RE = re.compile(r"(?:https?://)?(?:www\.)?github\.com/\S+", re.IGNORECASE)
+
+# Portfolio: a scheme-ful URL, or a bare domain on a known TLD. The TLD
+# allowlist is what keeps a bare-domain pattern from eating library names that
+# happen to look like hosts (`Node.js`, `Next.js`) out of a title line.
+_PORTFOLIO_TLDS = (
+    "com", "net", "org", "io", "dev", "ca", "co", "me", "ai", "app", "sh",
+    "xyz", "tech", "site", "page", "blog", "design", "studio", "us", "uk",
+)
+_PORTFOLIO_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?"
+    r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*"
+    r"\.(?:" + "|".join(_PORTFOLIO_TLDS) + r")"
+    r"(?:/\S*)?",
+    re.IGNORECASE,
+)
 _REGION_EXPANSIONS = {
     "ON": "Ontario", "QC": "Quebec", "BC": "British Columbia", "AB": "Alberta",
     "MB": "Manitoba", "SK": "Saskatchewan", "NS": "Nova Scotia", "NB": "New Brunswick",
@@ -46,7 +66,46 @@ _REGION_EXPANSIONS = {
     "YT": "Yukon", "NT": "Northwest Territories", "NU": "Nunavut",
 }
 
+# Both spellings a resume might use, mapped to the canonical long form.
+_REGION_BY_TOKEN: dict[str, str] = {
+    **{code.upper(): full for code, full in _REGION_EXPANSIONS.items()},
+    **{full.upper(): full for full in _REGION_EXPANSIONS.values()},
+}
+
+# "City, REGION" anywhere in the line, anchored on the *region* rather than on
+# the start of the string. The previous pattern was `^`-anchored, so it found
+# nothing whenever the contact line opened with anything other than the city —
+# a job title, most commonly — and city/region silently kept their Toronto /
+# Ontario defaults for every such resume.
+#
+# Anchoring on a known region token is what makes a free-floating search safe:
+# an unconstrained `([A-Za-z .'-]+?),\s*([A-Za-z]{2,})` matches the leftmost
+# comma in the line, which on a title-first contact line yields nonsense like
+# city="AI Automation". The city is then the ≤3-word run immediately before the
+# comma; joins are a single space, so a double space or a `|` ends the run
+# naturally, which is how resumes separate these fields.
+_CITY_REGION_RE = re.compile(
+    r"([A-Za-z][A-Za-z.'-]*(?:[ ][A-Za-z.'-]+){0,2})\s*,\s*("
+    + "|".join(re.escape(t) for t in sorted(_REGION_BY_TOKEN, key=len, reverse=True))
+    + r")(?![A-Za-z])",
+    re.IGNORECASE,
+)
+
 _REQUIRED_FIELDS = ("full_name", "email", "linkedin_url", "github_url")
+
+# Kept in sync with `IngestConfig.user_agent` in config.py. Matched as a
+# substring so only the contact address is replaced, leaving any product/
+# version prefix the user may have set alone.
+_PLACEHOLDER_CONTACT = "your-email@example.com"
+_DEFAULT_USER_AGENT = f"jobhunt/0.1 (+personal-use; {_PLACEHOLDER_CONTACT})"
+
+
+def _normalize_url(raw: str) -> str:
+    """Trim trailing punctuation and add the scheme a printed resume omits."""
+    url = raw.strip().rstrip("/.,;)")
+    if not url.lower().startswith(("http://", "https://")):
+        url = f"https://{url}"
+    return url
 
 
 def _parse_contact_line(contact: str) -> dict[str, str]:
@@ -57,28 +116,29 @@ def _parse_contact_line(contact: str) -> dict[str, str]:
         found["email"] = m.group(0).removeprefix("mailto:")
 
     if m := _LINKEDIN_RE.search(contact):
-        found["linkedin_url"] = m.group(0).rstrip("/.,;)")
+        found["linkedin_url"] = _normalize_url(m.group(0))
     if m := _GITHUB_RE.search(contact):
-        found["github_url"] = m.group(0).rstrip("/.,;)")
+        found["github_url"] = _normalize_url(m.group(0))
 
-    # Portfolio: first http(s) URL that isn't linkedin/github.
-    for m in _PORTFOLIO_RE.finditer(contact):
-        url = m.group(0).rstrip("/.,;)")
-        if "linkedin.com" in url or "github.com" in url:
+    # Portfolio: first URL that isn't linkedin/github. Searched with the email
+    # removed first — a bare-domain pattern would otherwise match the domain
+    # inside `name@outlook.com` and record the mail host as a portfolio.
+    without_email = _EMAIL_RE.sub(" ", contact)
+    for m in _PORTFOLIO_RE.finditer(without_email):
+        url = _normalize_url(m.group(0))
+        if "linkedin.com" in url.lower() or "github.com" in url.lower():
             continue
         found["portfolio_url"] = url
         break
 
     # Phone — search the contact line with URLs/email stripped to avoid matching digits in them.
-    stripped = _PORTFOLIO_RE.sub(" ", contact)
-    stripped = _EMAIL_RE.sub(" ", stripped)
+    stripped = _PORTFOLIO_RE.sub(" ", without_email)
     if m := _PHONE_RE.search(stripped):
         found["phone"] = re.sub(r"\s+", " ", m.group(0)).strip()
 
-    if m := _CITY_REGION_RE.match(contact):
+    if m := _CITY_REGION_RE.search(contact):
         found["city"] = m.group(1).strip()
-        region = m.group(2).strip()
-        found["region"] = _REGION_EXPANSIONS.get(region.upper(), region)
+        found["region"] = _REGION_BY_TOKEN[m.group(2).strip().upper()]
 
     return found
 
@@ -104,6 +164,18 @@ def _sync_applicant(facts: VerifiedFacts) -> tuple[list[str], list[str]]:
         if not applicant.get(key):  # only fill empty/missing
             applicant[key] = value
             filled.append(key)
+
+    # The default `ingest.user_agent` ships a placeholder contact address, and
+    # nothing in `setup` ever prompts for it — so every request to a public ATS
+    # API went out identifying the operator as `your-email@example.com`. The
+    # real address is right here in the parsed contact line. Swapped only while
+    # the placeholder is still in place, so a hand-edited UA is never touched.
+    if email := parsed.get("email"):
+        ingest = data.setdefault("ingest", {})
+        user_agent = str(ingest.get("user_agent", _DEFAULT_USER_AGENT))
+        if _PLACEHOLDER_CONTACT in user_agent:
+            ingest["user_agent"] = user_agent.replace(_PLACEHOLDER_CONTACT, email)
+            filled.append("ingest.user_agent")
 
     if filled:
         cfg_path.parent.mkdir(parents=True, exist_ok=True)

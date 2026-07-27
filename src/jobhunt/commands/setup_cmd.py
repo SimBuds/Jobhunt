@@ -15,6 +15,7 @@ import typer
 
 from jobhunt.commands import config_cmd, convert_resume_cmd
 from jobhunt.commands._config_write import write_config_atomically
+from jobhunt.commands.convert_resume_cmd import _REQUIRED_FIELDS
 from jobhunt.config import EmploymentType, WorkArrangement, config_path, load_config
 from jobhunt.db import connect, migrate
 
@@ -75,7 +76,8 @@ def _step_resume_present() -> Path | None:
     return docx
 
 
-def _step_convert_resume(docx: Path) -> None:
+def _step_convert_resume(docx: Path) -> bool:
+    """Parse the resume into kb/profile/. Returns True if `[applicant]` is incomplete."""
     _header("Step 3/6: parse resume")
     cfg = load_config()
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
@@ -88,8 +90,20 @@ def _step_convert_resume(docx: Path) -> None:
         )
     ):
         typer.echo("skipped (existing profile kept).")
-        return
-    convert_resume_cmd.run(docx=docx)
+        return False
+    try:
+        convert_resume_cmd.run(docx=docx)
+    except SystemExit as e:
+        # `convert-resume` exits 1 when a required `[applicant]` field could not
+        # be read off the contact line (e.g. a resume with no GitHub link). That
+        # is the right exit code standalone, but inside the wizard it aborted
+        # steps 4-6, so the user lost applicant defaults and the seed list over
+        # one missing URL. kb/profile/ is already written by this point; carry
+        # on and re-raise the warning at the end where it can be acted on.
+        if not e.code:
+            raise
+        return True
+    return False
 
 
 def _prompt_int(label: str, current: int | None) -> int:
@@ -164,7 +178,18 @@ def _step_seed() -> None:
         config_cmd.seed(preview=False, apply=True)
 
 
-def _footer() -> None:
+def _footer(applicant_incomplete: bool) -> None:
+    if applicant_incomplete:
+        missing = [f for f in _REQUIRED_FIELDS if not getattr(load_config().applicant, f)]
+        typer.echo("\n=== Setup complete, with one thing left ===")
+        typer.echo(
+            f"[applicant] is still missing: {', '.join(missing)}.\n"
+            f"Add them to {config_path()} — rendered resumes use them for the "
+            "header, so `scan` and `apply` will produce an incomplete document "
+            "until they are set.",
+            err=True,
+        )
+        return
     typer.echo("\n=== Setup complete — happy hunting! ===")
     typer.echo("run `jobhunt --help` to see what's available, or `jobhunt scan` to start.")
 
@@ -176,8 +201,8 @@ def run() -> None:
     docx = _step_resume_present()
     if docx is None:
         raise typer.Exit(code=0)
-    _step_convert_resume(docx)
+    applicant_incomplete = _step_convert_resume(docx)
     _step_applicant()
     _step_config_show()
     _step_seed()
-    _footer()
+    _footer(applicant_incomplete)

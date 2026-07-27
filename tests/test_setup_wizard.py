@@ -95,6 +95,47 @@ def test_setup_wizard_writes_applicant_fields(
     assert (False, True) not in seed_calls
 
 
+def test_setup_wizard_finishes_when_convert_resume_exits_nonzero(
+    tmp_config_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resume with no GitHub link must not cost the user steps 4-6.
+
+    `convert-resume` calls `sys.exit(1)` when a `[applicant]` field is missing
+    from the contact line. Because the wizard invokes `run()` in-process, that
+    aborted the whole wizard at step 3/6 — applicant defaults and the seed list
+    never ran, over a field the user could simply not have on their resume.
+    kb/profile/ is written before that exit, so there is nothing to roll back.
+    """
+    cfg_path = _seed_minimal_config(tmp_config_dir)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    (workdir / "Baseline_Resume.docx").write_bytes(b"")
+    monkeypatch.chdir(workdir)
+
+    def _exit_one(**_k: object) -> None:
+        raise SystemExit(1)
+
+    monkeypatch.setattr(setup_cmd, "migrate", lambda *_a, **_k: None)
+    monkeypatch.setattr(convert_resume_cmd, "run", _exit_one)
+    monkeypatch.setattr(config_cmd, "seed", lambda preview=False, apply=False: None)
+
+    runner = CliRunner()
+    # 1. re-parse? -> "y" (so run() is actually called), then steps 4-6.
+    inputs = "\n".join(["y", "3", "n", "60k-90k", "remote", "full_time", "n", ""])
+    result = runner.invoke(app, ["setup"], input=inputs)
+
+    assert result.exit_code == 0, result.output
+    with cfg_path.open("rb") as f:
+        written = tomllib.load(f)
+    # Step 4 ran despite the step-3 exit.
+    assert written["applicant"]["years_experience"] == 3
+    # ...and the user is still told what is missing.
+    assert "still missing" in result.output
+    assert "github_url" in result.output
+
+
 def test_setup_wizard_exits_cleanly_when_resume_missing(
     tmp_config_dir: Path,
     tmp_path: Path,

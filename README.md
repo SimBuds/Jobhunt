@@ -39,8 +39,8 @@ without scraping — paste the posting, tag the channel — and
 ## Install
 
 ```bash
-git clone https://github.com/SimBuds/Jobhunt
-cd jobhunt
+git clone https://github.com/SimBuds/Caseys-Job-Seeker
+cd Caseys-Job-Seeker
 
 uv sync
 source .venv/bin/activate        # puts `jobhunt` on PATH; or prefix commands with `uv run`
@@ -81,9 +81,12 @@ window.
 ## Workflows
 
 The day-to-day is **scan → list → apply**. Everything else is occasional. Drop
-your baseline resume at `./Baseline_Resume.docx` before the first run. This
-README covers the common path. Use `jobhunt --help` and
-`jobhunt <command> --help` for the full flag reference.
+your baseline resume in the repo root before the first run — any root-level
+`.docx` with "resume" in the filename is picked up, so `Baseline_Resume.docx`
+and `Jane_Dev_Resume.docx` both work. The search is non-recursive on purpose,
+so a generated copy under `data/` can never become its own source. Pass
+`--docx <path>` to override. This README covers the common path. Use
+`jobhunt --help` and `jobhunt <command> --help` for the full flag reference.
 
 ### First run
 
@@ -92,7 +95,7 @@ jobhunt setup
 ```
 
 The wizard walks every first-run step in order: init the SQLite DB + run
-migrations → confirm `Baseline_Resume.docx` is in place → parse it into
+migrations → locate your baseline resume and confirm the choice → parse it into
 `kb/profile/verified.json` + markdown sidecars → prompt for applicant defaults
 (`years_experience`, `include_senior_roles`, salary, work arrangements,
 employment types) → print the resolved config → preview the curated
@@ -104,8 +107,9 @@ Manual equivalent, if you'd rather not use the wizard:
 ```bash
 jobhunt config show            # writes a default config and prints it
 jobhunt db init                # creates SQLite schema at data/jobhunt.db
-jobhunt convert-resume         # generates kb/profile/* from Baseline_Resume.docx
-# hand-edit ~/.config/jobhunt/config.toml to fill [applicant] fields
+jobhunt convert-resume         # generates kb/profile/* from your baseline resume
+# check ~/.config/jobhunt/config.toml — convert-resume backfills [applicant]
+# from the resume contact line, but only fills fields that are still empty
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
 
@@ -113,6 +117,15 @@ jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 `convert-resume` has produced `kb/profile/verified.json`. To start over (drops
 DB, tailored documents, HTTP cache, interview-prep docs, saved answers,
 browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
+
+> **`db reset` removes all of `kb/profile/`, not only the generated files.**
+> `convert-resume` regenerates `verified.json` and the five markdown sidecars,
+> but any hand-authored file kept in that directory — `verified-notes.md` and
+> `work-long-form.md` in this checkout — is gitignored, so a reset destroys it
+> with nothing to restore from. Back the directory up before resetting.
+> `db reset` also leaves `data/resumes/` in place, so lane resumes generated
+> from the previous profile survive; re-run `jobhunt resume --focus <lane>`
+> after re-parsing, or the stale copies stay on disk.
 
 ### Daily
 
@@ -426,8 +439,10 @@ convention.
 - [PLAN.md](PLAN.md): design rationale. The *why*. Goals, model choice,
   honesty-enforcement layers, sources, success criteria.
 - [README.md](README.md): install, usage, and maintainer entry point.
-- [IMPLEMENT.md](IMPLEMENT.md): execution engine. Phase-by-phase task
-  breakdown, progress checkboxes, current state.
+- `IMPLEMENT.md`: execution engine. Phase-by-phase task breakdown, progress
+  checkboxes, current state. **Untracked** (`.gitignore`) — it is a working
+  file for whoever is mid-task, not part of a clone. A fresh checkout has no
+  `IMPLEMENT.md`; the next agent to plan work creates one.
 - [kb/policies/authoring.md](kb/policies/authoring.md): agent-facing resume
   authoring policy — inputs to demand, the tailoring workflow, what may be
   adjusted, the pre-delivery pitfall audit. Not prompt-injected.
