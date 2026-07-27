@@ -496,7 +496,69 @@ Phase A5's `sweep` must run before this baseline is treated as real.
 - Baseline recorded above, before any experimental applications.
 - Readout uses the two `analyze` commands named, unchanged.
 
-**Status:** [ ] not started - blocked on A1-A7 and on real application volume
+**Baseline re-measured 2026-07-26, after the prerequisite writes.** The
+2026-07-24 reading was not trustworthy: the 12 pipeline applications sat in
+`applied` with `outcome IS NULL`, so a 0% response rate was indistinguishable
+from "still waiting". Two writes fixed that:
+
+- `jobhunt db gc --adopt` recovered the three `ship`-verdict artifact sets that
+  A1 would have kept (`adzuna_ca:5778302570`, `adzuna_ca:5800664772`,
+  `job_bank_ca:49852899`), each dated to its own ISO week (W26, W28, W29) via
+  directory mtime rather than today. `gc` now reports 0 adoptable.
+- `jobhunt track sweep --apply` recorded **11 non-responses** as `ghosted`.
+
+Outcome column, which was 100% NULL before:
+
+```
+ghosted    pipeline  11
+(pending)  pipeline   8      (5 drafted, never submitted; 3 recent)
+(pending)  linkedin   2
+```
+
+**Baseline (2026-07-26):**
+
+```
+Bucket          Applied   Resp         Intvw        Offer
+pipeline             12      0 (  0%)      0 (  0%)     0 (  0%)  median-response —
+linkedin              2      2 (100%)      1 ( 50%)     0 (  0%)  median-response 2d
+TOTAL                14      2 ( 14%)      1 (  7%)     0 (  0%)  median-response 2d
+```
+
+The numbers are unchanged from 07-24; their **meaning** is not. Pipeline 0% is
+now a measured non-response across 11 explicitly-ghosted applications, not an
+artifact of never recording silence. That is what makes it a legitimate control
+arm. n is still tiny - 2 LinkedIn applications cannot carry a 100% rate - which
+is exactly why the decision rule was fixed in advance.
+
+**Still required before readout:** >= 10 applications per arm, or 3 weeks.
+Neither arm has that yet.
+
+**Arm A kickoff (2026-07-26).** `jobhunt resume --focus all` regenerated the
+lane base resumes against the repaired `verified.json`. Two of three shipped:
+`Casey_Hsu_Resume_AI_Automation.docx` and `Casey_Hsu_Resume_CMS_Ecommerce.docx`.
+
+- **Technical SEO lane failed the fabrication guard** after exhausting its
+  retries: `skill not in verified facts: 'Core Web Vitals (LCP, CLS, INP)'`.
+  The guard is correct - "LCP, CLS, INP" appear nowhere in the profile.
+  Root cause is *granularity*, not the model: the resume bundles all of SEO
+  into two atomic items, `technical SEO (Core Web Vitals, PageSpeed, JSON-LD)`
+  and `Google Search Console / Analytics / Tag Manager`. A lane whose entire
+  premise is SEO has nothing decomposable to surface, so the model reaches for
+  a more specific phrasing and is rightly rejected. The stale 2026-07-07 file
+  remains in `data/resumes/`.
+  Two ways out, both the author's call: split those parentheticals into
+  separately claimable items in the resume, or retire the lane -
+  `kb/profile/verified-notes.md` records that "seo specialist" scans returned
+  5/5 declines, so an SEO-titled lane may not be worth maintaining.
+
+**Environment note.** The first run died with
+`CUDA error: an illegal memory access was encountered`, after which Ollama
+reported `qwen3.5:9b` resident at 5.7 GB while `nvidia-smi` showed 1.3 GB used
+on the 10 GB card - a wedged post-fault state. Unloading via
+`POST /api/generate {"keep_alive":0}` cleared it and the retry ran clean. Worth
+knowing before blaming the pipeline for a hung `scan`.
+
+**Status:** [~] baseline valid and recorded; awaiting real application volume
 
 ### Phase A9 - Restore full parse coverage for the reformatted baseline resume
 
@@ -627,6 +689,58 @@ markers listed explicitly, everything else blocks) is a ~5-line change. Only
 one benign kind exists today: `"defaulted to education"`.
 
 **Status:** [ ] not started - low priority, no known trigger
+
+### Phase A9c - Make the resume parser format-agnostic
+
+**Goal:** Parse a resume by structure rather than by one document's conventions,
+so a restyle or reformat cannot silently drop content.
+
+**Driver:** two resume rewrites in 24h broke the parser twice in different ways
+(2026-07-25: six unseen skill labels + title-less role headers; 2026-07-26:
+three-cell headers, a descriptor cell in project headers, and every bullet
+restyled from "List Paragraph" to "normal"). Each time the failure was silent
+data loss, not an error.
+
+**Result (2026-07-26):**
+- **Bullets by formatting, not style name.** `_is_list_item` keys on the
+  `<w:numPr>` numbering property. The 2026-07-26 restyle renamed every bullet's
+  style to "normal" while leaving it a genuine list item; the old
+  `style == "List Paragraph"` check reclassified all of them as body text.
+  `parse_baseline` now normalises real list items to one canonical label.
+- **Skill buckets by keyword inference,** not an exact-label allow-list
+  (`_infer_skill_bucket`). Token-based so short keywords cannot match inside
+  unrelated words. Familiar-ish labels are tested first: mis-filing an
+  "Additional" row into Core would promote academic exposure to claimable
+  production skill, the one bucket error the honesty rules treat as fabrication.
+- **Unknown labels are kept, not dropped** — assigned to Core with an advisory
+  warning worded "assigned" so A9b's data-loss guard does not block the write.
+  `_NON_SKILL_LABEL_TOKENS` still drops genuine non-skill rows (Interests,
+  Hobbies, Awards); without it an Interests row would file "Chess" as a skill.
+  A pre-existing test caught exactly that regression.
+- **Role headers by anchoring on the date range,** then splitting what precedes
+  it (`_parse_role_header`). Handles 2-cell, 3-cell (location in the employer
+  cell), title-less em-dash, and tab-separated shapes. Extra cells rejoin with
+  commas so no stray separator survives into `employer` - half the identity key
+  the fabrication guard compares on.
+- **Project headers rsplit** on the last separator, tolerating a descriptor
+  cell (`Name | Descriptor | URL`). Splitting on the first `|` had dropped every
+  project.
+- **Education classifier** gained `polytechnic|institute|academy` and academic
+  detail vocabulary (`capstone|thesis|practicum|coursework|major|minor`).
+- Live result: **0 parse warnings**, 4 roles, 1 project, 56 core skills.
+  `verified.json` regenerated - the A9 blocker is cleared.
+- Suite: **1036 passed**; `ruff` clean; `mypy` clean, 79 files.
+
+**Test-coupling cleanup (partial A12).** Roughly a dozen assertions in
+`test_parse_docx.py` pinned exact content of one draft (five named projects, a
+specific lead-role title, "GPU optimization (cache, flash attention)"). They
+were rewritten as invariants - a project has a clean name, a scheme-stripped
+url, and bullets; the Familiar bucket is non-empty and disjoint from Core; the
+lead role has a non-empty title and carries "Present". Fixtures remain the real
+fix; this only stops an intentional resume edit from reading as a parser
+regression.
+
+**Status:** [x] done
 
 **Remaining (document half, owner: Casey):** restore the four role titles in
 `Baseline_Resume.docx` using the pipe form, then re-run `convert-resume`.
@@ -901,6 +1015,37 @@ employer-facing document.
 
 ### Phase A12 - Decouple the test suite from the live baseline resume
 
+**Result (2026-07-26): closed.** Most of this had already landed - a fictional
+`tests/fixtures/profile/verified.json` ("Jane Dev") plus a `verified` fixture in
+`conftest.py`, with `test_audit`, `test_cover_validate`, and
+`test_analyze_expansion` already pointed at it. Two gaps remained, and a third
+had drifted back:
+
+- `test_query_planner.py` still read the live `kb/profile/verified.json`.
+  Repointed at the fixture. `test_derive_from_current_baseline` became
+  `test_derive_from_fixture_profile`, and its load-bearing assertion is now the
+  *exclusion* - Java/Spring Boot sit in `skills_familiar`, so `java developer`
+  must never become a query.
+- Added `test_seo_query_is_gated_on_work_history_evidence`, which pins a design
+  detail the old live-profile assertion obscured: `_has_seo_signal` scans
+  work-history **bullets**, not skills rows, so claiming "technical SEO" in a
+  skills row does not start searching SEO roles - demonstrated work does. Both
+  halves are asserted.
+- `test_parse_docx.py` had drifted *away* from its own documented contract
+  ("assert it parses cleanly rather than asserting its content"): roughly a
+  dozen assertions pinned one draft's content - five named projects, the old
+  lead-role title, `GPU optimization (cache, flash attention)`. Rewritten as
+  invariants under A9c, restoring the stated design.
+
+The live resume is now touched by exactly the smoke tests that assert it parses
+cleanly, which is the real regression signal. `grep` over `tests/` finds no
+remaining read of `kb/profile/` or the root resume outside tmp-dir fixtures and
+`test_resume_locate` (which tests the locator itself).
+
+Suite: **1037 passed**; `ruff` clean; `mypy` clean, 79 files.
+
+**Status:** [x] done
+
 **Goal:** Point every test at a committed fixture profile instead of the
 user's personal `Baseline_Resume.docx` / `kb/profile/verified.json`.
 
@@ -959,6 +1104,99 @@ deliberate smoke test asserting the real resume parses cleanly.
 **Status:** [~] A12a done; A12b outstanding
 
 ### Phase A13 - Depersonalize prompt and policy voice
+
+**Result (2026-07-26): attempted, measured, REVERTED.** The substitution was
+made and then backed out because `scripts/eval_tailor.py` showed it degraded
+output. Recorded in full because the finding outlives the attempt.
+
+Change made: 43 occurrences of `Casey`/`Casey's` -> `the candidate`/`the
+candidate's` across `kb/prompts/{score,tailor,cover,answer,interview-prep}.md`
+and `kb/policies/{tailoring-rules,authoring}.md`, plus sentence-start
+recapitalisation and four gendered pronouns (`his work history`, `his WordPress
+work`) -> `their`. A leftover `the candidate Hsu` was cleaned up. Final sweep
+for `casey|hsu|his|him` over both directories returned clean, all prompts still
+loaded with intact frontmatter/schema, and the suite stayed at 1037 passed.
+
+**Then the golden-set eval, run before and after per the README:**
+
+```
+                       score  verdict  cov%   attempts
+before (named)            82   revise   67     1-2/1-3
+after  ("the candidate")  79   revise   50     2/1
+```
+
+Three samples per side, all identical within side - deterministic, not
+run-to-run variance. `git diff` confirmed the only delta was the name
+substitution, so the comparison was clean.
+
+**Finding: the model grounds better on a concrete name than on an abstract
+referent.** "Casey's verified facts" binds the instruction to the supplied
+profile in a way "the candidate's verified facts" does not, and 17 points of
+keyword coverage is an ATS-match cost far larger than the cosmetic benefit.
+This is exactly the regression the eval harness exists to catch, and it would
+not have shown up in any unit test - the suite was green throughout.
+
+**Reverted** via `git checkout kb/prompts kb/policies`; a confirming eval run
+returned 82 / 67%.
+
+**Status:** [x] attempted and reverted - superseded by A13b
+
+### Phase A13b - Depersonalize by injecting the real name
+
+**Goal:** Get the depersonalization benefit without the grounding loss, by
+substituting the *configured applicant's* name into prompts rather than
+replacing it with an abstract noun.
+
+Another user then sees their own name where this repo currently hard-codes
+one - the same posture A11a already established for the cover-letter sign-off,
+which derives from `verified.json` rather than a literal.
+
+**Files to touch:** `src/jobhunt/gateway/prompts.py` (a `render_system`
+alongside `render_user`), the five prompt files, and the call sites in
+`pipeline/{score,tailor,cover,answer,interview_prep}.py`.
+
+**Note:** exceeds the 5-file budget and adds one public interface; split at
+implementation time into A13b-i (gateway + one pipeline as a walking skeleton,
+verified by eval) and A13b-ii (the remaining four).
+
+**Feasibility already checked:** only `answer.md`'s system half contains a
+literal brace pair, so `str.format` needs escaping in exactly one file. The
+other four are brace-free.
+
+**Verification (non-negotiable):** `scripts/eval_tailor.py` must return to
+82 / 67% on `shopify-developer` before this is called done. A green unit suite
+is not sufficient evidence - A13 proved that.
+
+**Result - A13b-i, the walking skeleton (2026-07-26):**
+- `Prompt.render_system(**vars)` added beside `render_user`. Returns the system
+  half unchanged when it contains no `{`, so it is safe to call on every prompt
+  whether or not that prompt takes variables.
+- `kb/prompts/tailor.md`: 4 hard-coded names -> `{candidate_name}`. Chosen as
+  the skeleton because tailoring drives the coverage metric the regression
+  showed up in.
+- `pipeline/tailor.py`: `_candidate_name(verified)` derives the interpolated
+  value from the loaded profile. It returns the **first name in prose case**
+  because resume headers are all-caps (`CASEY HSU`) and the prompts were
+  written around a bare first name - reproducing that surface form exactly is
+  the whole point.
+- **Proved byte-identical:** the rendered system prompt was diffed against the
+  pre-change `kb/prompts/tailor.md` reconstructed from `git show HEAD:` -
+  identical, so no behaviour change was possible by construction.
+- **Golden eval: 82 / 67%**, matching the pre-A13 baseline exactly. The
+  depersonalisation is now free.
+- `tests/test_prompt_name_injection.py` (7 tests): substitution, the no-op path,
+  the missing-variable error, all-caps downcasing, the no-name fallback, and a
+  regression guard that the shipped prompt never re-acquires a literal name.
+- Suite **1044 passed**; `ruff` clean; `mypy` clean, 79 files.
+
+**Remaining - A13b-ii:** the same treatment for `score.md`, `cover.md`,
+`answer.md`, `interview-prep.md` and `kb/policies/tailoring-rules.md`.
+`answer.md`'s system half holds the one literal brace pair in the library and
+needs `{{`/`}}` escaping. `tailoring-rules.md` is injected *and* feeds the score
+prompt hash, so editing it re-scores every job - worth batching with any other
+hash-affecting change.
+
+**Status:** [~] A13b-i done and eval-verified; A13b-ii outstanding
 
 **Goal:** Replace "Casey" with "the candidate" plus the injected name across
 `kb/prompts/` and `kb/policies/`.

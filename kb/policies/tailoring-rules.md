@@ -10,14 +10,14 @@ injected): `kb/policies/authoring.md`.
   not there, name it as a gap — never invent.
 - Do not invent metrics, employers, dates, projects, or skills.
 - Do not promote a "Familiar" skill into a Core/primary category.
-  Casey's Familiar bucket is: Java, Spring Boot, Angular, MCP Servers,
+  {candidate_name}'s Familiar bucket is: Java, Spring Boot, Angular, MCP Servers,
   Agile/Scrum, Headless Architecture, Figma, Astro.
-- Python is **Core (data/devops)**, not Familiar — Casey writes and operates this CLI
+- Python is **Core (data/devops)**, not Familiar — {candidate_name} writes and operates this CLI
   daily. Do not list Python under Familiar.
 - Java and Spring Boot are **Familiar** (GBC coursework only); do not promote to Core
   even if the JD asks. Name as gap if must-have. **Angular** is Familiar too
   (least-used); do not promote to Core.
-- Do not fabricate a job title Casey has not held (no Senior/Staff/Lead/Principal/Architect).
+- Do not fabricate a job title {candidate_name} has not held (no Senior/Staff/Lead/Principal/Architect).
 
 ## Reframe-only adjustments (allowed)
 
@@ -63,12 +63,12 @@ If any of the following hold, mark the job `decline_reason` and skip:
   sub-4-YoE candidates. When `years_experience >= 4`, these titles are
   valid IC roles — do not decline on the title alone.
 - Title is people-management or non-IC (Manager, Senior Manager, Director,
-  Head of, VP, including "Engineering Manager"). Casey is an IC engineer.
+  Head of, VP, including "Engineering Manager"). {candidate_name} is an IC engineer.
 - Title is a non-engineering function (Sales, Partnerships, Account
   Executive/Manager, Customer Success, Marketing, Product/Project/Program
   Manager, Recruiter, Designer, Analyst, non-technical Consultant). Only
   hands-on coding roles qualify.
-- Domain requires regulated experience Casey doesn't have (clinical, securities,
+- Domain requires regulated experience {candidate_name} doesn't have (clinical, securities,
   medical devices).
 - Not in Toronto/GTA + 100km and not Remote-Canada eligible.
 
@@ -78,13 +78,13 @@ When the JD explicitly mentions AI, LLM, RAG, generative AI, prompt
 engineering, ML, automation tooling, developer tooling, local-first tooling,
 or infrastructure work:
 
-- Casey's baseline identity is full-stack JavaScript/TypeScript developer with
+- {candidate_name}'s baseline identity is full-stack JavaScript/TypeScript developer with
   CMS & e-commerce depth (July 2026 repositioning). For AI/LLM/automation-lane
   JDs, the AI automation tooling work (verified `skills_ai`) may headline the
   summary label — e.g. "developer building AI automation tooling" — but never
   an employment-title claim like "AI Engineer". For all other lanes AI tooling
   stays a supporting signal.
-- The **resume summary**'s first or second sentence MUST surface Casey's
+- The **resume summary**'s first or second sentence MUST surface {candidate_name}'s
   Ollama / local LLM / prompt-engineering work using the literal tokens
   "AI" and "LLM" for AI-adjacent roles so ATS keyword matchers latch on.
 - At least one bullet in the most recent role MUST reference the AI/LLM
@@ -100,7 +100,7 @@ or infrastructure work:
 
 ## Tone guardrails (June 2026)
 
-- Do not overstate adjacency between Casey's projects and a JD.
+- Do not overstate adjacency between {candidate_name}'s projects and a JD.
 - Avoid exact-fit claims, proof language, and one-to-one bridge phrases such
   as "translates directly", "directly mirrors", "this mirrors", or
   "perfect fit".

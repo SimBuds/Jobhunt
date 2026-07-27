@@ -26,6 +26,30 @@ class Prompt:
         except KeyError as e:
             raise PipelineError(f"prompt {self.name!r} missing variable: {e}") from e
 
+    def render_system(self, **vars: Any) -> str:
+        """Substitute variables into the system half.
+
+        Exists so prompts can name the *configured* applicant instead of
+        hard-coding one person's name. Replacing the name with an abstract
+        noun was measured and rejected: swapping "Casey" for "the candidate"
+        across the prompt library cost 17 points of keyword coverage on the
+        golden set (IMPLEMENT.md A13), because the model grounds better on a
+        concrete referent. Injecting the real name keeps that grounding while
+        making the library work for anyone.
+
+        A prompt with no placeholders renders unchanged, so this is safe to
+        call on every prompt whether or not it uses variables. Literal braces
+        in a system half must be doubled (`{{`/`}}`) as usual for `str.format`.
+        """
+        if "{" not in self.system:
+            return self.system
+        try:
+            return self.system.format(**vars)
+        except KeyError as e:
+            raise PipelineError(
+                f"prompt {self.name!r} system missing variable: {e}"
+            ) from e
+
 
 def load_prompt(kb_dir: Path, name: str) -> Prompt:
     path = kb_dir / "prompts" / f"{name}.md"

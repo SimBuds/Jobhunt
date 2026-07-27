@@ -12,6 +12,8 @@ from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
+from jobhunt.pipeline._profile import candidate_name as _candidate_name
+from jobhunt.pipeline._profile import render_policy
 from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
 
 
@@ -81,10 +83,16 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     verified = json.loads(verified_text)
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
 
+    # The prompt names the applicant rather than saying "the candidate": the
+    # model grounds measurably better on a concrete referent (A13 measured a
+    # 17-point coverage loss from the abstract form). Sourced from the verified
+    # profile so the library works for whoever's resume is loaded.
+    candidate_name = _candidate_name(verified)
     prompt = load_prompt(cfg.paths.kb_dir, "tailor")
+    system = prompt.render_system(candidate_name=candidate_name)
     user = prompt.render_user(
         verified_facts=verified_text,
-        policy=truncate(policy, MAX_POLICY_CHARS),
+        policy=truncate(render_policy(policy, name=candidate_name), MAX_POLICY_CHARS),
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
@@ -108,7 +116,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
-        system=prompt.system,
+        system=system,
         user=user,
         schema=prompt.schema,
         temperature=temperature,

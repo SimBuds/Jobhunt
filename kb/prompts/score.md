@@ -47,7 +47,7 @@ A JD must-have counts as **matched** when verified_facts shows any of:
      ALWAYS annotate the verified bridge, e.g. `"Spring Boot (transferable:
      Express)"` — an unannotated cross-language match will be demoted.
    - ORMs / query builders: Prisma ↔ Drizzle ↔ Knex ↔ TypeORM ↔ Sequelize ↔ Kysely
-   - API patterns: REST ↔ tRPC (transferable for Casey). GraphQL is a related
+   - API patterns: REST ↔ tRPC (transferable for {candidate_name}). GraphQL is a related
      skill but counts as a **gap** when not in verified — do not auto-decline on it.
    - Relational DBs: Postgres ↔ MySQL ↔ SQLite ↔ MariaDB ↔ CockroachDB
    - Document / KV: MongoDB ↔ DynamoDB ↔ Firestore ↔ Redis (for caching)
@@ -154,7 +154,7 @@ scores across dissimilar postings are an error. Most strong fits land
 - **60–69**: 2–3 hard gaps or stretch on years; tailoring required.
 - **55–59**: stretch role — 3 hard gaps, partial overlap, OR a senior/staff/lead
   title where the JD reads IC-coding-heavy. Apply with a strong AI/LLM cover
-  hook and explicit framing around adjacent matches. **This is Casey's
+  hook and explicit framing around adjacent matches. **This is {candidate_name}'s
   highest-leverage band given his interview-rate situation — don't skip it.**
 - **50–54**: weak fit; only apply if the JD is unusually open about coachability
   or names AI/LLM tooling as a primary differentiator.

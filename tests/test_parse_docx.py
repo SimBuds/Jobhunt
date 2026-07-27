@@ -76,7 +76,15 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert len(facts.work_history) == 4
 
     employers = {r.employer for r in facts.work_history}
-    assert "Atelier Dacko, Custom Jewelry Brand" in employers
+    # Substring, not equality: the employer cell carries whatever detail the
+    # current resume puts beside the name (a descriptor in one draft, a location
+    # in the next). Pinning the exact string makes an intentional resume edit
+    # look like a parser regression — see IMPLEMENT.md Phase A12.
+    assert any("Atelier Dacko" in e for e in employers)
+    # Every employer cell must be clean of stray separators: `employer` is half
+    # the identity key the fabrication guard compares on.
+    for e in employers:
+        assert not e.endswith(("|", "-", "—", ",")), f"stray separator: {e!r}"
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
     # Familiar must stay separate. Bucket layout per kb/profile/verified-notes.md:
@@ -84,37 +92,36 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # bucket) — Casey writes and operates this CLI in Python daily, not Familiar.
     assert "Java" in facts.skills_familiar
     assert "Spring Boot" in facts.skills_familiar
-    assert "Python" in facts.skills_data_devops
     assert "Java" not in facts.skills_core
+    # Python is production experience and must never land in Familiar. Which
+    # Core-side bucket it occupies depends on how the resume groups its rows,
+    # so assert the honesty property rather than the bucket (Phase A12).
+    assert "Python" not in facts.skills_familiar
+    assert any(
+        "Python" in s
+        for s in facts.skills_core + facts.skills_data_devops + facts.skills_ai
+    )
 
-    # PB1: the "Project Stack:" skills line populates a Core-grade bucket
-    # distinct from Familiar (project-demonstrated, not academic).
-    assert "FastAPI" in facts.skills_projects
-    assert "FastAPI" not in facts.skills_familiar
-    assert "FastAPI" not in facts.skills_core
+    # PB1: when the resume carries a "Project Stack:" row, it populates a
+    # Core-grade bucket distinct from Familiar (project-demonstrated, not
+    # academic). Conditional because not every draft includes that row.
+    for item in facts.skills_projects:
+        assert item not in facts.skills_familiar
 
     # PB3: the PROJECTS narrative section parses into structured projects.
-    # Baseline carries FIVE projects: Jobhunt + Auto-Agent (2026-06-18),
-    # SEO-LLM + AI Context Stack (re-added 2026-06-23 at Casey's request), and
-    # Portfolio (added 2026-07-17 — the Astro/nginx/GH-Actions deploy story that
-    # grounds Astro's move into skills_projects). macOS Ventura on KVM + the
-    # Hybrid coding agent stay long-form-only in kb/profile/work-long-form.md,
-    # off the baseline.
-    assert len(facts.projects) == 5
-    names = [p.name for p in facts.projects]
-    assert "Jobhunt" in names  # product name is "Jobhunt" (capital J) per branding
-    assert "SEO-LLM" in names
-    assert "AI Context Stack" in names
-    portfolio = next(p for p in facts.projects if p.name == "Portfolio")
-    assert portfolio.url == "github.com/SimBuds/Portfolio"
-    assert "Astro" in portfolio.stack
-    # Astro is project-demonstrated now (moved from Familiar 2026-07-17).
-    assert "Astro" in facts.skills_projects
-    assert "Astro" not in facts.skills_familiar
-    auto = next(p for p in facts.projects if p.name == "Auto-Agent")
-    assert auto.url == "github.com/SimBuds/Auto-Agent"
-    assert "FastAPI" in auto.stack
-    assert auto.bullets and "Claude API" in auto.bullets[0]
+    # Asserted structurally: how many projects the author keeps on the resume is
+    # an editorial decision that changes between drafts, but every project that
+    # IS present must come through with a clean name, a scheme-stripped url, and
+    # its bullets attached. Named-project coverage belongs on a fixture, not the
+    # live document — see IMPLEMENT.md Phase A12.
+    assert facts.projects, "PROJECTS section produced no structured projects"
+    for p in facts.projects:
+        assert p.name and "|" not in p.name, f"bad project name: {p.name!r}"
+        assert p.url and not p.url.startswith(("http://", "https://"))
+        assert p.bullets, f"project {p.name!r} parsed with no bullets"
+    # A "Stack:" line under a project populates that project's stack rather than
+    # being swallowed as a bullet.
+    assert any(p.stack for p in facts.projects), "no project captured a Stack: line"
     # PROJECTS narrative must NOT leak into education (the pre-PB3 behaviour).
     assert not any("github.com" in e for e in facts.education)
 
@@ -123,8 +130,8 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     write_verified_json(facts, out)
     payload = json.loads(out.read_text())
     assert payload["name"] == facts.name
-    assert len(payload["work_history"]) == 4
-    assert len(payload["projects"]) == 5
+    assert len(payload["work_history"]) == len(facts.work_history)
+    assert len(payload["projects"]) == len(facts.projects)
     assert payload["projects"][0]["stack"]  # nested dataclass round-trips
 
     # KB markdown writer leaves five files (projects.md added when projects exist).
@@ -136,7 +143,11 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert skills_md.count("## Project Stack") == 1
     assert "FastAPI" in skills_md
     projects_md = (kb / "profile" / "projects.md").read_text()
-    assert "## Auto-Agent" in projects_md
+    # Every parsed project gets its own H2 in the markdown sidecar. Asserted
+    # against what the resume actually carries rather than a fixed project name,
+    # so trimming the PROJECTS section is not a test failure (Phase A12).
+    for p in facts.projects:
+        assert f"## {p.name}" in projects_md
 
 
 @pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
@@ -155,23 +166,32 @@ def test_parse_baseline_positioning_and_atomic_skills():
     facts, warnings = parse_baseline(BASELINE)
     assert warnings == []
 
-    # Atomic + paren-aware: a naive comma split would shatter this entry into
-    # "GPU optimization (cache" + "flash attention)". The whole item must survive.
-    assert "GPU optimization (cache, flash attention)" in facts.skills_ai
+    # Atomic + paren-aware: a naive comma split would shatter an entry like
+    # "local LLM hosting and inference tuning (Ollama)" at the inner comma.
+    # Asserted by shape rather than by one exact string so an intentional resume
+    # edit does not read as a parser regression (see IMPLEMENT.md Phase A12).
+    assert any("(" in item and ")" in item for item in facts.skills_ai)
     # No item is a comma-split artifact (a stray dangling close-paren with no open).
     for item in facts.skills_ai:
         assert item.count("(") == item.count(")"), f"unbalanced parens: {item!r}"
 
-    # Figma is Familiar (2026-06-18 decision), not promoted to Core.
-    assert "Figma" in facts.skills_familiar
-    assert "Figma" not in facts.skills_core
+    # The Familiar bucket must exist and stay disjoint from Core — that split is
+    # the hard honesty signal (`kb/policies/tailoring-rules.md`). Membership is
+    # driven by how the resume labels its rows, so which specific tools sit in
+    # Familiar is the author's call, not this test's (Phase A12).
+    assert facts.skills_familiar, "Familiar bucket must not be empty"
+    assert not set(facts.skills_familiar) & set(facts.skills_core)
 
     # Dawn is captured somewhere in the verified facts (it lives in a bullet).
     assert any("Dawn" in b for r in facts.work_history for b in r.bullets)
 
-    # The lead role is the confirmed CMS-focused specialist title, not
-    # "Web Developer" or a generic full-stack label.
-    assert facts.work_history[0].title.startswith("CMS / E-commerce Developer")
+    # The lead role carries a real title and is the current ("Present") one.
+    # The exact wording is the author's positioning call and changes between
+    # drafts; what must hold is that a title parsed at all (a title-less header
+    # is what the dash-form regression produced) — see IMPLEMENT.md Phase A12.
+    lead = facts.work_history[0]
+    assert lead.title, "lead role parsed with an empty title"
+    assert "Present" in lead.dates
 
 
 def test_parse_warns_on_unknown_skill_label(tmp_path: Path):
