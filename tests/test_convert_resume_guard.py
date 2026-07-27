@@ -30,13 +30,33 @@ def test_dropped_classifier_flags_lossy_warnings() -> None:
     assert _dropped_content_warnings(lossy) == lossy
 
 
-def test_dropped_classifier_ignores_advisory_warnings() -> None:
-    """The guard blocks data loss, not any imperfect parse."""
-    advisory = [
-        "SUMMARY: section is unusually short",
-        "CONTACT: no portfolio URL found",
+def test_dropped_classifier_ignores_known_benign_warnings() -> None:
+    """Warnings where the parser KEPT the content must not block a write.
+
+    Both of these are real `parse_baseline` outputs: the cert-vs-education
+    classifier falling back, and an unrecognised skill label whose items are
+    still filed under Core.
+    """
+    benign = [
+        "CERTIFICATIONS & EDUCATION: could not classify as cert or education, "
+        "defaulted to education: 'Capstone: ...'",
+        "TECHNICAL SKILLS: unrecognized skill label 'Wingdings', assigned to "
+        "Core — add an alias if that is wrong",
     ]
-    assert _dropped_content_warnings(advisory) == []
+    assert _dropped_content_warnings(benign) == []
+
+
+def test_unrecognized_warning_kinds_block_by_default() -> None:
+    """Phase A9d: the classifier fails CLOSED.
+
+    The previous version allow-listed the words "dropped"/"skipped", so a
+    future warning that discarded content while describing it differently
+    would sail through the guard — the exact failure class the guard exists to
+    prevent, and the same mistake the skill-label allow-list made before A9c.
+    An unclassified warning must now refuse the write and get noticed.
+    """
+    novel = ["PROJECTS: three entries were discarded, reason unknown"]
+    assert _dropped_content_warnings(novel) == novel
 
 
 def _resume(path: Path, *, skill_label: str, role_line: str) -> Path:
