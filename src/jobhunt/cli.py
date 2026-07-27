@@ -41,8 +41,12 @@ app.command("list", help=list_cmd.app.info.help)(list_cmd.run)
 app.add_typer(analyze_cmd.app, name="analyze")
 app.add_typer(track_cmd.app, name="track")
 app.add_typer(discover_cmd.app, name="discover")
-app.add_typer(db_cmd.app, name="db", hidden=True)
-app.add_typer(config_cmd.app, name="config", hidden=True)
+# Visible, not hidden: README routes first-run users through `db init` /
+# `config show` / `config seed`, and documents `db reset` as the way to start
+# over. A recovery command that never appears in `--help` cannot be found at
+# the moment it is needed.
+app.add_typer(db_cmd.app, name="db")
+app.add_typer(config_cmd.app, name="config")
 
 
 @app.callback()

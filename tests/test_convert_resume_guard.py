@@ -59,6 +59,136 @@ def test_unrecognized_warning_kinds_block_by_default() -> None:
     assert _dropped_content_warnings(novel) == novel
 
 
+class TestContactLineUrls:
+    """Bare domains on a contact line must resolve to `[applicant]` URLs.
+
+    Printed resumes almost never write the `https://` scheme — there is nothing
+    to click on paper. The original patterns required it, so `linkedin_url` and
+    `github_url` (both in `_REQUIRED_FIELDS`) came back empty for a normally
+    formatted resume, and `convert-resume` exited 1 for essentially every new
+    user.
+    """
+
+    def test_bare_domains_are_extracted_and_given_a_scheme(self) -> None:
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line(
+            "Toronto, ON  |  416-555-0100  |  jane@example.com  |  "
+            "linkedin.com/in/jane-dev  |  janedev.com  |  github.com/janedev"
+        )
+        assert got["linkedin_url"] == "https://linkedin.com/in/jane-dev"
+        assert got["github_url"] == "https://github.com/janedev"
+        assert got["portfolio_url"] == "https://janedev.com"
+        assert got["phone"] == "416-555-0100"
+
+    def test_scheme_ful_urls_still_work(self) -> None:
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line(
+            "jane@example.com | https://www.linkedin.com/in/jane | "
+            "https://github.com/jane | https://jane.dev"
+        )
+        assert got["linkedin_url"] == "https://www.linkedin.com/in/jane"
+        assert got["github_url"] == "https://github.com/jane"
+        assert got["portfolio_url"] == "https://jane.dev"
+
+    def test_email_domain_is_not_mistaken_for_a_portfolio(self) -> None:
+        """A bare-domain pattern would otherwise match inside `x@outlook.com`."""
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line("Jane Dev  |  jane@outlook.com  |  416-555-0100")
+        assert "portfolio_url" not in got
+        assert got["email"] == "jane@outlook.com"
+
+    def test_dotted_library_names_are_not_portfolios(self) -> None:
+        """`Node.js` / `Next.js` look like hosts; the TLD allowlist rejects them."""
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line("Node.js / Next.js Developer  |  jane@example.com")
+        assert "portfolio_url" not in got
+
+
+class TestUserAgentBackfill:
+    """The ingest User-Agent must not keep shipping a placeholder address."""
+
+    def test_placeholder_constant_matches_the_config_default(self) -> None:
+        """Pins the copy in convert_resume_cmd to the real schema default.
+
+        The two live in different modules; if the default UA is ever reworded
+        in config.py, the substring match here would silently stop firing and
+        the placeholder would come back. Fail loudly instead.
+        """
+        from jobhunt.commands.convert_resume_cmd import (
+            _DEFAULT_USER_AGENT,
+            _PLACEHOLDER_CONTACT,
+        )
+        from jobhunt.config import IngestConfig
+
+        assert IngestConfig().user_agent == _DEFAULT_USER_AGENT
+        assert _PLACEHOLDER_CONTACT in IngestConfig().user_agent
+
+
+class TestContactLineCityRegion:
+    """`City, REGION` must be found wherever it sits on the line.
+
+    The pattern was `^`-anchored, so any contact line that opened with a job
+    title (the common layout) matched nothing and city/region silently kept
+    their Toronto/Ontario defaults — correct for exactly one user.
+    """
+
+    @pytest.mark.parametrize(
+        ("contact", "city", "region"),
+        [
+            # Title first, fields separated by double spaces — the layout that
+            # defeated the anchored pattern.
+            (
+                "Full-Stack Developer  |  CMS & AI  Toronto, ON  |  a@b.io",
+                "Toronto",
+                "Ontario",
+            ),
+            # City first: what the anchored pattern was written for.
+            ("Toronto, ON | 647-555-0199 | a@b.io", "Toronto", "Ontario"),
+            ("Jane Dev | Vancouver, BC | jane@example.com", "Vancouver", "British Columbia"),
+            # Region spelled out, and a hyphenated multi-word city.
+            ("Dev | Sainte-Anne-de-Bellevue, Quebec | d@e.ca", "Sainte-Anne-de-Bellevue", "Quebec"),
+            ("Engineer | Richmond Hill, Ontario | d@e.ca", "Richmond Hill", "Ontario"),
+        ],
+    )
+    def test_city_region_is_found_anywhere_on_the_line(
+        self, contact: str, city: str, region: str
+    ) -> None:
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line(contact)
+        assert got["city"] == city
+        assert got["region"] == region
+
+    def test_leftmost_comma_does_not_win(self) -> None:
+        """Anchoring on the region is what keeps a free search honest.
+
+        An unconstrained `(...),\\s*([A-Za-z]{2,})` matches the first comma in
+        the line. Here that would yield city="Developer", region="Toronto".
+        """
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line("Senior Developer, Toronto | Markham, ON | a@b.io")
+        assert got["city"] == "Markham"
+        assert got["region"] == "Ontario"
+
+    def test_unknown_region_falls_back_rather_than_guessing(self) -> None:
+        """Region allowlist is Canadian — the app is GTA/Remote-Canada scoped.
+
+        A non-Canadian line yields nothing, leaving the config defaults in
+        place, rather than recording a city paired with a region the expansion
+        table cannot interpret.
+        """
+        from jobhunt.commands.convert_resume_cmd import _parse_contact_line
+
+        got = _parse_contact_line("Engineer | Austin, TX | d@e.ca")
+        assert "city" not in got
+        assert "region" not in got
+
+
 def _resume(path: Path, *, skill_label: str, role_line: str) -> Path:
     from docx import Document
 
