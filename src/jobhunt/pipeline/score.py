@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.ingest._filter import is_explicit_junior_title, is_senior_title
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import peer_match, phrase_present
+from jobhunt.pipeline._profile import candidate_name, render_policy
 
 # Cap inputs to keep prompts within the app-owned context window the gateway
 # pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
@@ -48,12 +50,16 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     verified = verified_path.read_text(encoding="utf-8")
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
 
+    # Name the applicant rather than saying "the candidate" — the model grounds
+    # measurably better on a concrete referent (IMPLEMENT.md A13). Sourced from
+    # the verified profile so the prompt library is not tied to one person.
+    name = candidate_name(json.loads(verified))
     prompt = load_prompt(cfg.paths.kb_dir, "score")
     yoe = cfg.applicant.years_experience
     yoe_str = str(yoe) if yoe is not None else "unspecified"
     user = prompt.render_user(
         verified_facts=verified,
-        policy=truncate(policy, MAX_POLICY_CHARS),
+        policy=truncate(render_policy(policy, name=name), MAX_POLICY_CHARS),
         years_experience=yoe_str,
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
@@ -64,7 +70,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     result = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
-        system=prompt.system,
+        system=prompt.render_system(candidate_name=name),
         user=user,
         schema=prompt.schema,
         temperature=prompt.temperature,
