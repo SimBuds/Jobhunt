@@ -1,9 +1,10 @@
 # Jobhunt AI Buddy
 
-A local-first CLI for Casey's Toronto-area job hunt. Pulls jobs from public
+A local-first CLI that runs a job hunt end to end: ingest, fit-scoring,
+tailored documents, and assisted form-fill. Pulls jobs from public
 ATS APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable,
-Recruitee, Job Bank Canada, generic RSS, Adzuna CA), scoped to GTA +
-100 km and Remote-Canada postings. After each scan, the tool probes public
+Recruitee, Job Bank Canada, generic RSS, Adzuna CA), scoped by default to
+GTA + 100 km and Remote-Canada postings — both configurable. After each scan, the tool probes public
 ATS APIs for slugs of newly-seen companies and auto-appends hits to
 `config.toml`, so the next scan pulls deep JDs natively and slug curation is
 mostly automatic. Fit-scores them against the parsed baseline resume using local
@@ -19,6 +20,95 @@ Applications made *outside* the pipeline (LinkedIn Easy Apply, Indeed,
 referrals, recruiter outreach) are tracked too: `jobhunt track` logs them
 without scraping — paste the posting, tag the channel — and
 `jobhunt analyze funnel` shows which channel actually converts.
+
+## What it looks like
+
+```
+$ jobhunt list
+ready to apply: 19  |  drafted, not submitted: 0  |  no reply >14d: 0
+
+showing 10 job(s)
+  [ 82] [—            ] Software Developer, AI Platform Foundations @ wealthsimple
+           ashby | Remote (Canada) | ashby:wealthsimple:a04d491e-d747-4ad8-ab7f-82e9cd39089e
+           https://jobs.ashbyhq.com/wealthsimple/a04d491e-d747-4ad8-ab7f-82e9cd39089e
+  [ 82] [—            ] Product Engineer - Retailer Experience & Growth @ faire
+           greenhouse | Kitchener-Waterloo, ON; Toronto, ON | greenhouse:faire:8603123002
+           https://boards.greenhouse.io/faire/jobs/8603123002?gh_jid=8603123002
+  [ 64] [—            ] Senior Software Developer, Brokerage @ wealthsimple
+           ashby | Toronto Headquarters | ashby:wealthsimple:fec01150-fed6-4158-9e94-e59328d79533
+           https://jobs.ashbyhq.com/wealthsimple/fec01150-fed6-4158-9e94-e59328d79533
+  [ 58] [—            ] Observability Architect @ geotab
+           greenhouse | Remote - Canada | greenhouse:geotab:5281780008
+           https://job-boards.greenhouse.io/geotab/jobs/5281780008
+
+2026-W31: | scanned=72 | declined=41 | drafted=0 | applied=0 | interviewing=0 | offer=0 | rejected=0 | withdrawn=0
+```
+
+The bracketed number is the fit score; the second bracket is application
+status. The weekly funnel line is the same data `jobhunt analyze funnel`
+breaks down by channel.
+
+## Architecture
+
+Six stages over one SQLite database. Each stage is its own command, so any
+stage can be re-run without repeating the ones before it.
+
+```
+ingest ──▶ discover ──▶ score ──▶ tailor ──▶ audit ──▶ autofill
+```
+
+| Stage | Module | Responsibility |
+| --- | --- | --- |
+| Ingest | `ingest/` | 10 public ATS sources over async httpx with per-host rate limiting |
+| Discover | `discover/` | Deterministic URL → `(ats, slug, site, host)` parsing, async ATS probing, auto-appends new slugs to `config.toml` |
+| LLM boundary | `gateway/` | Single `complete_json` entry point — `POST /api/chat` with `format=<schema>` |
+| Score | `pipeline/score.py` | Fit score against the verified resume snapshot |
+| Generate | `pipeline/tailor.py`, `cover.py`, `answer.py` | Per-role resume, cover letter, form answers |
+| Verify | `pipeline/audit.py`, `cover_validate.py` | Deterministic. No LLM in the QA path. |
+| Submit | `browser/` | Per-ATS Playwright handlers + generic fallback. Fills; never clicks Submit. |
+
+**Every LLM call is schema-bounded.** `gateway/client.py` is the only place the
+model is reached, and it always sends a JSON schema in `format`. There is no
+free-text completion path in the runtime.
+
+**The load-bearing setting is `num_ctx=32768`,** pinned app-side in
+`gateway.client._DEFAULT_OPTIONS` rather than in the Ollama server environment.
+These prompts run ~6k tokens and Ollama's default context is 4096, so without an
+explicit `num_ctx` the prompt silently truncates, the JSON-schema instruction
+falls off the end, and the model returns prose instead of JSON. The failure mode
+looks like a parser bug and isn't one. Context is owned at the app level so
+several projects can share one Ollama box, each picking its own window.
+
+## Honesty enforcement
+
+The hard problem in a resume generator isn't fluency — it's stopping the model
+from inventing experience. Six mechanisms, all structural rather than
+prompt-based, so none of them depend on the model choosing to comply:
+
+1. **Verified-snapshot constraint.** Generation reads from a verified profile
+   snapshot — skills, work history, summary — not from the job description.
+   The JD selects and orders; it never supplies content.
+2. **Schema-bounded output.** Every call declares a JSON schema, so the model
+   cannot return a shape the pipeline didn't ask for.
+3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`
+   re-checks the decoded object against the snapshot. A skill that isn't an
+   identity-subset of a verified skill is rejected *after* the model has spoken
+   — the guarantee doesn't rest on the prompt.
+4. **Score clamp.** `pipeline.score` re-partitions the model's claimed
+   must-haves against the verified blob, so a requirement can't be counted as
+   matched on the model's say-so. Skipped below 3 must-haves, so signal-poor
+   postings aren't scored on noise.
+5. **Validators with retry.** `pipeline.cover_validate` catches banned phrases,
+   defensive patterns, and unverified numbers. A failure re-runs the call at
+   `temperature=0` — recovery, not relaxation: every attempt faces the same
+   invariants, and a run that can't satisfy them declines rather than degrades.
+6. **Resume↔cover alignment.** `pipeline.audit._alignment_flags` cross-checks
+   the two generated documents against each other, catching claims that are
+   individually valid but mutually inconsistent.
+
+The eval harness carries an off-lane control fixture that is *supposed* to
+decline at the score stage (`scripts/eval_tailor.py`). A run that produces
+confident output for it is a regression, not a success.
 
 ## Non-goals
 
@@ -39,8 +129,8 @@ without scraping — paste the posting, tag the channel — and
 ## Install
 
 ```bash
-git clone https://github.com/SimBuds/Caseys-Job-Seeker
-cd Caseys-Job-Seeker
+git clone https://github.com/SimBuds/Jobhunt
+cd Jobhunt
 
 uv sync
 source .venv/bin/activate        # puts `jobhunt` on PATH; or prefix commands with `uv run`
@@ -450,11 +540,10 @@ convention.
 - [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md):
   prompt-injectable mirror of the tailoring rules.
 
-Honesty enforcement is structural (verified-snapshot constraint,
-schema-bounded output, post-decode invariants, score clamp, cover and
-tailor validators + retry, resume↔cover alignment check). See
-[AGENTS.md](AGENTS.md) LLM call rules and Post-generation audit rules
-for the full mechanism.
+The six honesty-enforcement mechanisms are summarized under
+[Honesty enforcement](#honesty-enforcement) above. See [AGENTS.md](AGENTS.md)
+LLM call rules and Post-generation audit rules for the full mechanism, and
+[PLAN.md](PLAN.md) for the rationale behind each layer.
 
 ## License
 
