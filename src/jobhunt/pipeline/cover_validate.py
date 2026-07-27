@@ -68,13 +68,13 @@ _DEFENSIVE_PATTERNS: tuple[tuple[str, str], ...] = (
     ),
     # "the model transfers" in any disclaiming context
     (r"\bthe model transfers\b", "defensive 'the model transfers' phrasing"),
-    # Standalone "rather than <Tech>" claims about Casey's stack
+    # Standalone "rather than <Tech>" claims about the candidate's stack
     (
         r"\bi (?:am )?(?:familiar|comfortable)[^.]*\brather than\b",
         "defensive familiarity disclaimer",
     ),
     # "I have also worked with GraphQL concepts" / "exposure to Kubernetes
-    # concepts" — the cover talks about a tech as "concepts" because Casey
+    # concepts" — the cover talks about a tech as "concepts" because the candidate
     # doesn't actually have hands-on experience with it. The defensive
     # phrasing volunteers a gap the JD didn't ask about; reject structurally
     # so the cover prompt's "silence is stronger than apology" rule is
@@ -145,7 +145,7 @@ _SIGNOFF_TAIL_RE = re.compile(
 # that aren't single tech tokens, so they slip past `_FABRICATION_WATCHLIST`.
 # Added 2026-05-27 after cover #manual:4bcf846a opened with "...applications in
 # TypeScript, Node.js, and Express that handle live data streams and complex
-# user workflows" — Casey has zero live-stream/real-time/WebSocket work in
+# user workflows" — the candidate has zero live-stream/real-time/WebSocket work in
 # verified.json. Each pattern is matched against the cover body; the violation
 # is suppressed if the matched phrase already appears in the verified-skill blob
 # (so legitimate work passes once added to verified.json) or in a negation
@@ -289,13 +289,13 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "qwik",
     "ember",
     "tailwind",
-    # 2026 Node/TS server stack — Casey has Express, not these
+    # 2026 Node/TS server stack — the candidate has Express, not these
     "bun",
     "hono",
     "trpc",
     "prisma",
     "drizzle",
-    # Mobile — Casey has no mobile experience
+    # Mobile — the candidate has no mobile experience
     "kotlin",
     "swift",
     "flutter",
@@ -305,7 +305,7 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "google cloud",
     "vertex ai",
     "bedrock",
-    # LLM orchestration / vector DBs — Casey has Ollama + prompt eng only
+    # LLM orchestration / vector DBs — the candidate has Ollama + prompt eng only
     "langchain",
     "llamaindex",
     "haystack",
@@ -457,7 +457,7 @@ def validate_cover(
     # - numbers in the lead paragraph are exempt: the lead typically cites a
     #   JD-stated stat about the company ("1,500 events"), which is reading the
     #   posting back, not fabrication. Numbers in middle/closing paragraphs
-    #   describing Casey's work are still checked against verified.json.
+    #   describing the candidate's work are still checked against verified.json.
     allowed = _verified_numbers(verified)
     body_after_lead = "\n\n".join(cover.body[1:]) if len(cover.body) > 1 else ""
     # Strip clock-style time references first — "11:00 AM", "9 a.m.", "10pm"

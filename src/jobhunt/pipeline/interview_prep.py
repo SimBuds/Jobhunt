@@ -19,6 +19,7 @@ Designed to be invoked from `commands.interview_prep_cmd`.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,8 @@ from typing import Any
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
+from jobhunt.pipeline._profile import FALLBACK_NAME, display_name
+from jobhunt.pipeline._profile import candidate_name as _name
 from jobhunt.pipeline._recap import recap_tokens
 from jobhunt.pipeline.cover_validate import (
     _DEFENSIVE_PATTERNS,
@@ -151,6 +154,11 @@ async def draft_prep_sections(
     verified_text = verified_path.read_text(encoding="utf-8")
 
     prompt = load_prompt(cfg.paths.kb_dir, "interview-prep")
+    _verified = json.loads(verified_text)
+    system = prompt.render_system(
+        candidate_name=_name(_verified),
+        candidate_full_name=display_name(_verified),
+    )
     recruiter_type = ctx.recruiter_type or "unknown"
     recruiter_bias = _RECRUITER_BIAS_BLURB.get(
         recruiter_type, _RECRUITER_BIAS_BLURB["unknown"]
@@ -193,7 +201,7 @@ async def draft_prep_sections(
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
-        system=prompt.system,
+        system=system,
         user=user,
         schema=prompt.schema,
         temperature=temperature,
@@ -335,9 +343,9 @@ def validate_prep_sections(
 
     # Unverified numbers (digit-cluster check) — strip year ranges and
     # clock-style references first, matching the cover/answer preprocessor.
-    # Only check Casey-owned claims. Role decode / questions-to-ask often cite
+    # Only check the candidate-owned claims. Role decode / questions-to-ask often cite
     # employer-scale JD context ("100+ client sites", "Fortune 500"), which is
-    # useful interview prep and not a claim about Casey.
+    # useful interview prep and not a claim about the candidate.
     allowed = _verified_numbers(verified)
     if allowed_numbers:
         allowed.update(allowed_numbers)
@@ -366,7 +374,7 @@ def validate_prep_sections(
     verified_blob = _verified_skill_blob(verified)
     verified_blob_lower = verified_blob.lower()
     jd_only_phrases = _jd_only_claim_phrases(job_description, verified_blob)
-    claim_bullets = _casey_claim_bullets(sections)
+    claim_bullets = _candidate_claim_bullets(sections)
     reported: set[str] = set()
     for bullet in claim_bullets:
         bullet_lower = bullet.lower()
@@ -375,7 +383,7 @@ def validate_prep_sections(
                 continue
             if _bullet_claims_phrase(bullet_lower, phrase):
                 violations.append(
-                    f"casey claim mirrors unverified JD phrase: {phrase!r}"
+                    f"candidate claim mirrors unverified JD phrase: {phrase!r}"
                 )
                 reported.add(phrase)
 
@@ -454,7 +462,7 @@ def has_blocking_prep_violations(violations: list[str]) -> bool:
         "unverified availability claim",
         "reframe lacks verified trace",
         "reframe mirrors unverified jd phrase",
-        "casey claim mirrors unverified jd phrase",
+        "candidate claim mirrors unverified jd phrase",
         "unverified anchor",
     )
     return any(
@@ -524,7 +532,9 @@ async def draft_prep_with_retry(
             return sections, [], attempt
         last_sections = sections
         last_violations = violations
-        revisions = _format_revision_hint(violations, attempt)
+        revisions = _format_revision_hint(
+            violations, attempt, candidate_name=_name(verified)
+        )
     assert last_sections is not None
 
     # Last-resort cleanup for qwen's repeat offenders in interview prep.
@@ -603,9 +613,9 @@ def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSe
         )
         # JD-mirror: "AI-generated content pipeline" — verbatim borrow that
         # qwen latches onto for any AI-flavored content role. Replace with
-        # a narrower phrasing that names Casey's actual verified surface
+        # a narrower phrasing that names the candidate's actual verified surface
         # (Ollama local LLM + Shopify/HubSpot CMS) so the artifact still
-        # speaks to the JD without claiming a product Casey hasn't shipped.
+        # speaks to the JD without claiming a product the candidate hasn't shipped.
         out = _replace_case_insensitive(
             out,
             "ai-generated content pipeline",
@@ -723,7 +733,9 @@ def _is_logistics_anchor(text: str) -> bool:
     return any(token in low for token in logistics_tokens)
 
 
-def _format_revision_hint(violations: list[str], attempt: int) -> str:
+def _format_revision_hint(
+    violations: list[str], attempt: int, *, candidate_name: str = FALLBACK_NAME
+) -> str:
     lines = [
         "",
         "## Previous attempt was rejected by the validator. Fix these:",
@@ -738,7 +750,7 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
     # Targeted hint when at least one violation is `unverified number:` —
     # the dominant cause is qwen pulling stats from the research blob
     # (company pricing, metric strips) and dropping them into beats. Tell
-    # the model explicitly that those numbers don't count as Casey's facts.
+    # the model explicitly that those numbers don't count as the candidate's facts.
     if any("unverified number" in v.lower() for v in violations):
         lines.append(
             "IMPORTANT: numbers appearing in the `research_blob` section are "
@@ -779,8 +791,9 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
         )
     if any("availability claim" in v.lower() for v in violations):
         lines.append(
-            "Do not claim Casey can start immediately unless that exact fact is "
-            "present in applicant logistics. Use a confirm-on-call phrasing instead."
+            f"Do not claim {candidate_name} can start immediately unless that exact "
+            "fact is present in applicant logistics. Use a confirm-on-call phrasing "
+            "instead."
         )
     if any("reframe lacks verified trace" in v.lower() for v in violations):
         lines.append(
@@ -789,12 +802,12 @@ def _format_revision_hint(violations: list[str], attempt: int) -> str:
         )
     if any("reframe mirrors unverified jd phrase" in v.lower() for v in violations):
         lines.append(
-            "Do not reframe a gap by claiming Casey has already done the JD's "
-            "exact unverified work. Use a narrower verified bridge instead."
+            f"Do not reframe a gap by claiming {candidate_name} has already done the "
+            "JD's exact unverified work. Use a narrower verified bridge instead."
         )
-    if any("casey claim mirrors unverified jd phrase" in v.lower() for v in violations):
+    if any("candidate claim mirrors unverified jd phrase" in v.lower() for v in violations):
         lines.append(
-            "Do not put the JD's exact ownership phrases into Casey-owned "
+            f"Do not put the JD's exact ownership phrases into {candidate_name}-owned "
             "answers, anchors, or gap reframes unless verified_facts already "
             "contains that work. Replace them with narrower verified facts."
         )
@@ -834,8 +847,8 @@ def _jd_only_claim_phrases(job_description: str, verified_blob: str) -> list[str
     ]
 
 
-# Title-style phrases identify someone Casey would WORK WITH, not someone
-# Casey IS. A beat that says "you'd coordinate with the Director of Search"
+# Title-style phrases identify someone the candidate would WORK WITH, not someone
+# The candidate IS. A beat that says "you'd coordinate with the Director of Search"
 # is legitimate context; a beat that says "I led search as Director of
 # Search" is a fabrication. Distinguish them by requiring a strict
 # ownership pattern (as the / my role as / I am/was/served/held) in the
@@ -844,7 +857,7 @@ _TITLE_PHRASE_RE = re.compile(
     r"\b(?:director|head|vp|vice\s+president|chief|cto|cmo|ceo|cpo|svp)\s+of\b",
     re.IGNORECASE,
 )
-# Patterns that signal Casey claims the title that follows the window.
+# Patterns that signal the candidate claims the title that follows the window.
 _TITLE_OWNERSHIP_RES = (
     # `as the` / `as a` / `as` right before the title.
     re.compile(r"\bas(?:\s+(?:the|a|an))?\s*$", re.IGNORECASE),
@@ -860,10 +873,10 @@ def _is_title_phrase(phrase: str) -> bool:
 
 
 def _bullet_claims_phrase(bullet_lower: str, phrase: str) -> bool:
-    """True when `bullet_lower` makes a Casey-owned claim of `phrase`.
+    """True when `bullet_lower` makes a the candidate-owned claim of `phrase`.
 
     For activity-style JD phrases (e.g. "automated content upload systems"),
-    any appearance in a Casey-claim section is treated as a fabrication.
+    any appearance in a the candidate-claim section is treated as a fabrication.
     For title-style phrases (e.g. "Director of Search"), require an
     explicit ownership pattern in the 40-char window before the phrase —
     context references like "you'd report to the Director of Search"
@@ -878,8 +891,8 @@ def _bullet_claims_phrase(bullet_lower: str, phrase: str) -> bool:
     return any(rx.search(window) for rx in _TITLE_OWNERSHIP_RES)
 
 
-def _casey_claim_bullets(sections: PrepDocSections) -> list[str]:
-    """Flat list of every Casey-owned bullet. Each item gets the
+def _candidate_claim_bullets(sections: PrepDocSections) -> list[str]:
+    """Flat list of every the candidate-owned bullet. Each item gets the
     per-bullet mirror check — bullet-scoped windowing is what lets the
     title-phrase ownership marker live in the same string."""
     out: list[str] = []
@@ -913,7 +926,7 @@ def build_interview_context(stage: str) -> list[str]:
     """Deterministic May 2026 interview-prep context.
 
     Keep this focused on likely interview coverage and candidate strategy, not
-    Casey-specific claims. It is rendered into the prep doc and injected into
+    the candidate-specific claims. It is rendered into the prep doc and injected into
     the prompt so the LLM's question choices match the current hiring loop.
     """
     common = [

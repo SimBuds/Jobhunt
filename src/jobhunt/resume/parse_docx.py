@@ -28,7 +28,7 @@ SECTION_HEADERS = {
 }
 
 # Alternate section headings (lowercased, whole-line) mapped onto the canonical
-# headers, so a resume that does not use Casey's exact headings still sections
+# headers, so a resume that does not use the candidate's exact headings still sections
 # correctly. The canonical names need no self-entry: `_canonical_section` checks
 # an exact (case-insensitive) match first. Whole-line match keeps a body line
 # like "Experience with React" from being mistaken for an "EXPERIENCE" header.
@@ -115,11 +115,6 @@ class VerifiedFacts:
     projects: list[Project] = field(default_factory=list)
 
 
-# Skill label charset is deliberately permissive: real resumes write labels like
-# "Version Control, CI/CD & Testing", "Databases & Infrastructure", "AI/ML".
-# Commas, slashes, plus signs, dots, and digits all occur. The colon is what
-# actually delimits label from items, so the label side stays broad and only
-# excludes the colon itself.
 # Canonical style label for a bullet. Real-world resumes carry any style name on
 # a genuine list item, so `parse_baseline` rewrites every numbered/bulleted
 # paragraph to this value and the section parsers only ever compare against it.
@@ -139,6 +134,11 @@ def _is_list_item(paragraph: Paragraph) -> bool:
     return p_pr.find(qn("w:numPr")) is not None
 
 
+# Skill label charset is deliberately permissive: real resumes write labels like
+# "Version Control, CI/CD & Testing", "Databases & Infrastructure", "AI/ML".
+# Commas, slashes, plus signs, dots, and digits all occur. The colon is what
+# actually delimits label from items, so the label side stays broad and only
+# excludes the colon itself.
 _SKILL_LINE_RE = re.compile(r"^([A-Za-z][^:]*?):\s*(.+)$")
 
 # Bucket inference by keyword, replacing a hand-maintained allow-list of exact
@@ -215,7 +215,7 @@ def _infer_skill_bucket(label: str) -> str | None:
     return None
 
 # Alternate skill-section labels (lowercased) mapped onto the canonical buckets,
-# so a resume that does not use Casey's exact headings still populates the right
+# so a resume that does not use the candidate's exact headings still populates the right
 # bucket. The exact bucket-name match runs first, so the canonical names need no
 # self-entry here. Mirrors the `_REGION_EXPANSIONS` alias-map precedent in
 # `convert_resume_cmd`. An unrecognized label is warned, never silently dropped.

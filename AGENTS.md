@@ -377,7 +377,7 @@ jobhunt interview-prep <id> [--stage agency|hiring_manager|assessment] [--resear
                             [--refresh-research]
                             [--recruiter-type internal_recruiter|hiring_manager|external_agency|unknown]
                              # hybrid prep doc: deterministic skeleton + LLM middle
-jobhunt resume [--focus ai|cms|seo|all]
+jobhunt resume [--focus ai|cms|all]
                              # regenerate the lane base resumes (manual channels:
                              # LinkedIn/Indeed/recruiters) from kb/lanes/ briefs
                              # through the same tailor + fabrication pipeline;

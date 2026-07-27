@@ -31,7 +31,7 @@ from jobhunt.pipeline.tailor import tailor_resume_with_retry
 from jobhunt.resume.render_docx import render
 
 app = typer.Typer(
-    help="Render lane-focused base resumes (AI automation / CMS & e-commerce / technical SEO).",
+    help="Render lane-focused base resumes (AI automation / CMS & e-commerce).",
     invoke_without_command=True,
 )
 
@@ -48,7 +48,6 @@ class Lane:
 LANES: dict[str, Lane] = {
     "ai": Lane(slug="ai-automation", label="AI_Automation"),
     "cms": Lane(slug="cms-ecommerce", label="CMS_Ecommerce"),
-    "seo": Lane(slug="technical-seo", label="Technical_SEO"),
 }
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -153,7 +152,7 @@ def run(
     focus: str = typer.Option(
         "all",
         "--focus",
-        help="Which base resume to render: ai | cms | seo | all.",
+        help="Which base resume to render: ai | cms | all.",
     ),
 ) -> None:
     from jobhunt.commands import ensure_profile

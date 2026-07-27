@@ -13,13 +13,13 @@ schema:
         minLength: 1
     strongest_anchors:
       type: array
-      description: 4-8 verified facts from Casey's profile that map to the JD's must-haves. Each item must be traceable to verified.json (work history bullets, skills buckets). No fabrication.
+      description: 4-8 verified facts from {candidate_name}'s profile that map to the JD's must-haves. Each item must be traceable to verified.json (work history bullets, skills buckets). No fabrication.
       items:
         type: string
         minLength: 1
     likely_questions:
       type: array
-      description: 4-8 questions the interviewer is likely to ask at this stage, each paired with a 3-5 bullet list of talking points (beats) using verified facts only. Each bullet stands alone — Casey should be able to speak for 15-30 seconds from any single bullet.
+      description: 4-8 questions the interviewer is likely to ask at this stage, each paired with a 3-5 bullet list of talking points (beats) using verified facts only. Each bullet stands alone — {candidate_name} should be able to speak for 15-30 seconds from any single bullet.
       items:
         type: object
         required: [question, beats]
@@ -36,13 +36,13 @@ schema:
               minLength: 1
     questions_to_ask:
       type: array
-      description: 4-6 specific questions Casey should ask the interviewer back. Avoid generic "what's the culture like" questions; favour ones that surface real role information.
+      description: 4-6 specific questions {candidate_name} should ask the interviewer back. Avoid generic "what's the culture like" questions; favour ones that surface real role information.
       items:
         type: string
         minLength: 1
     honest_gaps:
       type: array
-      description: 2-4 honest gaps between Casey's verified profile and the JD, each paired with a 2-4 bullet reframe list that leans on adjacent verified strengths.
+      description: 2-4 honest gaps between {candidate_name}'s verified profile and the JD, each paired with a 2-4 bullet reframe list that leans on adjacent verified strengths.
       items:
         type: object
         required: [gap, reframes]
@@ -60,12 +60,12 @@ schema:
 ---
 
 ## SYSTEM
-Generate interview prep content for Casey Hsu for a specific job at a specific
+Generate interview prep content for {candidate_full_name} for a specific job at a specific
 stage. The output is one structured JSON object that a deterministic renderer
 will wrap with a header, comp-heads-up section, and pre-call checklist —
 **this prompt only produces the high-judgment middle sections.**
 
-Casey's voice: direct, concrete, no buzzwords, names real projects.
+{candidate_name}'s voice: direct, concrete, no buzzwords, names real projects.
 
 Hard rules:
 
@@ -95,7 +95,7 @@ Hard rules:
 3. **AI/LLM lead surfacing.** When the JD explicitly mentions AI, LLM,
    RAG, generative AI, prompt engineering, ML, automation tooling,
    developer tooling, local-first tooling, or infrastructure work, at
-   least one anchor MUST reference Casey's Ollama / local LLM /
+   least one anchor MUST reference {candidate_name}'s Ollama / local LLM /
    GPU-tuning work using the literal tokens "Ollama" or "LLM". Do not
    treat vague phrases like "modern stack", "modern engineering", or
    "modern tools" as an AI trigger by themselves.
@@ -116,7 +116,7 @@ Hard rules:
    production. The closest verified bridge is [project], where I did
    [specific verified adjacent work]." Be honest, not self-flagellating.
 
-   Reframe bullets must NOT claim Casey has already done the JD's exact
+   Reframe bullets must NOT claim {candidate_name} has already done the JD's exact
    unverified work. For example, if the JD says "automated content upload
    systems" or "AI-generated content pipeline", do not write "I have
    built automated content upload systems" in any reframe bullet unless
@@ -127,7 +127,7 @@ Hard rules:
    restriction applies to every bullet inside `likely_questions[].beats`
    and to `strongest_anchors`: do not write "zero errors", "replace
    manual uploads", "scripts and API integrations", "pipelines running
-   smoothly", or "automated systems" as Casey-owned claims unless
+   smoothly", or "automated systems" as {candidate_name}-owned claims unless
    verified_facts contains that exact work.
 
 6. **Banned phrases.** Same set as `cover.md` and `answer.md`. The
@@ -148,10 +148,10 @@ Hard rules:
 8. **No exclamation marks. No first-person superlatives.** No GBC diploma /
    coursework references — that belongs on the resume. Contractions OK.
 
-9. **Logistics honesty.** For salary, use Casey's configured salary expectation,
+9. **Logistics honesty.** For salary, use {candidate_name}'s configured salary expectation,
    not the JD's posted range. Never write "I am looking for" followed by the
-   JD range unless it exactly matches Casey's configured range. Do not invent a
-   start date, notice period, or say Casey can start immediately unless
+   JD range unless it exactly matches {candidate_name}'s configured range. Do not invent a
+   start date, notice period, or say {candidate_name} can start immediately unless
    applicant logistics explicitly says so. Work authorization is logistics,
    not a strongest anchor.
 
@@ -195,7 +195,7 @@ Cover-letter draft (anchors already chosen): {cover_summary}
   real project + verified fact. Lead with the strongest match for THIS JD.
 - `likely_questions`: 4-8 entries. Each entry's `beats` field is a list of
   **3-5 talking-point bullets**, each ≤ 25 words. Bullets are stand-alone
-  talking points — Casey reads one bullet and has enough to speak for 15-30
+  talking points — {candidate_name} reads one bullet and has enough to speak for 15-30
   seconds. Bullet 1 leads with the real project name (e.g. "Atelier Dacko
   Shopify storefront — 16+ pages"). Bullets 2-N add specifics
   drawn from `verified_facts` (tools used, real numbers, follow-up framing,

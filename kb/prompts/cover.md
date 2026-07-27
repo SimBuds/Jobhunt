@@ -14,8 +14,8 @@ schema:
 ---
 
 ## SYSTEM
-Write a short cover letter for Casey for one specific job. 3–4 paragraphs,
-~250 words total. Casey's voice: direct, concrete, no buzzwords, names real
+Write a short cover letter for {candidate_name} for one specific job. 3–4 paragraphs,
+~250 words total. {candidate_name}'s voice: direct, concrete, no buzzwords, names real
 projects and platforms.
 
 Hard rules:
@@ -31,12 +31,12 @@ Hard rules:
    letter is auto-rejected. Do **not** claim familiarity with a tech the JD
    mentions but `verified_facts` does not (e.g. Elasticsearch, Kafka,
    Kubernetes, GraphQL, Vue, Angular, Django, Rails, Salesforce,
-   ServiceNow, SAP). If the JD asks for one of those and Casey doesn't
+   ServiceNow, SAP). If the JD asks for one of those and {candidate_name} doesn't
    have it, **omit it** — do not bridge with "familiar with X". The
    deterministic validator rejects unverified tech claims.
 2. Lead paragraph (2–3 sentences): open with a real first-person sentence
    that names the role + company AND a concrete hook from the JD — a
-   product, a tech stack, a domain detail, something that shows Casey
+   product, a tech stack, a domain detail, something that shows {candidate_name}
    actually read the posting. **The literal company name MUST appear in
    paragraph 1 as a written-out token — not a pronoun ("you"), not a
    product name, not a description ("the AI platform"), the actual
@@ -48,13 +48,13 @@ Hard rules:
    writing to", "I am excited", "I'm excited", "I'm thrilled", or any
    other form-letter opener. Try leading with the **hook** (a concrete
    JD detail) rather than the act of applying. The second sentence
-   should land the strongest specific match between Casey's verified
+   should land the strongest specific match between {candidate_name}'s verified
    experience and the JD's must-haves.
 
    **AI/LLM lead-paragraph rule (May 2026).** If the JD explicitly
    mentions AI, LLM, RAG, generative AI, prompt engineering, ML,
    automation tooling, developer tooling, local-first tooling, or
-   infrastructure work, the lead's hook MUST surface Casey's Ollama /
+   infrastructure work, the lead's hook MUST surface {candidate_name}'s Ollama /
    local LLM / GPU-tuning work, naming the literal token "Ollama" or
    "LLM" so an AI-screener summarizer pulls it. Do not treat vague
    phrases like "modern stack", "modern engineering", or "modern tools"
@@ -72,17 +72,17 @@ Hard rules:
    — that reads like a CV recap, not a letter. Numbers ("16+ page
    Shopify storefront", "30% page load reduction") only if they appear
    in verified_facts.
-4. If the JD lists a hard skill Casey is "Familiar" with rather than Core,
+4. If the JD lists a hard skill {candidate_name} is "Familiar" with rather than Core,
    **omit it from the letter entirely.** Do NOT introduce the gap
    defensively. Phrasings like "rather than Java", "while I have... rather
    than", "the model transfers", "coming from X rather than Y" are
    FORBIDDEN — they volunteer weakness the reader did not ask about. Lead
-   with what Casey *does* have for the role; let the resume show
+   with what {candidate_name} *does* have for the role; let the resume show
    the rest. Do not pretend a Familiar skill is Core, and do not apologize
    for not having it.
 5. Closing paragraph (1–2 sentences): forward-looking, not a re-recap of
    the resume. If the JD gives material about the company / product /
-   mission, name what specifically draws Casey to *this* role. Otherwise
+   mission, name what specifically draws {candidate_name} to *this* role. Otherwise
    a brief, plain offer to talk. Do NOT restate the GBC diploma,
    coursework, or skills here — those belong on the resume, not the
    letter's closing. Do NOT start the closing with "I am ready to" or
@@ -100,7 +100,7 @@ Hard rules:
    Each of these names a concrete artifact from earlier in the letter.
    Generic abstractions ("I'd welcome the chance to discuss how my
    experience aligns…") are rejected by the validator.
-6. Voice: Casey writes like a person, not an HR template. Use
+6. Voice: {candidate_name} writes like a person, not an HR template. Use
    contractions where natural ("I've", "I'm", "don't", "it's"). Vary
    sentence length — short punchy lines are fine. Direct, concrete, no
    buzzwords. Do not overstate adjacency. Avoid exact-fit claims,
@@ -143,7 +143,7 @@ Hard rules:
      welcome the chance to discuss how my hands-on experience with
      headless CMS architectures and performance optimization could
      support your team's goals"). One concrete, plain sentence.
-   - Don't volunteer gaps. If the JD asks for X and Casey doesn't have X,
+   - Don't volunteer gaps. If the JD asks for X and {candidate_name} doesn't have X,
      say nothing about X. Never use "rather than", "while I have... rather
      than", "the model transfers", "coming from X rather than Y" in any
      form. Silence is stronger than apology.

@@ -36,7 +36,7 @@ from jobhunt.pipeline.tailor import TailoredResume, _enforce_no_fabrication
 
 # Adzuna ships truncated description snippets (~500 chars). Below this
 # threshold, the audit broadens must-have extraction via PEER_FAMILIES so a
-# JD that mentions "Vue" can still surface "React" as a must-have for Casey.
+# JD that mentions "Vue" can still surface "React" as a must-have for the candidate.
 # Long full JDs (Greenhouse, Lever, manual) already have enough surface text
 # to land canonical tech names; broadening there would create false positives.
 _SHORT_JD_THRESHOLD = 800
@@ -303,7 +303,7 @@ def _extract_must_haves_from_jd(
     # are already covered. Second pass adds peer-broadened inferences only
     # when no sibling from the same family already matched directly.
     #
-    # Phase 10.1 fix: Casey has both AWS and Azure verified; when the JD names
+    # Phase 10.1 fix: the candidate has both AWS and Azure verified; when the JD names
     # only AWS, the old single-pass added Azure as an inferred must-have via
     # the cloud_provider family. The tailor (correctly) didn't include Azure,
     # so audit marked it missing and dropped coverage to 80%. With the dedupe,
