@@ -113,16 +113,36 @@ def _sync_applicant(facts: VerifiedFacts) -> tuple[list[str], list[str]]:
     return filled, still_missing
 
 
+# Warnings where the parser KEPT the content and only noted a fallback. Every
+# other warning is treated as data loss.
+#
+# The list is deliberately the *benign* side rather than the lossy side. An
+# allow-list of lossy phrasings ("dropped", "skipped") silently stops working
+# the moment a new warning describes loss in different words — which is exactly
+# the failure class this guard exists to prevent, and exactly what happened to
+# the skill-label allow-list it replaced. Adding a warning is now safe by
+# default: an unclassified one blocks the write and gets noticed.
+_BENIGN_WARNING_MARKERS: tuple[str, ...] = (
+    # Cert-vs-education classifier fell back; the entry is still recorded.
+    "defaulted to education",
+    # Unrecognised skill label: items are kept in Core, just not bucketed
+    # precisely. Advisory by construction (see parse_docx `_infer_skill_bucket`).
+    "assigned to Core",
+)
+
+
 def _dropped_content_warnings(warnings: list[str]) -> list[str]:
     """Warnings that mean resume content was *discarded*, not merely noted.
 
-    `parse_baseline` phrases every lossy outcome with 'dropped' or 'skipped'
-    (unrecognized skill label, bullet before any role header, unparseable role
-    header, non 'Label: items' line). Anything else is advisory and must not
-    block a write — the guard exists to stop silent data loss, not to demand a
-    perfectly clean parse.
+    Fails closed: anything not explicitly listed in `_BENIGN_WARNING_MARKERS`
+    counts as loss. A partial profile is worse than no profile — scoring and
+    tailoring treat `verified.json` as the whole truth — so the safe default
+    for an unfamiliar warning is to refuse the write and let a human look.
     """
-    return [w for w in warnings if "dropped" in w or "skipped" in w]
+    return [
+        w for w in warnings
+        if not any(marker in w for marker in _BENIGN_WARNING_MARKERS)
+    ]
 
 
 @app.callback(invoke_without_command=True)
