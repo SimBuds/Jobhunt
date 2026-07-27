@@ -80,7 +80,7 @@ def test_convert_resume_blocks_write_when_content_dropped(env: Path) -> None:
 
     docx = _resume(
         env,
-        skill_label="Wingdings",  # unrecognized → items dropped
+        skill_label="Hobbies",  # non-skill label → items genuinely dropped
         role_line="Dev | Acme   Jan 2024 – Present",
     )
     result = runner.invoke(convert_resume_cmd.app, ["--docx", str(docx)])
@@ -95,7 +95,7 @@ def test_force_overrides_the_guard(env: Path) -> None:
 
     docx = _resume(
         env,
-        skill_label="Wingdings",
+        skill_label="Hobbies",
         role_line="Dev | Acme   Jan 2024 – Present",
     )
     runner.invoke(convert_resume_cmd.app, ["--docx", str(docx), "--force"])

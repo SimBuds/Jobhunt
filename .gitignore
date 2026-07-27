@@ -9,9 +9,11 @@ __pycache__/
 .agents/
 .claude/
 .codex/
+IMPLEMENT.md
 
 # Personal & PII
 kb/profile/
 data/
 *.docx
 *.pdf
+LinkedIn_Sync.md

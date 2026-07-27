@@ -12,7 +12,12 @@ from jobhunt.ingest._query_planner import (
     derive_adzuna_queries,
 )
 
-VERIFIED_PATH = Path(__file__).parent.parent / "kb" / "profile" / "verified.json"
+# The fictional profile, never the repo's own kb/profile/verified.json — that
+# file is personal, gitignored, and hand-edited, so asserting against it makes
+# the suite pass or fail on whose resume is checked out (IMPLEMENT.md A10/D2).
+FIXTURE_PROFILE = (
+    Path(__file__).resolve().parent / "fixtures" / "profile" / "verified.json"
+)
 
 
 def test_normalize_skill_strips_parens_and_trailing_slash() -> None:
@@ -23,25 +28,26 @@ def test_normalize_skill_strips_parens_and_trailing_slash() -> None:
     assert _normalize_skill("Contentful (Certified Professional)") == "contentful"
 
 
-def test_derive_from_current_baseline() -> None:
-    """The live verified.json must produce all user-named umbrella queries.
+def test_derive_from_fixture_profile() -> None:
+    """A full profile produces the expected umbrella queries.
 
-    Java/Spring Boot moved to skills_familiar in May 2026 (coursework-only, per
-    kb/profile/verified-notes.md), so 'java developer' is intentionally NOT
-    a required query — searching Java roles would surface jobs Casey would
-    mostly decline. The cap-10 truncation correctly drops Familiar-tech queries
-    in favor of Casey's actual production umbrellas (CMS, AI, JS/React).
+    Runs against the fictional fixture, so the expectations are stable: a resume
+    edit changes the real profile weekly, and this test is about the planner's
+    logic, not about one person's current skill list.
+
+    Java and Spring Boot sit in `skills_familiar` in the fixture, so
+    'java developer' must NOT appear — searching Familiar tech surfaces roles
+    the scorer would decline. That exclusion is the load-bearing assertion here.
     """
-    verified = json.loads(VERIFIED_PATH.read_text(encoding="utf-8"))
+    verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
     qs = derive_adzuna_queries(verified)
+
     assert len(qs) <= 12
-    # Umbrella signals the user explicitly called out.
     for required in (
         "cms developer",
         "solutions engineer",
         "implementation specialist",
         "ai engineer",
-        "technical seo developer",
         "javascript developer",
         "react developer",
         "node.js developer",
@@ -49,6 +55,43 @@ def test_derive_from_current_baseline() -> None:
         "full stack developer",
     ):
         assert required in qs, f"missing required query: {required!r} in {qs}"
+
+    # Familiar-only tech must never become a search query.
+    assert "java developer" not in qs
+    assert "angular developer" not in qs
+
+
+def test_seo_query_is_gated_on_work_history_evidence() -> None:
+    """'technical seo developer' needs SEO in a *bullet*, not in a skills row.
+
+    `_has_seo_signal` scans work-history bullets only, so the query is gated on
+    demonstrated work rather than a claimed skill — listing "technical SEO" in a
+    skills row is not enough to start searching SEO roles. Asserting both halves
+    documents that deliberately.
+    """
+    verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
+    assert "technical seo developer" not in derive_adzuna_queries(verified)
+
+    # A skills-row claim alone must NOT flip it on.
+    claimed_only = {
+        **verified,
+        "skills_cms": [*verified["skills_cms"], "technical SEO (Core Web Vitals)"],
+    }
+    assert "technical seo developer" not in derive_adzuna_queries(claimed_only)
+
+    # Evidence in a bullet does.
+    with_evidence = {
+        **verified,
+        "work_history": [
+            {
+                "title": "Developer",
+                "employer": "Acme",
+                "dates": "2024",
+                "bullets": ["Ran technical SEO audits and lifted Core Web Vitals."],
+            }
+        ],
+    }
+    assert "technical seo developer" in derive_adzuna_queries(with_evidence)
 
 
 def test_dedupes_collisions() -> None:
@@ -114,7 +157,7 @@ def test_no_location_suffix_appended() -> None:
     allowlist handle location; forcing 'Toronto' into the `what` field
     dropped real Toronto-market queries (react/javascript) to zero recall.
     """
-    verified = json.loads(VERIFIED_PATH.read_text(encoding="utf-8"))
+    verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
     qs = derive_adzuna_queries(verified)
     for q in qs:
         assert not q.endswith(" Toronto"), f"unexpected Toronto suffix on {q!r}"

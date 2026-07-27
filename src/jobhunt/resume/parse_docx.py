@@ -115,7 +115,104 @@ class VerifiedFacts:
     projects: list[Project] = field(default_factory=list)
 
 
-_SKILL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z &\-]*?):\s*(.+)$")
+# Skill label charset is deliberately permissive: real resumes write labels like
+# "Version Control, CI/CD & Testing", "Databases & Infrastructure", "AI/ML".
+# Commas, slashes, plus signs, dots, and digits all occur. The colon is what
+# actually delimits label from items, so the label side stays broad and only
+# excludes the colon itself.
+# Canonical style label for a bullet. Real-world resumes carry any style name on
+# a genuine list item, so `parse_baseline` rewrites every numbered/bulleted
+# paragraph to this value and the section parsers only ever compare against it.
+_LIST_STYLE = "List Paragraph"
+
+
+def _is_list_item(paragraph: Paragraph) -> bool:
+    """True when the paragraph is a real Word list item.
+
+    Keys on the `<w:numPr>` numbering property rather than the style name.
+    That property is what actually makes Word render a bullet, and it is stable
+    across editors and restyles; the style *name* is not.
+    """
+    p_pr = paragraph._p.find(qn("w:pPr"))
+    if p_pr is None:
+        return False
+    return p_pr.find(qn("w:numPr")) is not None
+
+
+_SKILL_LINE_RE = re.compile(r"^([A-Za-z][^:]*?):\s*(.+)$")
+
+# Bucket inference by keyword, replacing a hand-maintained allow-list of exact
+# labels. An allow-list can never be complete — the 2026-07-25 resume reformat
+# alone introduced six unseen labels and silently dropped every one. Tokens are
+# matched against these sets in order; the FIRST bucket with a hit wins.
+#
+# Familiar is tested first on purpose. Mis-filing an "Additional" or "Exposure"
+# row into a Core bucket would promote academic exposure into claimable
+# production skill, which is the one bucket error the honesty rules treat as
+# fabrication (`kb/policies/tailoring-rules.md`, Core vs Familiar).
+_BUCKET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Familiar", (
+        "familiar", "additional", "exposure", "other", "academic", "beginner",
+        "basic", "learning", "coursework", "supplementary",
+    )),
+    ("AI & Tooling", (
+        "ai", "ml", "llm", "genai", "automation", "agent", "agentic", "assisted",
+        "prompt", "intelligence",
+    )),
+    ("CMS & E-commerce", (
+        "cms", "commerce", "ecommerce", "shopify", "wordpress", "content", "seo",
+    )),
+    ("Data & DevOps", (
+        "database", "data", "devops", "infrastructure", "cloud", "version",
+        "control", "testing", "test", "qa", "deployment", "ops", "ci", "cd",
+        "platform", "tooling", "tools",
+    )),
+    ("Core", (
+        "language", "framework", "frontend", "backend", "programming",
+        "development", "develop", "api", "library", "web", "software", "stack",
+        "mobile", "engineering", "technical",
+    )),
+)
+
+# Rows that are legitimately NOT skills. Without this, the "unknown label falls
+# back to Core" rule would file "Climbing, Chess" from an Interests row as
+# claimable production skill — worse than dropping it, because the tailor treats
+# everything in `verified.json` as fair game.
+_NON_SKILL_LABEL_TOKENS: frozenset[str] = frozenset({
+    "hobbies", "hobby", "interests", "activities", "references", "awards",
+    "volunteer", "volunteering", "publications", "memberships", "affiliations",
+    "spoken", "availability", "objective",
+})
+
+_LABEL_TOKEN_RE = re.compile(r"[a-z0-9+#]+")
+
+
+def _is_non_skill_label(label: str) -> bool:
+    """True for rows that are not skills at all (Interests, Awards, …)."""
+    tokens = set(_LABEL_TOKEN_RE.findall(label.lower()))
+    return bool(tokens & _NON_SKILL_LABEL_TOKENS)
+
+
+def _infer_skill_bucket(label: str) -> str | None:
+    """Map an arbitrary skill-row label onto a canonical bucket.
+
+    Token-based rather than substring-based so short keywords cannot match
+    inside unrelated words ("ai" must not fire on "available"). A token also
+    matches a keyword it merely pluralises or extends ("databases" -> "database",
+    "frameworks" -> "framework"), but only for keywords long enough that the
+    prefix is meaningful.
+    """
+    tokens = _LABEL_TOKEN_RE.findall(label.lower())
+    if not tokens:
+        return None
+    for bucket, keywords in _BUCKET_KEYWORDS:
+        for token in tokens:
+            for kw in keywords:
+                if token == kw or token == f"{kw}s":
+                    return bucket
+                if len(kw) >= 4 and token.startswith(kw):
+                    return bucket
+    return None
 
 # Alternate skill-section labels (lowercased) mapped onto the canonical buckets,
 # so a resume that does not use Casey's exact headings still populates the right
@@ -175,6 +272,51 @@ _ROLE_LINE_RE = re.compile(
 )
 
 
+# A role header ends in a date range. Anchoring on the dates and splitting what
+# precedes them is shape-agnostic, which a single monolithic pattern cannot be:
+# resumes write two-pipe, three-pipe (location in the employer cell), pipe-less
+# em-dash, and tab-separated headers, and the same person changes shape between
+# drafts. The separator before the dates must be a tab, 2+ spaces, or a single
+# space followed by an explicit month — a bare "\s+\d{4}" would match mid-bullet
+# ("...shipped in 2024 and moved on") and turn prose into a phantom role.
+_DATES_TAIL_RE = re.compile(
+    rf"(?:\t\s*|\s{{2,}}|\s+(?=\(?{_MONTH_RE}\s+\d{{4}}))"
+    rf"(?P<dates>\(?(?:{_MONTH_RE}\s+)?\d{{4}}\b.*)$"
+)
+
+
+def _parse_role_header(text: str) -> tuple[str, str, str] | None:
+    """Return ``(title, employer, dates)`` for a role header, else None.
+
+    Accepted shapes, all observed in real resumes::
+
+        Title | Employer | Dates              (location usually inside employer)
+        Title | Employer, Location  Dates
+        Title | Employer<TAB>Dates
+        Employer — Descriptor  Dates          (title-less; title comes back "")
+
+    A title-less header is preserved rather than rejected: dropping it discards
+    the whole role and every bullet under it. The caller can see the empty title
+    and decide; losing the employer and dates is strictly worse.
+    """
+    m = _DATES_TAIL_RE.search(text)
+    if m is None:
+        return None
+    dates = m.group("dates").strip()
+    head = text[: m.start()].strip()
+    if not head:
+        return None
+    parts = [p.strip() for p in head.split("|") if p.strip()]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return "", parts[0], dates
+    # 3+ cells: everything after the title is employer/location detail. Rejoin
+    # with commas so a stray separator never survives into `employer`, which is
+    # half the identity key the fabrication guard compares on.
+    return parts[0], ", ".join(parts[1:]), dates
+
+
 def _is_project_header(text: str) -> bool:
     """A PROJECTS-section header ends in a repo URL after a separator.
 
@@ -205,13 +347,22 @@ def _split_project_header(text: str) -> tuple[str, str] | None:
     """Split a project header into ``(name, url)``. None when there is no
     separator. Shared by the predicate and its consumer so the two can never
     disagree about where the split falls."""
+    # rsplit on both forms: the URL is always the LAST cell, and a descriptor
+    # cell may sit between name and URL ("Jobhunt | AI Job-Search | github.com/…").
+    # Splitting on the first "|" made that three-cell form unparseable, which
+    # silently dropped every project in the 2026-07-26 resume.
     if "|" in text:
-        name, url = text.split("|", 1)
+        name, url = text.rsplit("|", 1)
         return name.strip(), url.strip()
     if "—" in text:
         name, url = text.rsplit("—", 1)
         return name.strip(), url.strip()
     return None
+
+
+def _project_display_name(name_cell: str) -> str:
+    """First cell of a project header — the name, without any descriptor cell."""
+    return name_cell.split("|")[0].strip() or name_cell.strip()
 
 
 # Generic credential classifier for the CERTIFICATIONS & EDUCATION section.
@@ -222,7 +373,12 @@ def _split_project_header(text: str) -> tuple[str, str] | None:
 _DEGREE_RE = re.compile(
     r"\b(?:bachelor|master|doctorate|ph\.?\s?d|m\.?\s?sc|b\.?\s?sc|b\.?\s?eng|"
     r"m\.?\s?eng|b\.?\s?a|associate(?:['’]s)?\s+degree|diploma|university|"
-    r"college|honou?rs?|dean(?:['’]s)?\s+list|g\.?p\.?a\.?|cum\s+laude)\b",
+    r"college|polytechnic|institute|academy|seminary|"
+    r"honou?rs?|dean(?:['’]s)?\s+list|g\.?p\.?a\.?|cum\s+laude|"
+    # Academic-detail lines that sit under an education entry. Without these a
+    # "Capstone: …" or "Thesis: …" line has neither degree nor cert vocabulary
+    # and falls through to the unclassified branch, warning on every parse.
+    r"capstone|thesis|practicum|coursework|major|minor|specializ(?:ation|ed))\b",
     re.IGNORECASE,
 )
 _CERT_RE = re.compile(
@@ -305,8 +461,18 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     if len(non_empty) < 2:
         raise PipelineError(f"baseline resume is empty: {docx_path}")
 
+    # Normalise every real list item to the style name the section parsers key
+    # on. A paragraph can be a genuine bullet (`<w:numPr>` in its properties)
+    # while carrying any style name at all — Word, LibreOffice, and Google Docs
+    # all name their list styles differently, and re-styling a resume renames
+    # them without changing the list formatting. Detecting the numbering
+    # property instead of the label is what makes bullet detection survive a
+    # reformat; matching on "List Paragraph" alone silently reclassified every
+    # bullet as body text when this resume was restyled on 2026-07-26.
     paras: list[tuple[str, str]] = [
-        ((p.style.name if p.style else ""), p.text.strip()) for p in non_empty
+        (_LIST_STYLE if _is_list_item(p) else (p.style.name if p.style else ""),
+         p.text.strip())
+        for p in non_empty
     ]
 
     name = non_empty[0].text.strip()
@@ -357,23 +523,39 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             continue
         label, items = m.group(1).strip(), m.group(2).strip()
         low = label.lower()
-        # Exact bucket-name match wins; fall back to the alias map for resumes
-        # that use alternate skill-section labels.
+        # Exact bucket name wins, then the curated alias map, then keyword
+        # inference. Inference is last so hand-tuned mappings always beat it.
         bucket = next((b for b in skill_buckets if b.lower() == low), None)
         if bucket is None:
             bucket = _SKILL_LABEL_ALIASES.get(low)
+        if bucket is None:
+            bucket = _infer_skill_bucket(label)
         if bucket is not None:
             skill_buckets[bucket].extend(_split_skills(items))
-        else:
+        elif _is_non_skill_label(label):
+            # Interests / hobbies / awards rows: genuinely not skills. Dropping
+            # is correct here — filing them as Core would let the tailor claim
+            # "Chess" as production experience.
             warnings.append(
-                f"TECHNICAL SKILLS: unrecognized skill label {label!r}, items dropped: {items!r}"
+                f"TECHNICAL SKILLS: non-skill label {label!r}, items dropped: {items!r}"
+            )
+        else:
+            # Unknown but plausibly a skill row: keep it. The old behaviour
+            # discarded it, which is how a reformat wiped every core skill from
+            # verified.json without failing loudly. Worded as "assigned", not
+            # "dropped", so `convert-resume`'s data-loss guard stays advisory
+            # here instead of blocking the write.
+            skill_buckets["Core"].extend(_split_skills(items))
+            warnings.append(
+                f"TECHNICAL SKILLS: unrecognized skill label {label!r}, "
+                f"assigned to Core — add an alias if that is wrong"
             )
 
     work_history: list[Role] = []
     current_role: Role | None = None
     for style, text in sections["PROFESSIONAL EXPERIENCE"]:
-        m = _ROLE_LINE_RE.match(text)
-        if style == "List Paragraph" or (m is None and "|" not in text):
+        parsed = _parse_role_header(text)
+        if style == "List Paragraph" or (parsed is None and "|" not in text):
             # Treat as a bullet: either explicitly styled as one, or doesn't
             # match a role header (some resumes use 'normal' style throughout).
             if current_role is None:
@@ -383,18 +565,15 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
                 continue
             current_role.bullets.append(text)
             continue
-        if not m:
+        if parsed is None:
             warnings.append(
                 f"PROFESSIONAL EXPERIENCE: unparseable role header, skipped: {text!r}"
             )
             continue
         if current_role is not None:
             work_history.append(current_role)
-        current_role = Role(
-            title=m.group("title").strip(),
-            employer=m.group("employer").strip(),
-            dates=m.group("dates").strip(),
-        )
+        title, employer, dates = parsed
+        current_role = Role(title=title, employer=employer, dates=dates)
     if current_role is not None:
         work_history.append(current_role)
 
@@ -439,7 +618,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
                 if url.lower().startswith(scheme):
                     url = url[len(scheme) :]
                     break
-            current_project = Project(name=name_part.strip(), url=url)
+            current_project = Project(name=_project_display_name(name_part), url=url)
             projects.append(current_project)
             continue
         # Otherwise a bullet. Orphan bullets before any header are skipped rather
