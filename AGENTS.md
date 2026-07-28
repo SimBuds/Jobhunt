@@ -815,6 +815,20 @@ content is genuinely meant to be gone.
    mixed into the queue, indistinguishable from new ones and sorted on two
    scales at once.
 
+   **Breakdowns (migration 0010).** `scores.breakdown` holds
+   `ScoreBreakdown.to_json()`: per-tier matched/total/credit, ai_bonus, the
+   pre-cap `computed`, the post-cap `final`, `caps_applied`, and the weights in
+   force. Keep `computed` and `final` distinct — three live postings all read
+   70 while having been computed 86/90/90 at 92%/100%/100% tier-1 coverage, so
+   the score column alone cannot be calibrated against. Column is nullable with
+   no default: pre-0010 rows are NULL and every consumer must treat that as
+   "unknown", never zero (`config_cmd._tier1_coverage` returns None and the
+   coverage table reports the excluded count). `apply` migrates on entry for
+   the same reason `scan` does — it can be the first command run against a DB
+   (`apply --url`), and the breakdown write fails hard on an un-migrated one.
+   `calibrate` is read-only and must NOT migrate: it selects `NULL AS
+   breakdown` when the column is absent.
+
    **Thin-JD confidence cap (2026-05-31 audit fix).** Signal-poor JDs
    (Adzuna's ~500-char snippets) used to pass the **raw** LLM
    score through unbounded — but the model can't penalize gaps it can't see,

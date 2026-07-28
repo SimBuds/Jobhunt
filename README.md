@@ -270,6 +270,15 @@ jobhunt analyze validators                     # which cover-letter validators f
 After ~20 applications, run `jobhunt config calibrate` to see the interview rate
 per score band and tune `[pipeline] min_score`.
 
+It prints a second table: interview rate by **tier-1 coverage**, the fraction of
+the posting's hard requirements your profile actually meets. That is the signal
+the score weights control, so it is what to tune them against. The score bands
+alone can't serve that purpose, because deterministic ceilings flatten different
+fits onto the same number — on a real backlog three postings all scored 70 while
+having computed 86, 90 and 90 before the thin-JD cap. Applications scored before
+the breakdown column existed are excluded from the coverage table and reported
+as a count, rather than counted as zero coverage.
+
 ## Commands
 
 Use `jobhunt --help` for the top-level menu and `jobhunt <command> --help` for

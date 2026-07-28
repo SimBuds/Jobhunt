@@ -325,14 +325,22 @@ def write_score(
     must_clarify: list[str],
     model: str,
     prompt_hash: str,
+    breakdown: str | None = None,
 ) -> None:
+    """Persist one score.
+
+    `breakdown` is the JSON from `ScoreBreakdown.to_json()`, or None. It stays
+    optional so callers that legitimately have no components (and rows written
+    before migration 0010) record NULL rather than a fabricated zero.
+    """
     import json as _json
 
     conn.execute(
         """
         INSERT OR REPLACE INTO scores
-            (job_id, score, reasons, red_flags, must_clarify, model, prompt_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (job_id, score, reasons, red_flags, must_clarify, model,
+             prompt_hash, breakdown)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -342,5 +350,6 @@ def write_score(
             _json.dumps(must_clarify),
             model,
             prompt_hash,
+            breakdown,
         ),
     )

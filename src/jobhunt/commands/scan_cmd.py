@@ -214,6 +214,7 @@ async def _run(
                     must_clarify=result.gaps,
                     model=result.model,
                     prompt_hash=ph,
+                    breakdown=result.breakdown.to_json() if result.breakdown else None,
                 )
                 set_decline_reason(conn, job.id, result.decline_reason)
             ok += 1
