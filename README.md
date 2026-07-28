@@ -160,10 +160,10 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # smallest quantized KV cache — preserves VRAM headroom on a 10 GB card
+Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # smallest quantized KV cache — the ~288 MiB it saves over q8_0 is what keeps the model 100% GPU-resident on a 10 GB card
 Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
 Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches the sequential pipeline
-Environment="OLLAMA_KEEP_ALIVE=30m"          # idle unload after 30m; the gateway's per-call keep_alive=-1 overrides it during a run
+Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload after 10m; the gateway's per-call keep_alive=-1 overrides it during a run
 Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model — jobhunt runs a single hot model per scan
 ```
 
