@@ -87,12 +87,11 @@ def test_parse_baseline_round_trip(tmp_path: Path):
         assert not e.endswith(("|", "-", "—", ",")), f"stray separator: {e!r}"
     assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
 
-    # Familiar must stay separate. Bucket layout per kb/profile/verified-notes.md:
-    # Java/Spring Boot are Familiar (coursework-only); Python is Core (data_devops
-    # bucket) — Casey writes and operates this CLI in Python daily, not Familiar.
-    assert "Java" in facts.skills_familiar
-    assert "Spring Boot" in facts.skills_familiar
-    assert "Java" not in facts.skills_core
+    # Familiar must stay separate from Core when populated. The 2026-07-27 resume
+    # drops the familiar tier entirely (it previously carried Java/Spring Boot as
+    # coursework-only), so this asserts the disjointness property rather than
+    # pinning specific tools the resume may no longer list.
+    assert not set(facts.skills_familiar) & set(facts.skills_core)
     # Python is production experience and must never land in Familiar. Which
     # Core-side bucket it occupies depends on how the resume groups its rows,
     # so assert the honesty property rather than the bucket (Phase A12).
@@ -120,8 +119,13 @@ def test_parse_baseline_round_trip(tmp_path: Path):
         assert p.url and not p.url.startswith(("http://", "https://"))
         assert p.bullets, f"project {p.name!r} parsed with no bullets"
     # A "Stack:" line under a project populates that project's stack rather than
-    # being swallowed as a bullet.
+    # being swallowed as a bullet — assert both halves, since the failure mode is
+    # the row landing in bullets rather than disappearing outright.
     assert any(p.stack for p in facts.projects), "no project captured a Stack: line"
+    for p in facts.projects:
+        assert not any(b.startswith("Stack:") for b in p.bullets), (
+            f"project {p.name!r} swallowed a Stack: row as a bullet"
+        )
     # PROJECTS narrative must NOT leak into education (the pre-PB3 behaviour).
     assert not any("github.com" in e for e in facts.education)
 
@@ -132,7 +136,9 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert payload["name"] == facts.name
     assert len(payload["work_history"]) == len(facts.work_history)
     assert len(payload["projects"]) == len(facts.projects)
-    assert payload["projects"][0]["stack"]  # nested dataclass round-trips
+    # Nested dataclass round-trips. Asserted by equality rather than truthiness so
+    # a resume whose projects carry no Stack: row still exercises the round-trip.
+    assert payload["projects"][0]["stack"] == facts.projects[0].stack
 
     # KB markdown writer leaves five files (projects.md added when projects exist).
     kb = tmp_path / "kb"
@@ -157,8 +163,9 @@ def test_parse_baseline_positioning_and_atomic_skills():
     moved, so a future re-parse can't silently regress them:
     - skills_ai stays ATOMIC and paren-aware (retires PLAN.md's stale "skills_ai
       produces a run-on, patch by hand" caveat).
-    - Figma is Familiar (2026-06-18 decision): Casey builds from Figma handoffs,
-      he does not author designs in it, so it is not promoted to Core.
+    - Figma sits in Core as of the 2026-07-27 resume (superseding the 2026-06-18
+      call that kept it Familiar). Tier is the author's positioning decision and
+      is driven by which row the resume lists it under, not by this test.
     - "Dawn" survives the parse (it lives in the Atelier bullet, not the skills
       line).
     - The lead role carries the JD-aligned retitle, not the old generic title.
@@ -175,11 +182,10 @@ def test_parse_baseline_positioning_and_atomic_skills():
     for item in facts.skills_ai:
         assert item.count("(") == item.count(")"), f"unbalanced parens: {item!r}"
 
-    # The Familiar bucket must exist and stay disjoint from Core — that split is
-    # the hard honesty signal (`kb/policies/tailoring-rules.md`). Membership is
-    # driven by how the resume labels its rows, so which specific tools sit in
-    # Familiar is the author's call, not this test's (Phase A12).
-    assert facts.skills_familiar, "Familiar bucket must not be empty"
+    # Familiar and Core must stay disjoint — that split is the hard honesty
+    # signal (`kb/policies/tailoring-rules.md`). Whether Familiar is populated at
+    # all is the author's call: the 2026-07-27 resume drops the familiar tier
+    # entirely, so emptiness is a valid state and only the disjointness holds.
     assert not set(facts.skills_familiar) & set(facts.skills_core)
 
     # Dawn is captured somewhere in the verified facts (it lives in a bullet).

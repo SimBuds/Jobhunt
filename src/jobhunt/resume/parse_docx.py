@@ -47,6 +47,14 @@ _SECTION_ALIASES: dict[str, str] = {
     "employment": "PROFESSIONAL EXPERIENCE",
     "employment history": "PROFESSIONAL EXPERIENCE",
     "work history": "PROFESSIONAL EXPERIENCE",
+    "relevant experience": "PROFESSIONAL EXPERIENCE",
+    "software development experience": "PROFESSIONAL EXPERIENCE",
+    "software engineering experience": "PROFESSIONAL EXPERIENCE",
+    # Non-software roles still belong in the verified snapshot: the fabrication
+    # guard only permits claims present there, so excluding them would make the
+    # experience permanently unreferenceable when a JD asks for leadership.
+    "additional experience": "PROFESSIONAL EXPERIENCE",
+    "other experience": "PROFESSIONAL EXPERIENCE",
     "education": "CERTIFICATIONS & EDUCATION",
     "education & certifications": "CERTIFICATIONS & EDUCATION",
     "certifications": "CERTIFICATIONS & EDUCATION",
@@ -400,7 +408,11 @@ def _classify_credential(text: str) -> str | None:
 
 
 def _split_skills(value: str) -> list[str]:
-    """Split a comma-separated skill list, but treat commas inside parentheses as literal."""
+    """Split a skill list on commas and semicolons, treating separators inside
+    parentheses as literal. Semicolons are sub-group separators in lines like
+    "HTML5/CSS3/Sass; React, Next.js" — without them React would not be a
+    verified skill in its own right. '/'-compounds are left intact; keyword
+    matching resolves those as alternatives downstream."""
     out: list[str] = []
     depth = 0
     buf: list[str] = []
@@ -411,7 +423,7 @@ def _split_skills(value: str) -> list[str]:
         elif ch == ")":
             depth = max(0, depth - 1)
             buf.append(ch)
-        elif ch == "," and depth == 0:
+        elif ch in ",;" and depth == 0:
             item = "".join(buf).strip()
             if item:
                 out.append(item)
