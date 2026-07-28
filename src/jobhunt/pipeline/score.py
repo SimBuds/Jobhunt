@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from jobhunt.config import Config
 from jobhunt.errors import PipelineError
@@ -17,12 +16,139 @@ from jobhunt.pipeline._profile import candidate_name, render_policy
 
 # Cap inputs to keep prompts within the app-owned context window the gateway
 # pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
-# OLLAMA_CONTEXT_LENGTH is deliberately unset on this box). Rule of thumb:
-# ~4 chars/token. Combined desc + policy + verified + prompt bodies should
-# leave headroom for the model's structured-JSON output. If you change the
-# gateway num_ctx, adjust these in step.
+# OLLAMA_CONTEXT_LENGTH is deliberately unset on this box). If you change the
+# gateway num_ctx, adjust these in step — see the sizing note there.
+#
+# Do NOT size this by a chars/token rule of thumb. Measured `prompt_eval_count`
+# on the longest JD in the backlog runs ~23% above a chars/4 estimate, because
+# dense JD text tokenizes worse than prose. At 16000 chars the tailor prompt
+# measures 11886 tokens; with num_predict=4096 that is 15982, which fits 32768
+# comfortably but left only 402 tokens at the 16384 window trialled on
+# 2026-07-28. Overflow is silent: Ollama truncates the prompt, the schema
+# instruction falls off the end, and the model emits prose instead of JSON.
+#
+# Held at 16000 rather than lowered: 16000 truncates 9% of the backlog, 10000
+# truncates 19%. A trailing "Preferred qualifications" block is real tier-2
+# scoring signal, so the shorter cap costs measurable fit accuracy.
 MAX_DESC_CHARS = 16000
 MAX_POLICY_CHARS = 6000
+
+# --- Score model (2026-07-28) ----------------------------------------------
+#
+# The LLM no longer picks the number. It extracts the posting's requirements
+# into two tiers and annotates transferable bridges; the score is computed
+# here. The reason is measured, not stylistic: across 169 live scores, six
+# integers accounted for 136 of them and nothing ever exceeded 82. A 9B model
+# at temperature 0 asked to choose from prose bands collapses onto the band
+# midpoints, and the old rubric's "vary the score across jobs" instruction
+# could never work because each job is scored in its own call — the model
+# never sees a batch to vary within.
+#
+# Splitting hard requirements from wish-list items is the substantive fix.
+# The old coverage clamp divided by an unweighted phrase list, so a posting
+# whose core stack the candidate fully matched but whose nice-to-haves he
+# missed landed at 55-70% "coverage" and got capped into the low 60s — the
+# exact band the user reported for roles that actually produced interviews.
+#
+# These mirror the `[pipeline] score_*` config defaults and exist so the module
+# is usable (and testable) without constructing a Config. `ScoreWeights.
+# from_config` is what the live path uses. Keep the arithmetic a pure function
+# of the extraction plus these weights, so a score can always be explained.
+SCORE_BASE = 30
+SCORE_TIER1_WEIGHT = 50
+SCORE_TIER2_WEIGHT = 10
+SCORE_AI_BONUS = 5
+# A peer-family or annotated-bridge match is real but weaker evidence than the
+# literal tech. Grading it below 1.0 is what lets an exact-stack fit outrank a
+# bridged one instead of tying with it.
+SCORE_TRANSFERABLE_CREDIT = 0.7
+
+
+@dataclass(frozen=True)
+class ScoreWeights:
+    """The score model's tunable coefficients, resolved once per `score_job`.
+
+    Passed explicitly rather than read from module globals so a score is
+    reproducible from its inputs alone, and so tests can vary one coefficient
+    without monkeypatching module state.
+    """
+
+    base: int = SCORE_BASE
+    tier1: int = SCORE_TIER1_WEIGHT
+    tier2: int = SCORE_TIER2_WEIGHT
+    ai_bonus: int = SCORE_AI_BONUS
+    transferable_credit: float = SCORE_TRANSFERABLE_CREDIT
+
+    @classmethod
+    def from_config(cls, cfg: Config) -> ScoreWeights:
+        p = cfg.pipeline
+        return cls(
+            base=p.score_base,
+            tier1=p.score_tier1_weight,
+            tier2=p.score_tier2_weight,
+            ai_bonus=p.score_ai_bonus,
+            transferable_credit=p.score_transferable_credit,
+        )
+
+
+DEFAULT_WEIGHTS = ScoreWeights()
+
+
+@dataclass(frozen=True)
+class ScoreBreakdown:
+    """How one score was reached, persisted to `scores.breakdown`.
+
+    Exists so weight tuning can be driven by interview outcomes. The final
+    integer alone is ambiguous: two jobs at 70 may be a full-coverage snippet
+    pulled down by the thin-JD ceiling and a genuine two-thirds match, which
+    are not the same bet. `caps_applied` records which ceilings actually bound,
+    so a capped score is never mistaken for an earned one.
+    """
+
+    tier1_matched: int
+    tier1_total: int
+    tier1_credit: float
+    tier2_matched: int
+    tier2_total: int
+    tier2_credit: float
+    ai_bonus: bool
+    computed: int          # before any cap
+    final: int             # after every cap
+    caps_applied: list[str]
+    weights: dict[str, float]
+
+    def to_json(self) -> str:
+        import json as _json
+
+        return _json.dumps(
+            {
+                "tier1": {
+                    "matched": self.tier1_matched,
+                    "total": self.tier1_total,
+                    "credit": round(self.tier1_credit, 4),
+                },
+                "tier2": {
+                    "matched": self.tier2_matched,
+                    "total": self.tier2_total,
+                    "credit": round(self.tier2_credit, 4),
+                },
+                "ai_bonus": self.ai_bonus,
+                "computed": self.computed,
+                "final": self.final,
+                "caps_applied": list(self.caps_applied),
+                "weights": self.weights,
+            },
+            sort_keys=True,
+        )
+
+    @property
+    def tier1_coverage(self) -> float:
+        """Graded tier-1 coverage in 0.0-1.0, or 0.0 when nothing was extracted.
+
+        This is the number worth calibrating against: it reflects fit to the
+        posting's hard requirements, independent of which ceilings happened to
+        bind afterwards."""
+        return self.tier1_credit / self.tier1_total if self.tier1_total else 0.0
 
 
 def truncate(s: str, limit: int) -> str:
@@ -37,6 +163,11 @@ class ScoreResult:
     decline_reason: str | None
     ai_bonus_present: bool
     model: str
+    # How the score was reached. Defaulted + last so existing construction
+    # (tests, `apply_cmd._load_score` rebuilding from the DB) stays valid, and
+    # so a row scored before the breakdown column existed reads back as None
+    # rather than as a fabricated zero.
+    breakdown: ScoreBreakdown | None = None
 
 
 async def score_job(cfg: Config, job: Job) -> ScoreResult:
@@ -75,26 +206,45 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         schema=prompt.schema,
         temperature=prompt.temperature,
     )
-    raw_score = _coerce_score(result.get("score"), job.id)
-    llm_matched = _coerce_phrase_list(result.get("matched_must_haves"))
-    llm_gaps = _coerce_phrase_list(result.get("gaps"))
+    decline_reason = result.get("decline_reason")
+    tier1_phrases = _coerce_phrase_list(result.get("must_haves"))
+    tier2_phrases = _coerce_phrase_list(result.get("nice_to_haves"))
 
-    # Deterministic check: trust the LLM's extraction of which phrases are
-    # must-haves (it can read the JD), but verify each against verified.json
-    # ourselves. The LLM has been observed listing missing phrases as matched
-    # to inflate the score band — this clamp closes that loophole.
-    matched, gaps = _verify_against_profile(llm_matched, llm_gaps, verified)
-    coverage_pct = _coverage_pct(matched, gaps)
-    # Adzuna ships ~500-char snippets; the LLM commonly extracts only 1-2 phrases
-    # from those, and clamping against a 1/2 denominator over-penalizes signal-poor
-    # postings. Skip the coverage clamp when the must-have set is too small to be
-    # reliable.
-    must_have_count = len(matched) + len(gaps)
-    score = (
-        raw_score
-        if must_have_count < 3
-        else _clamp_by_coverage(raw_score, coverage_pct)
-    )
+    # A posting with no extractable requirement at all is a model failure, not
+    # a zero-fit job — same posture the old unusable-score path took. `scan`
+    # catches JobHuntError per job and skips it with a message, so this
+    # surfaces instead of silently scoring every such posting at the base.
+    #
+    # Declines are exempt: the model may legitimately stop reading once it
+    # decides the title is people-management, and raising there would mean the
+    # decline never persists and the job is re-scored on every scan forever.
+    if not tier1_phrases and not tier2_phrases and not decline_reason:
+        raise PipelineError(
+            f"job {job.id}: model extracted no requirements from the posting"
+        )
+    # A posting whose requirements all read as optional still has a real bar.
+    # Promote rather than score it out of the queue on a phrasing quirk.
+    if not tier1_phrases:
+        tier1_phrases, tier2_phrases = tier2_phrases, []
+
+    # Trust the LLM's reading of WHICH phrases the posting requires and at what
+    # tier — that needs the JD text. Do not trust its claim that the candidate
+    # has them: every phrase is re-verified against verified.json here, so a
+    # hallucinated match becomes a gap and lowers the score instead of raising
+    # it. `seen` is shared so a phrase repeated across tiers counts once.
+    weights = ScoreWeights.from_config(cfg)
+    seen: set[str] = set()
+    tier1 = _verify_tier(tier1_phrases, verified.lower(), seen, weights)
+    tier2 = _verify_tier(tier2_phrases, verified.lower(), seen, weights)
+
+    matched = tier1.matched + tier2.matched
+    gaps = tier1.gaps + tier2.gaps
+    ai_bonus = bool(result.get("ai_bonus_present"))
+    computed = _compute_score(tier1, tier2, ai_bonus, weights)
+    score = computed
+    # Which ceilings actually bound, recorded as they fire. A capped score must
+    # never be mistaken for an earned one during calibration.
+    caps_applied: list[str] = []
 
     # Thin-JD confidence ceiling, gated on description LENGTH ALONE.
     #
@@ -103,22 +253,25 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # ZoomInfo Full Stack Engineer scored 82 from its 500-char Adzuna snippet vs
     # 55 from the 7,140-char Greenhouse JD).
     #
-    # This used to sit inside the `must_have_count < 3` branch, which made it a
+    # This used to be gated on a small extracted-phrase count, which made it a
     # no-op for the postings it most needed to catch: a 500-char snippet is
-    # keyword-DENSE, so it routinely yields 4-6 extracted phrases, reaches 100%
-    # coverage against them, and sailed past both the coverage clamp and this
-    # ceiling. Measured on the 2026-07-28 backlog: 12 of the 13 scores at 78+
-    # were 500-char snippets. Phrase count was never the signal — how much JD
-    # text the model actually got to read is. Long JDs that merely happened to
-    # yield <3 must-haves (e.g. manual `apply --url` fetches) stay exempt,
-    # because the gate is length.
+    # keyword-DENSE, so it yields 4-6 phrases at full coverage and looked like
+    # a confident match. Measured on the 2026-07-28 backlog: 12 of the 13
+    # scores at 78+ were 500-char snippets. Phrase count was never the signal —
+    # how much JD text the model actually got to read is.
     #
-    # Applied after whichever clamp ran, and only ever lowers, so the original
-    # "don't drag a 1/1 down to 64" intent holds for any score ≤ ceiling.
+    # It matters just as much under tier-based scoring: a snippet lists a few
+    # technologies with no Requirements/Preferred structure, so everything
+    # lands in tier-1 and a candidate who matches those few keywords reaches
+    # near-full tier-1 coverage against a bar the posting never really stated.
+    # Full-length JDs are exempt regardless of how few requirements they
+    # yielded, because the gate is length.
+    #
+    # Only ever lowers.
     if len(job.description) < cfg.pipeline.thin_jd_chars:
+        if cfg.pipeline.thin_jd_score_cap < score:
+            caps_applied.append("thin_jd")
         score = min(score, cfg.pipeline.thin_jd_score_cap)
-
-    decline_reason = result.get("decline_reason")
 
     # Junior-title override (2026-05-22): qwen3.5:9b sometimes emits the
     # YoE-aware "Senior-band title" decline when the JD body uses senior-
@@ -191,11 +344,9 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
             # role visible instead of declining it.
             score = min(score, 58)
 
-    # qwen3.5:9b sometimes uses score=0 as a silent decline (no decline_reason).
-    # The prompt forbids this; enforce a floor so non-declined jobs stay in
-    # the rubric's 30+ range and remain visible to calibration.
-    if decline_reason is None and score < 30:
-        score = 40
+    # The old score=0-as-silent-decline floor bump is gone: the model no longer
+    # emits a number, and SCORE_BASE is itself the floor for anything that
+    # isn't declined. Every cap above only lowers toward it, never past it.
 
     return ScoreResult(
         score=score,
@@ -205,27 +356,6 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         ai_bonus_present=bool(result.get("ai_bonus_present")),
         model=model,
     )
-
-
-def _coerce_score(raw: object, job_id: str) -> int:
-    """Schema pins score to integer, but qwen3.5:9b occasionally emits ``null``
-    (or a numeric string) despite the grammar. Coerce defensively; an unusable
-    score is a model failure for this job, so raise PipelineError — the scan
-    loop catches JobHuntError and skips-and-continues, which retries next scan
-    rather than inventing a fake number that would pollute calibration."""
-    if isinstance(raw, bool):
-        # bool is an int subclass; a true/false score is never legitimate.
-        raise PipelineError(f"job {job_id}: model returned boolean score {raw!r}")
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, float):
-        return int(raw)
-    if isinstance(raw, str):
-        try:
-            return int(float(raw.strip()))
-        except ValueError:
-            pass
-    raise PipelineError(f"job {job_id}: model returned no usable score (got {raw!r})")
 
 
 def _coerce_phrase_list(raw: object) -> list[str]:
@@ -346,72 +476,130 @@ def _bridge_of(phrase: str) -> str | None:
     return inner or None
 
 
-def _phrase_verified(phrase: str, blob: str) -> bool:
-    """A must-have phrase verifies against the profile when the profile
-    literally contains it, contains a peer-family sibling (PEER_FAMILIES —
-    the same table the score prompt promises to credit), or contains the
-    bridge named by the prompt's `(transferable: X)` annotation. Bogus
-    bridges fail closed: the named tech must itself be verified."""
-    if phrase_present(phrase, blob) or peer_match(phrase, blob):
-        return True
+def _phrase_credit(
+    phrase: str, blob: str, weights: ScoreWeights = DEFAULT_WEIGHTS
+) -> float:
+    """Graded evidence that the profile satisfies one JD requirement.
+
+    1.0 for a literal hit, `weights.transferable_credit` for a peer-family or
+    annotated-bridge hit, 0.0 for no path at all. Three acceptance routes in a
+    fixed order, fail-closed on bogus bridges (the named tech must itself
+    verify), returning strength rather than a boolean so an exact stack match
+    can outrank a bridged one.
+    """
+    if phrase_present(phrase, blob):
+        return 1.0
+    if peer_match(phrase, blob):
+        return weights.transferable_credit
     bridge = _bridge_of(phrase)
-    return bridge is not None and phrase_present(bridge, blob)
+    if bridge is not None and phrase_present(bridge, blob):
+        return weights.transferable_credit
+    return 0.0
 
 
-def _verify_against_profile(
-    llm_matched: list[str], llm_gaps: list[str], verified_blob: str
-) -> tuple[list[str], list[str]]:
-    """Re-partition the LLM's must-have list using the verified profile blob."""
-    blob = verified_blob.lower()
+@dataclass(frozen=True)
+class _TierResult:
+    """One tier's verification outcome. `credit` is the graded sum, so it can
+    be below `len(matched)` when matches came through bridges."""
+
+    matched: list[str]
+    gaps: list[str]
+    credit: float
+
+    @property
+    def total(self) -> int:
+        return len(self.matched) + len(self.gaps)
+
+    @property
+    def coverage(self) -> float:
+        """Graded coverage in 0.0-1.0. An empty tier scores 0.0; callers decide
+        what an empty tier means rather than inheriting a silent 100%."""
+        return self.credit / self.total if self.total else 0.0
+
+
+def _verify_tier(
+    phrases: list[str],
+    blob: str,
+    seen: set[str],
+    weights: ScoreWeights = DEFAULT_WEIGHTS,
+) -> _TierResult:
+    """Partition one tier's phrases into matched/gaps with graded credit.
+
+    `seen` is shared across tiers so a requirement the model listed in both
+    lists is counted once, in the tier it appeared in first (tier-1 is
+    verified first, which is the conservative direction: it keeps a genuine
+    hard requirement from being demoted to a wish-list item).
+    """
     matched: list[str] = []
     gaps: list[str] = []
-    seen: set[str] = set()
-    for phrase in list(llm_matched) + list(llm_gaps):
+    credit = 0.0
+    for phrase in phrases:
         key = phrase.lower().strip()
         if not key or key in seen:
             continue
         seen.add(key)
-        (matched if _phrase_verified(phrase, blob) else gaps).append(phrase)
-    return matched, gaps
+        c = _phrase_credit(phrase, blob, weights)
+        if c > 0:
+            matched.append(phrase)
+            credit += c
+        else:
+            gaps.append(phrase)
+    return _TierResult(matched=matched, gaps=gaps, credit=credit)
 
 
-def _coverage_pct(matched: list[str], gaps: list[str]) -> int:
-    total = len(matched) + len(gaps)
-    if total == 0:
-        return 100
-    return round(100 * len(matched) / total)
+def _compute_score(
+    tier1: _TierResult,
+    tier2: _TierResult,
+    ai_bonus: bool,
+    weights: ScoreWeights = DEFAULT_WEIGHTS,
+) -> int:
+    """Deterministic score from graded tier coverage.
 
+    base + tier1_weight * tier1_coverage + tier2_weight * tier2_coverage
+         + ai_bonus
 
-def _clamp_by_coverage(raw_score: int, coverage_pct: int) -> int:
-    """Cap the LLM's score to a band consistent with deterministic coverage.
-
-    Bands (per plan):
-      100%       -> keep raw score
-      80-99%     -> cap at 89
-      60-79%     -> cap at 79
-      <60%       -> cap at 64
+    An empty tier-2 folds its weight into tier-1 rather than awarding free
+    points. Short postings frequently state hard requirements and no wish
+    list at all, and a posting should not score higher merely because it
+    forgot to write one.
     """
-    if coverage_pct >= 100:
-        return raw_score
-    if coverage_pct >= 80:
-        return min(raw_score, 89)
-    if coverage_pct >= 60:
-        return min(raw_score, 79)
-    return min(raw_score, 64)
+    t1_weight = weights.tier1
+    t2_weight = weights.tier2
+    if tier2.total == 0:
+        t1_weight += t2_weight
+        t2_weight = 0
+
+    score = weights.base + t1_weight * tier1.coverage + t2_weight * tier2.coverage
+    if ai_bonus:
+        score += weights.ai_bonus
+    return round(score)
 
 
-def prompt_hash(kb_dir: Path) -> str:
+def prompt_hash(cfg: Config) -> str:
     """Stable hash of the inputs that determine a score, for cache invalidation.
 
-    Covers the score prompt, the candidate's verified facts, and the tailoring
-    policy. If any of these change, `scan` re-scores affected jobs.
+    Covers the score prompt, the candidate's verified facts, the tailoring
+    policy, and the score weights. If any of these change, `scan` re-scores
+    affected jobs.
+
+    Takes the whole `Config` rather than a `kb_dir` so the weights cannot be
+    left out at a call site: a weight change that did not move the hash would
+    silently leave a backlog of scores computed under the old coefficients,
+    mixed in with new ones and indistinguishable from them.
     """
     import hashlib
 
     h = hashlib.sha256()
     for rel in ("prompts/score.md", "profile/verified.json", "policies/tailoring-rules.md"):
-        p = kb_dir / rel
+        p = cfg.paths.kb_dir / rel
         if p.is_file():
             h.update(p.read_bytes())
         h.update(b"\0")
+    w = ScoreWeights.from_config(cfg)
+    # Canonical, order-stable, and explicit about the float so a 0.7 -> 0.70
+    # reformat cannot change the digest on its own.
+    h.update(
+        f"base={w.base};t1={w.tier1};t2={w.tier2};"
+        f"ai={w.ai_bonus};transfer={w.transferable_credit:.6f}".encode()
+    )
     return h.hexdigest()[:16]

@@ -235,11 +235,47 @@ in six places, not just the prompt:
    as work in progress. This is what made the July 2026 empty-`skills_familiar`
    failure look like a freeze. Per-attempt progress output in `apply_cmd` is
    the fix and is not yet implemented.
-4. **Score clamp.** `pipeline.score` re-partitions the LLM's claimed
-   must-haves against `verified.json` and caps the score band by
-   deterministic coverage (100 % → keep, 80-99 % → 89, 60-79 % → 79,
-   < 60 % → 64). The LLM cannot inflate its own band by listing missing
-   must-haves as matched.
+4. **Deterministic score (rewritten July 2026).** The LLM does not pick the
+   number. It extracts the posting's requirements into two tiers
+   (`must_haves` = hard requirements, `nice_to_haves` = wish list),
+   annotating transferable bridges, and `pipeline.score` computes:
+
+       base + tier1_weight * tier1_coverage
+            + tier2_weight * tier2_coverage
+            + ai_bonus
+
+   Coverage is graded, not counted: an exact profile hit contributes 1.0 and
+   a peer-family or annotated-bridge hit contributes
+   `SCORE_TRANSFERABLE_CREDIT`, so an exact-stack fit outranks a bridged one
+   instead of tying with it. Every extracted phrase is re-verified against
+   `verified.json`, so a hallucinated match becomes a gap and *lowers* the
+   score. An empty tier-2 folds its weight into tier-1, so a posting cannot
+   score higher merely for omitting a wish list.
+
+   **Why the LLM stopped scoring.** Across 169 live scores, six integers
+   accounted for 136 of them and nothing ever exceeded 82. A 9B model at
+   temperature 0 asked to choose from prose bands collapses onto the band
+   midpoints, and the old rubric's "vary the score across jobs" instruction
+   could never work, because each job is scored in its own call and the model
+   never sees a batch to vary within.
+
+   **Why tiers.** The previous clamp divided by one unweighted phrase list, so
+   a posting whose core stack the candidate fully matched but whose
+   nice-to-haves he missed computed as ~50 % coverage and was capped into the
+   low 60s. That was the band the user observed on roles that produced real
+   interviews. Weighting hard requirements far above wish-list items is what
+   separates "missed a bonus" from "missed a requirement".
+
+   A posting from which nothing at all could be extracted raises
+   `PipelineError` (a model failure, skipped and retried next scan) unless it
+   was declined, since a decline may legitimately stop the model reading.
+
+   The five coefficients live in `[pipeline]` as `score_base`,
+   `score_tier1_weight`, `score_tier2_weight`, `score_ai_bonus` and
+   `score_transferable_credit`, and all five feed `prompt_hash`, so tuning any
+   of them re-scores the backlog on the next `scan`. That is the point: scores
+   computed under different weights are not comparable, and a queue sorted on
+   two scales at once is worse than one that costs a re-scan to correct.
 
    **Transferable crediting (July 2026):** the re-partition honors the same
    transferable rules the prompt promises, instead of demoting them: a
@@ -252,13 +288,21 @@ in six places, not just the prompt:
    strict: the score can credit a bridge the resume is never allowed to
    claim.
 
-   **Tiny-denominator carve-out (May 2026):** when the LLM extracts fewer
-   than 3 must-haves total (matched + gaps < 3), the clamp is skipped and
-   the raw score stands. Adzuna's ~500-char snippets routinely yield 1-2
-   phrases. Clamping a 1/2 coverage to cap-at-64 over-penalizes
-   signal-poor postings rather than reflecting real fit. Three or more
-   must-haves still get clamped, which protects against the Pigment-style
-   regression where the model lists missing tech as matched.
+   The May 2026 tiny-denominator carve-out retired with the coverage clamp it
+   guarded. Signal-poor postings are handled by the thin-JD ceiling below,
+   which is gated on description length rather than on how many phrases the
+   model happened to extract.
+
+   **Thin-JD ceiling (May 2026, corrected July 2026):** independently of the
+   clamp, a description shorter than `pipeline.thin_jd_chars` is capped at
+   `pipeline.thin_jd_score_cap`. The model cannot penalize gaps it cannot
+   see, so short snippets otherwise float above fully-described postings.
+   The gate is description length alone. It was originally nested inside the
+   tiny-denominator branch, which meant a keyword-dense 500-char snippet
+   (4-6 extracted phrases, 100% coverage against them) escaped both the
+   clamp and the ceiling. On the 2026-07-28 backlog that accounted for 12 of
+   the 13 scores at 78 or above, and was the direct cause of the queue
+   topping out at 82.
 
    **Familiar-only-fit cap (Phase 10.2; senior-gated July 2026):** when
    EVERY phrase in `matched` resolves only into `verified.skills_familiar`
