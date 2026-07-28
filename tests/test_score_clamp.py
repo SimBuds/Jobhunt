@@ -270,6 +270,25 @@ def _job() -> Job:
     )
 
 
+def _full_jd_job(**overrides: Any) -> Job:
+    """A job whose description clears `thin_jd_chars`, so the thin-JD ceiling
+    is out of the picture.
+
+    `_job()` is ~44 chars, i.e. thin. Tests that care about the *coverage*
+    clamp must not silently also be exercising the thin-JD cap, or their
+    assertion stops describing what the test name claims."""
+    fields: dict[str, Any] = {
+        "id": "test:full",
+        "source": "test",
+        "external_id": "full",
+        "title": "Front-end Engineer",
+        "description": "React and TypeScript role. " * 50,  # ~1350 chars > 800
+        "company": "Pigment",
+    }
+    fields.update(overrides)
+    return Job(**fields)
+
+
 @pytest.mark.asyncio
 async def test_score_job_clamps_when_llm_inflates(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
@@ -294,7 +313,9 @@ async def test_score_job_clamps_when_llm_inflates(
         }
 
     monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
-    result = await score_job(_cfg(kb_dir), _job())
+    # Full-length JD so the thin-JD ceiling stays out of the way and the
+    # assertion measures the coverage clamp alone.
+    result = await score_job(_cfg(kb_dir), _full_jd_job())
     # 4/6 matched = 67% coverage → cap at 79.
     assert result.score == 79
     assert "Front-end frameworks" in result.gaps
@@ -329,6 +350,50 @@ async def test_score_job_caps_thin_jd_snippet(
     result = await score_job(_cfg(kb_dir), _job())
     # Pre-fix this stood at raw 78. Now the thin-JD ceiling caps it at 70.
     assert result.score == 70
+
+
+@pytest.mark.asyncio
+async def test_score_job_caps_dense_thin_snippet(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gap that made the thin-JD ceiling a near no-op (2026-07-28).
+
+    The cap used to live inside the `must_have_count < 3` branch, so it only
+    fired on snippets the model found almost nothing in. But a 500-char Adzuna
+    snippet is keyword-DENSE: it routinely yields 4-6 phrases, all of which
+    verify, giving 100% coverage against a denominator the JD was never big
+    enough to justify. Those sailed past the coverage clamp AND the ceiling.
+
+    Measured on the live 2026-07-28 backlog: 12 of the 13 scores at 78+ were
+    500-char snippets, which is what pinned the top of the queue at 82.
+
+    Phrase count was never the right signal. How much JD text the model got to
+    read is, so the gate is description length alone."""
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return {
+            "score": 82,
+            # 6 phrases, every one backed by the profile → 100% coverage, and
+            # well past the <3 tiny-denominator carve-out.
+            "matched_must_haves": [
+                "TypeScript",
+                "React",
+                "Next.js",
+                "Node.js",
+                "JavaScript (ES6+)",
+                "FastAPI",
+            ],
+            "gaps": [],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
+    result = await score_job(_cfg(kb_dir), _job())  # ~44-char description
+
+    # Pre-fix: 100% coverage kept the raw 82 and the ceiling never ran.
+    assert result.score == 70
+    assert result.gaps == []
 
 
 @pytest.mark.asyncio
@@ -656,6 +721,9 @@ async def test_score_job_keeps_score_when_coverage_full(
         }
 
     monkeypatch.setattr(score_mod, "complete_json", fake_complete_json)
-    result = await score_job(_cfg(kb_dir), _job())
+    # Full-length JD: 100% coverage keeps the raw score only when the posting
+    # was substantial enough to trust. The thin-JD variant is covered by
+    # `test_score_job_caps_dense_thin_snippet` below.
+    result = await score_job(_cfg(kb_dir), _full_jd_job())
     assert result.score == 95
     assert result.gaps == []

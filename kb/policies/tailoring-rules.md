@@ -9,14 +9,15 @@ injected): `kb/policies/authoring.md`.
 - Use **only** facts present in `kb/profile/verified.json`. If a JD asks for something
   not there, name it as a gap — never invent.
 - Do not invent metrics, employers, dates, projects, or skills.
-- Do not promote a "Familiar" skill into a Core/primary category.
-  {candidate_name}'s Familiar bucket is: Java, Spring Boot, Angular, MCP Servers,
-  Agile/Scrum, Headless Architecture, Figma, Astro.
-- Python is **Core (data/devops)**, not Familiar — {candidate_name} writes and operates this CLI
-  daily. Do not list Python under Familiar.
-- Java and Spring Boot are **Familiar** (GBC coursework only); do not promote to Core
-  even if the JD asks. Name as gap if must-have. **Angular** is Familiar too
-  (least-used); do not promote to Core.
+- Do not promote a "Familiar" skill into a Core/primary category. The Familiar
+  bucket is **exactly `verified_facts.skills_familiar`** — read it from there,
+  never from memory. A skill absent from that list is not Familiar.
+- Everything in that bucket is academic, coursework, or light-use only. Do not
+  promote one to Core even if the JD asks. Name as gap if must-have.
+- Conversely, a skill listed in any Core bucket **is** Core, even if it reads
+  like a learning-stage technology. Judge by the bucket a skill appears in, not
+  by the name. Python in particular is **Core (data/devops)** —
+  {candidate_name} writes and operates this CLI daily.
 - Do not fabricate a job title {candidate_name} has not held (no Senior/Staff/Lead/Principal/Architect).
 
 ## Reframe-only adjustments (allowed)

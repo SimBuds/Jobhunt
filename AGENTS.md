@@ -203,18 +203,17 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama. On Ollama 0.30.3 (new engine) bare `qwen3.5:9b` Q4_K_M lands at ~5.6 GB resident at `num_ctx=32768`, 100% GPU (measured 2026-06-04, was ~9.1 GB on the old engine). Disk size is no longer a footprint proxy: always confirm residency with `ollama ps` (look for `100% GPU`, not a CPU/GPU split). The `qwen3.5:9b-q8_0` build was evaluated and rejected: its ~10 GB weights spill to CPU at both 16k and 32k on this card, and the bench showed no quality gain over Q4_K_M.
 - Ollama at `http://localhost:11434`
-- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=32768`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is deliberately *not* set on this box (Casey runs these models across projects that each pick their own context window, so context is owned only at the app level) — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx` in the gateway is what makes bare `qwen3.5:9b` work. It was raised from 16384 to 32768 on 2026-06-04 after the new Ollama engine kept Q4_K_M 100% GPU-resident at 32k (~5.6 GB), so the extra context is free headroom. All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=32768` (the score/tailor prompts still run ~6k tokens, so `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` need no change: 32k is headroom, not license to feed longer inputs) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work, matching the systemd `OLLAMA_KEEP_ALIVE=-1`) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=32768`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is deliberately *not* set on this box (Casey runs these models across projects that each pick their own context window, so context is owned only at the app level) — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx` in the gateway is what makes bare `qwen3.5:9b` work. It was raised from 16384 to 32768 on 2026-06-04 after the new Ollama engine kept Q4_K_M 100% GPU-resident at 32k (~5.6 GB), so the extra context is free headroom. All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=32768` (the score/tailor prompts still run ~6k tokens, so `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` need no change: 32k is headroom, not license to feed longer inputs) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work and takes precedence over the systemd `OLLAMA_KEEP_ALIVE=30m` idle fallback) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q8_0"      # q8_0 KV cache: higher-precision than q5_0, affordable now that Q4_K_M weights are ~5.6 GB resident (new-engine footprint), better long-context coherence on the ~6k-token prompts
+  Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # q4_0 KV cache (2026-07-27): smallest quantized cache, ~288 MiB at num_ctx=32768 vs ~576 MiB for q8_0. Chosen to preserve VRAM headroom after the Ollama 0.32.x engine grew the resident footprint past the 0.30.3 measurements below. Trade-off: q4_0 is a less-exercised path than q8_0 — if CUDA illegal-memory-access faults appear during scoring, revert this to q8_0 first
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
-  Environment="OLLAMA_KEEP_ALIVE=-1"           # load forever; per-call keep_alive=-1 from gateway matches this
-  Environment="OLLAMA_MAX_LOADED_MODELS=2"     # up to two models resident — jobhunt uses one, but the box is shared across projects
-  Environment="OLLAMA_VULKAN=0"                # CUDA backend only
+  Environment="OLLAMA_KEEP_ALIVE=30m"          # idle unload after 30m (2026-07-27, was -1): the gateway's per-call keep_alive=-1 takes precedence during a run, so this only governs callers that omit the key (e.g. the bench script) and frees VRAM for other projects once the box goes idle
+  Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model (2026-07-27): jobhunt runs a single hot model per scan, and on a 10 GB card a second resident model would force a CPU spill
   ```
   Note: `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set. Context is owned only at the app level (the gateway's `num_ctx`) so each project sharing this box picks its own window. A context change is a one-knob gateway edit, not a paired systemd edit.
-- The box can hold two models (`OLLAMA_MAX_LOADED_MODELS=2`) for cross-project use, but jobhunt runs one hot model at a time. The single-model-per-scan design eliminates reload churn between task types, which was a major source of scan freezes prior to the May 2026 consolidation.
+- The box holds one model at a time (`OLLAMA_MAX_LOADED_MODELS=1`, tightened from 2 on 2026-07-27). The single-model-per-scan design eliminates reload churn between task types, which was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
 
@@ -583,6 +582,15 @@ one moment a user needs it):
 pointing the user to `convert-resume`. Do not bypass this guard — adding new
 top-level commands that touch scoring/listing/applying must call it too.
 
+**Write guard on `convert-resume`.** The command refuses to write `kb/profile/`
+when the parser reports data loss, and (July 2026) also when a skill bucket that
+carried items in the previous `verified.json` parses to empty. Reaching for
+`--force` to get past either is almost always wrong: an emptied bucket usually
+means a resume edit dropped a row, and writing the degraded profile anyway is
+what breaks `apply` on every job (the fabrication guard rejects every skill that
+went missing). Fix the resume or the parser first. Use `--force` only when the
+content is genuinely meant to be gone.
+
 ## Ingestion rules — non-negotiable
 
 1. **Public APIs only** *(one sanctioned exception: Job Bank — see below)*. Greenhouse `boards-api`, Lever `api.lever.co/v0`, Ashby posting API, Adzuna CA (with API key), SmartRecruiters public Posting API (`api.smartrecruiters.com/v1/companies/{slug}/postings`, no key — the **list** response is summary-only with no `jobAd`, so the adapter fetches the per-posting **detail** endpoint `/postings/{id}` for the description; the detail fetch is skipped for titles `is_non_engineering_title` will drop when `drop_non_engineering_titles` is on, so hospital tenants like UHN don't cost a request per clinical role), Workable widget API (`apply.workable.com/api/v1/widget/accounts/{slug}`, no key), Recruitee offers API (`{slug}.recruitee.com/api/offers/`, no key), generic RSS.
@@ -619,10 +627,11 @@ top-level commands that touch scoring/listing/applying must call it too.
    by reasoning tokens. If a future task slot needs thinking, plumb it
    through as a per-call kwarg — don't flip the default.
 3. **Keep-alive + warm-up.** `keep_alive=-1` in the payload pins the model in
-   VRAM for the duration of an active run. The systemd-level
-   `OLLAMA_KEEP_ALIVE=-1` matches it, so the model stays resident between scans
-   too, and the per-call value is what Ollama uses while a request is in flight,
-   so the model never drops mid-pipeline. `scan_cmd._warm_model()` fires a tiny chat
+   VRAM for the duration of an active run, and the per-call value is what Ollama
+   uses while a request is in flight, so the model never drops mid-pipeline. The
+   systemd-level `OLLAMA_KEEP_ALIVE=30m` is the idle fallback that applies once
+   the pipeline stops calling — it unloads the model after 30 minutes so a shared
+   box reclaims the VRAM, rather than holding it forever. `scan_cmd._warm_model()` fires a tiny chat
    before the scoring loop so the first real call doesn't pay cold-load on
    top of the 240 s gateway timeout.
 4. **Context length is app-owned** (2026-05-28, raised to 32k 2026-06-04). The
@@ -789,9 +798,10 @@ top-level commands that touch scoring/listing/applying must call it too.
    up if the thin-JD band looks under-ranked.
 
    **Familiar-only-fit cap (Phase 10.2; senior-gated July 2026).** When
-   every matched must-have resolves into `verified.skills_familiar` (Java,
-   Spring Boot, Angular, MCP Servers, Agile/Scrum, Headless Architecture,
-   Figma, Astro) and NOT into any Core bucket
+   every matched must-have resolves into `verified.skills_familiar` (read
+   that bucket from `kb/profile/verified.json`, never from memory or from a
+   list written down here — it is regenerated from the resume and an
+   enumeration in prose goes stale silently) and NOT into any Core bucket
    (`_all_matched_are_familiar`), the deterministic post-filter in
    `pipeline.score` splits by title band:
    - **Senior-band title:** cap 54 + decline (unchanged — the original

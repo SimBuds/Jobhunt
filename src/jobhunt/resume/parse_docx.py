@@ -641,6 +641,30 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
         else:
             warnings.append(f"PROJECTS: bullet before any project header, skipped: {text!r}")
 
+    # `skills_projects` is Core-grade (PLAN.md honesty enforcement item 1):
+    # technology demonstrably shipped in a public personal project, as opposed
+    # to the academic/light-use `skills_familiar`. It used to be fed ONLY by a
+    # "Project Stack:" row inside TECHNICAL SKILLS, so a resume that carries its
+    # stack on the project's own `Stack:` line — the conventional layout, and the
+    # one `_parse` above already understands — left the bucket empty. The stack
+    # was parsed and then discarded, and the tailor could claim none of it: every
+    # item was absent from verified.json, so the fabrication guard read it as
+    # invented. Derive from the parsed project stacks and union in the explicit
+    # row, which stays a supported shape.
+    #
+    # De-duped case-insensitively with the first spelling winning, so a library
+    # shared by two projects is listed once. Items already present in a Core
+    # bucket are deliberately NOT filtered out: appearing in both is accurate
+    # (the skill is both generally held and project-demonstrated), and the
+    # honesty checks concatenate the buckets anyway.
+    project_skills: list[str] = []
+    seen_project_skills: set[str] = set()
+    for item in skill_buckets["Project Stack"] + [s for p in projects for s in p.stack]:
+        key = item.strip().lower()
+        if key and key not in seen_project_skills:
+            seen_project_skills.add(key)
+            project_skills.append(item.strip())
+
     facts = VerifiedFacts(
         name=name,
         contact_line=contact_line,
@@ -649,7 +673,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
         skills_cms=skill_buckets["CMS & E-commerce"],
         skills_data_devops=skill_buckets["Data & DevOps"],
         skills_ai=skill_buckets["AI & Tooling"],
-        skills_projects=skill_buckets["Project Stack"],
+        skills_projects=project_skills,
         skills_familiar=skill_buckets["Familiar"],
         work_history=work_history,
         certifications=certifications,

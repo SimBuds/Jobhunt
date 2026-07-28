@@ -118,9 +118,9 @@ Use these sparingly.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
 - **All matched skills are Familiar-only AND the title is Senior-band.**
   When every entry you'd put in `matched_must_haves` comes from
-  `verified_facts.skills_familiar` (Java, Spring Boot, MCP Servers,
-  Agile/Scrum, Headless Architecture, Figma — academic / coursework /
-  light-use only) and the title is Senior/Lead/Staff/Principal/Architect,
+  `verified_facts.skills_familiar` (read that list from the profile, never
+  from memory — it is academic / coursework / light-use only) and the title
+  is Senior/Lead/Staff/Principal/Architect,
   the role is a misrepresentation risk — decline with reason
   `"role's matched skills are all Familiar (academic/light use); not Core
   production experience"`. For **junior/intermediate titles**, do NOT

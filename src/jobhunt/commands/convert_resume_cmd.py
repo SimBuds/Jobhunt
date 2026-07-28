@@ -7,6 +7,7 @@ one hard-coded filename.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tomllib
@@ -217,6 +218,65 @@ def _dropped_content_warnings(warnings: list[str]) -> list[str]:
     ]
 
 
+# Buckets worth comparing against the previous snapshot, paired with the label
+# used in the warning text.
+#
+# `_dropped_content_warnings` above can only classify warnings the parser
+# actually emitted, and `parse_baseline` only warns about rows it SAW and could
+# not place. A row that is simply *gone* from the document produces no warning
+# at all, so the guard never fires. That blind spot is not hypothetical: the
+# 2026-07-25 reformat dropped the "Familiar" row, `skills_familiar` silently
+# became `[]`, and every consumer then read the empty bucket as fact. The tailor
+# rejected every Familiar skill as unverified (breaking `apply` outright), and
+# the score clamp's Familiar-only cap stopped firing without a word.
+_TRACKED_BUCKETS: tuple[tuple[str, str], ...] = (
+    ("skills_core", "Core"),
+    ("skills_cms", "CMS & E-commerce"),
+    ("skills_data_devops", "Data & DevOps"),
+    ("skills_ai", "AI & Tooling"),
+    ("skills_projects", "Project Stack"),
+    ("skills_familiar", "Familiar"),
+    ("work_history", "work history"),
+    ("projects", "projects"),
+)
+
+
+def _bucket_regressions(facts: VerifiedFacts, verified_path: Path) -> list[str]:
+    """Warnings for buckets that carried content last run and parse empty now.
+
+    Compares the freshly parsed facts against the previous `verified.json`
+    snapshot. Emitted as warning strings rather than handled inline so they flow
+    through `_dropped_content_warnings` and inherit the existing fail-closed
+    write refusal, its `--force` escape hatch, and its exit code. The strings
+    deliberately avoid every `_BENIGN_WARNING_MARKERS` substring so they
+    classify as loss.
+
+    Returns `[]` when there is no readable prior snapshot. A first run has
+    nothing to regress against, and a corrupt or hand-edited snapshot is not
+    evidence the *resume* lost anything, so neither may block the write.
+    """
+    if not verified_path.is_file():
+        return []
+    try:
+        previous = json.loads(verified_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(previous, dict):
+        return []
+
+    regressions = []
+    for key, label in _TRACKED_BUCKETS:
+        was = previous.get(key) or []
+        now = getattr(facts, key, None) or []
+        if was and not now:
+            regressions.append(
+                f"{label}: had {len(was)} item(s) in the previous "
+                f"verified.json and parses to nothing now. The matching row is "
+                f"likely missing from the resume after an edit."
+            )
+    return regressions
+
+
 @app.callback(invoke_without_command=True)
 def run(
     docx: Path | None = typer.Option(
@@ -251,6 +311,11 @@ def run(
 
     facts, warnings = parse_baseline(docx)
 
+    verified = cfg.paths.kb_dir / "profile" / "verified.json"
+    # Appended BEFORE classification so a vanished row inherits the same
+    # fail-closed refusal the parser's own loss warnings already get.
+    warnings = warnings + _bucket_regressions(facts, verified)
+
     dropped = _dropped_content_warnings(warnings)
     if dropped and not force:
         typer.echo(
@@ -271,7 +336,6 @@ def run(
         )
         raise typer.Exit(code=1)
 
-    verified = cfg.paths.kb_dir / "profile" / "verified.json"
     write_verified_json(facts, verified)
     written = write_kb_markdown(facts, cfg.paths.kb_dir)
 

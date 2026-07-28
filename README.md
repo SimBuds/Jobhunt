@@ -138,7 +138,6 @@ source .venv/bin/activate        # puts `jobhunt` on PATH; or prefix commands wi
 playwright install chromium
 
 ollama pull qwen3.5:9b           # base model: all LLM tasks
-ollama pull nomic-embed-text     # embeddings (reserved for future use)
 ```
 
 Default model in config is base `qwen3.5:9b` (Q4_K_M). The gateway supplies its
@@ -156,12 +155,16 @@ The gateway is tuned to a specific server config. Mirror these
 
 ```ini
 [Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q4_0"
-Environment="OLLAMA_FLASH_ATTENTION=1"
-Environment="OLLAMA_NUM_PARALLEL=1"
-Environment="OLLAMA_MAX_LOADED_MODELS=1"
-Environment="OLLAMA_KEEP_ALIVE=10m"
+Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # smallest quantized KV cache — preserves VRAM headroom on a 10 GB card
+Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
+Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches the sequential pipeline
+Environment="OLLAMA_KEEP_ALIVE=30m"          # idle unload after 30m; the gateway's per-call keep_alive=-1 overrides it during a run
+Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model — jobhunt runs a single hot model per scan
 ```
+
+Confirm residency after any change with `ollama ps`: it must report `100% GPU`,
+not a CPU/GPU split. A split means the model spilled to CPU and both throughput
+and stability degrade.
 
 `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set — context is owned at the app
 level (the gateway's `num_ctx`) so each project sharing this box picks its own
