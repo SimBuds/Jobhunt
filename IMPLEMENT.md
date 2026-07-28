@@ -288,7 +288,7 @@ but the score/decline pair reads as contradictory. Logged below.
   transferable_credit=0.7)`, `prompt_hash` `6547fe1cf5d99577`, and simulating
   tier1 50 -> 55 moves it to `d6d0b31ff400b2ae`.
 
-### Phase 4: persist the score breakdown for outcome calibration [ ]
+### Phase 4: persist the score breakdown for outcome calibration [x] DONE
 
 **Goal:** every score row records its components so `config calibrate` can
 eventually tune weights against real interview outcomes.
@@ -304,6 +304,52 @@ eventually tune weights against real interview outcomes.
 - Verify: migration applies on a copy of the live db, new scores carry
   breakdown JSON, old rows read back as NULL without breaking `list` or
   `calibrate`. `pytest -q`.
+
+**Outcome (observed, not predicted):**
+
+- `migrations/0010_score_breakdown.sql` adds one nullable TEXT column. A test
+  asserts the file contains `ALTER TABLE SCORES ADD COLUMN` and none of
+  DROP/DELETE/UPDATE/TRUNCATE, so it cannot become destructive later.
+- `ScoreBreakdown` frozen dataclass records per-tier matched/total/credit, the
+  AI bonus, pre-cap `computed`, post-cap `final`, `caps_applied`, and the
+  weights in force. `caps_applied` is appended only when a ceiling actually
+  lowers the score, so a cap that did not bind is not recorded as one.
+- `ScoreResult.breakdown` is defaulted + last, so `apply_cmd._load_score`
+  rebuilding from DB columns stays valid and reads None.
+
+**Two bugs this phase would have shipped, found by testing rather than
+reasoning, both now fixed and pinned:**
+
+1. `apply` does not migrate on entry the way `scan` does, so a breakdown write
+   against a DB not scanned since would fail hard with `table scores has no
+   column named breakdown`. Reproduced against a synthetic pre-0010 database
+   before fixing. `apply` now migrates (idempotent), and a test pins both the
+   raw failure and the presence of the migrate call.
+2. `calibrate` selected `s.breakdown` unconditionally, which raises `no such
+   column` on a pre-0010 DB. It is read-only and must not migrate one out from
+   under the user, so it now inspects `PRAGMA table_info` and selects
+   `NULL AS breakdown` when the column is absent.
+
+**Verification:**
+
+- Migration applied to a **copy of the live database**: 255 score rows before
+  and after, identical score sum (9258), column present, all 255 legacy rows
+  NULL. Nothing rewritten.
+- Real end-to-end score wrote and read back valid breakdown JSON.
+- The phase's premise, confirmed on live data: three separate postings all
+  land at **final=70** while having been computed **86, 90 and 90** at
+  **92%, 100% and 100%** tier-1 coverage, all flattened by `caps_applied:
+  ["thin_jd"]`. Calibrating against the score column would have been
+  calibrating against the ceiling.
+- `_tier1_coverage` returns None (not 0.0) for eight malformed/absent shapes,
+  so unmeasured rows cannot drag the bottom coverage band down.
+- One of my own test assertions was wrong and corrected: I asserted a 3.0/5
+  coverage row lands in `< 60%`, but bands are `[lo, hi)` so 0.60 is the
+  bottom of `60-74%`. The code was right.
+- `pytest -q`: **1098 passed**, up from 1075. `ruff` clean, `mypy` clean.
+
+**Not run:** the live `data/jobhunt.db` has NOT been migrated — only a copy
+was. It migrates automatically on the next `jobhunt scan` or `apply`.
 
 ## Expected outcome
 

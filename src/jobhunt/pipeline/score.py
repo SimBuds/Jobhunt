@@ -299,6 +299,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         and is_senior_title(job.title)
     ):
         decline_reason = None
+        if score > 70:
+            caps_applied.append("senior_band")
         score = min(score, 70)
 
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
@@ -331,6 +333,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
             # Senior familiar-stack roles stay declined — a Familiar-only
             # resume against a senior bar is a genuine misrepresentation risk
             # (the May 2026 Java Developer @ Ignite Talent ship).
+            if score > 54:
+                caps_applied.append("familiar_only_senior")
             score = min(score, 54)
             decline_reason = (
                 "role's matched skills are all Familiar (academic/light use "
@@ -342,6 +346,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
             # not a misrepresentation — the resume's Familiar section makes no
             # production claim. Cap into the 55-59 stretch band and keep the
             # role visible instead of declining it.
+            if score > 58:
+                caps_applied.append("familiar_only_junior")
             score = min(score, 58)
 
     # The old score=0-as-silent-decline floor bump is gone: the model no longer
@@ -353,8 +359,27 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         matched_must_haves=matched,
         gaps=gaps,
         decline_reason=decline_reason,
-        ai_bonus_present=bool(result.get("ai_bonus_present")),
+        ai_bonus_present=ai_bonus,
         model=model,
+        breakdown=ScoreBreakdown(
+            tier1_matched=len(tier1.matched),
+            tier1_total=tier1.total,
+            tier1_credit=tier1.credit,
+            tier2_matched=len(tier2.matched),
+            tier2_total=tier2.total,
+            tier2_credit=tier2.credit,
+            ai_bonus=ai_bonus,
+            computed=computed,
+            final=score,
+            caps_applied=caps_applied,
+            weights={
+                "base": weights.base,
+                "tier1": weights.tier1,
+                "tier2": weights.tier2,
+                "ai_bonus": weights.ai_bonus,
+                "transferable_credit": weights.transferable_credit,
+            },
+        ),
     )
 
 

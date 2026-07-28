@@ -36,6 +36,7 @@ from jobhunt.db import (
     connect,
     mark_interview_scheduled,
     mark_response_received,
+    migrate,
     set_decline_reason,
     update_job_url,
     upsert_application,
@@ -400,6 +401,12 @@ async def _resolve_manual(
     )
 
     conn = connect(cfg.paths.db_path)
+    # `scan` migrates on entry; `apply` can be the first command run against a
+    # database (e.g. `apply --url`), and scoring writes a `breakdown` column
+    # added in migration 0010. Without this, that write fails with "table
+    # scores has no column named breakdown" on any DB not scanned since.
+    # Idempotent: already-applied migrations are skipped.
+    migrate(conn, cfg.paths.migrations_dir)
     try:
         if not no_score:
             typer.echo("  scoring...")
@@ -419,6 +426,9 @@ async def _resolve_manual(
                         must_clarify=result.gaps,
                         model=result.model,
                         prompt_hash=ph,
+                        breakdown=(
+                            result.breakdown.to_json() if result.breakdown else None
+                        ),
                     )
                     set_decline_reason(conn, job.id, result.decline_reason)
                 tag = (

@@ -277,6 +277,20 @@ in six places, not just the prompt:
    computed under different weights are not comparable, and a queue sorted on
    two scales at once is worse than one that costs a re-scan to correct.
 
+   **Score breakdowns (migration 0010).** Every score records how it was
+   reached in `scores.breakdown`: per-tier matched/total/credit, the AI bonus,
+   the pre-cap `computed` value, the post-cap `final` value, which ceilings
+   bound (`caps_applied`), and the weights in force. The final integer alone is
+   ambiguous. Measured on the live backlog, three separate postings all landed
+   at exactly 70, but were computed 86, 90 and 90 at 92%, 100% and 100% tier-1
+   coverage before the thin-JD ceiling flattened them. Tuning weights against
+   the score column would therefore be tuning against the ceilings.
+   `config calibrate` now reports interview rate by tier-1 coverage alongside
+   the score bands, which is the signal the weights actually control. Rows
+   written before the migration read back NULL and are excluded from that
+   table with a count, never treated as zero coverage: a missing measurement is
+   not a bad one.
+
    **Transferable crediting (July 2026):** the re-partition honors the same
    transferable rules the prompt promises, instead of demoting them: a
    phrase verifies via literal presence, a `PEER_FAMILIES` sibling

@@ -7,6 +7,7 @@ import json
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import httpx
 import typer
@@ -313,17 +314,24 @@ def calibrate() -> None:
     cfg = load_config()
     conn = connect(cfg.paths.db_path)
     try:
+        # `calibrate` is read-only, so it must not migrate a database out from
+        # under the user. On a DB that predates migration 0010 the breakdown
+        # column simply does not exist yet; select NULL in its place rather
+        # than failing, and the coverage table reports itself as unavailable.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(scores)")}
+        breakdown_col = "s.breakdown" if "breakdown" in cols else "NULL AS breakdown"
         rows = list(
             conn.execute(
-                """
+                f"""
                 SELECT
                     s.score,
+                    {breakdown_col},
                     a.status
                 FROM applications a
                 JOIN scores s ON s.job_id = a.job_id
                 WHERE a.status NOT IN ('drafted', 'withdrawn')
                 ORDER BY s.score
-                """
+                """  # noqa: S608 - column name is chosen from a literal pair above
             )
         )
     finally:
@@ -359,8 +367,69 @@ def calibrate() -> None:
         if total
         else ""
     )
+    _echo_coverage_calibration(rows, interview_statuses)
     typer.echo(
         "\nCurrent min-score: "
         + str(cfg.pipeline.min_score)
         + "  (set pipeline.min_score in config.toml to change)"
     )
+
+
+def _tier1_coverage(breakdown_json: str | None) -> float | None:
+    """Graded tier-1 coverage from a stored breakdown, or None when unknown.
+
+    None means the row predates migration 0010 (or was written without
+    components). Callers must skip those rather than read them as zero — a
+    missing measurement is not a bad one.
+    """
+    if not breakdown_json:
+        return None
+    try:
+        data = json.loads(breakdown_json)
+        tier1 = data["tier1"]
+        total = tier1["total"]
+    except (ValueError, TypeError, KeyError):
+        return None
+    if not isinstance(total, int) or total <= 0:
+        return None
+    credit = tier1.get("credit")
+    if not isinstance(credit, int | float):
+        return None
+    return float(credit) / total
+
+
+def _echo_coverage_calibration(
+    rows: list[Any], interview_statuses: set[str]
+) -> None:
+    """Interview rate by tier-1 coverage, which is what the weights control.
+
+    The score bands above mix earned scores with capped ones: a thin-JD posting
+    pulled down to 70 and a genuine two-thirds match sit in the same row, so
+    tuning weights off that table would be tuning off the ceilings instead.
+    Coverage is the underlying fit signal, so it is the honest calibration
+    target."""
+    scored = [(c, r["status"]) for r in rows if (c := _tier1_coverage(r["breakdown"])) is not None]
+    missing = len(rows) - len(scored)
+
+    if not scored:
+        typer.echo(
+            "\nNo score breakdowns recorded yet — coverage calibration needs "
+            "applications scored after migration 0010. Re-scan to populate."
+        )
+        return
+
+    bands = [(0.9, 1.01, "90-100%"), (0.75, 0.9, "75-89%"),
+             (0.6, 0.75, "60-74%"), (0.0, 0.6, "< 60%")]
+    typer.echo(f"\n{'Tier-1 coverage':<16} {'Applied':>8} {'Interviews':>11} {'Rate':>7}")
+    typer.echo("-" * 46)
+    for lo, hi, label in bands:
+        band = [s for cov, s in scored if lo <= cov < hi]
+        applied = len(band)
+        interviews = sum(1 for s in band if s in interview_statuses)
+        rate = f"{100 * interviews / applied:.0f}%" if applied else "—"
+        typer.echo(f"{label:<16} {applied:>8} {interviews:>11} {rate:>7}")
+    if missing:
+        typer.echo(
+            f"\n({missing} application(s) scored before breakdowns were "
+            "recorded, excluded from the coverage table.)"
+        )
