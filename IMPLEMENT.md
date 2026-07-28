@@ -370,7 +370,7 @@ Sources: jobscan.co, airesume.guru/blog/ats-score-resume-match-rates,
 atschecker.ai/guides/ats-score-explained,
 job200.com/blog/how-does-an-ats-score-your-resume-the-full-breakdown.
 
-## Context window: 16k trialled, reverted to 32k + q8_0 KV cache (2026-07-28) [x] DONE
+## Context window: 16k trialled, reverted to 32k; KV cache q4_0 -> q8_0 -> q4_0 (2026-07-28) [x] DONE
 
 Not part of the scoring plan; requested mid-Phase-2 and done as its own change.
 Net result: **`num_ctx` and `MAX_DESC_CHARS` are unchanged at 32768 / 16000**,
@@ -411,6 +411,18 @@ sized a fixture JD against it. Its real contract is that prep tracks the
 scoring budget and clears the old 6000 floor, so it now asserts the binding and
 derives the fixture from the live budget instead of a number that goes stale on
 every context change.
+
+**Follow-up, same day: q8_0 -> q4_0 again, and `OLLAMA_KEEP_ALIVE` 30m -> 10m.**
+The q8_0 CPU spill measured above (6.9 GB, 14%/86%) was judged the worse trade
+of the two, so the KV cache is back to **q4_0** — ~288 MiB instead of ~576 MiB
+at `num_ctx=32768`, and the model is 100% GPU-resident again at ~5.7 GB. The
+intermittent CUDA illegal-memory-access fault documented above is a known,
+accepted caveat of that path, not a solved problem: the gateway's retry absorbs
+it, and q8_0 stays the fallback if it starts stalling full scans. The idle
+unload also tightened from 30m to 10m so a shared box reclaims VRAM sooner;
+it does not touch an active run, where the per-call `keep_alive=-1` wins.
+Current systemd env is recorded in [AGENTS.md](AGENTS.md) Hardware context.
+`num_ctx` and `MAX_DESC_CHARS` are still 32768 / 16000 — unchanged by any of this.
 
 ## Model comparison (run 2026-07-28, informs nothing in this plan yet)
 
