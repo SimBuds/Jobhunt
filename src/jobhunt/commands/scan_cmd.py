@@ -171,7 +171,7 @@ async def _run(
         if skip_score:
             return
 
-        ph = prompt_hash(cfg.paths.kb_dir)
+        ph = prompt_hash(cfg)
         rows = jobs_to_score(
             conn, current_hash=ph, limit=limit, max_age_days=max_age_days
         )

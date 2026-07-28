@@ -113,7 +113,7 @@ transferable_credit = 0.7   # exact match counts 1.0
 
 ## Phases
 
-### Phase 1: apply the thin-JD cap by description length alone [ ]
+### Phase 1: apply the thin-JD cap by description length alone [x] DONE
 
 **Goal:** a sub-`thin_jd_chars` description can never score above
 `thin_jd_score_cap`, regardless of how many must-haves were extracted.
@@ -128,7 +128,38 @@ transferable_credit = 0.7   # exact match counts 1.0
   today, currently returns the raw score). Existing thin-JD tests still pass.
   `pytest -q` green.
 
-### Phase 2: LLM extracts tiered requirements, code computes the score [ ]
+**Outcome (observed, not predicted):**
+
+- The cap moved out of the `must_have_count < 3` branch and now runs after
+  whichever clamp path was taken. The `< 3` branch keeps its separate job.
+- Two existing tests failed on the change and were **not** simply re-baselined.
+  `test_score_job_clamps_when_llm_inflates` and
+  `test_score_job_keeps_score_when_coverage_full` both used the `_job()`
+  fixture, whose description is ~44 chars, i.e. thin. They are coverage-clamp
+  tests that were silently also exercising the thin path, so their assertions
+  had stopped describing what their names claim. Added a `_full_jd_job()`
+  helper (~1350 chars) and pointed both at it, making each test single-purpose.
+- New `test_score_job_caps_dense_thin_snippet` pins the actual gap. Verified it
+  fails without the change: restoring the old `must_have_count < 3 and ...`
+  gate fails exactly that one test and nothing else.
+- `ruff` flagged SIM108 on the new if/else; rewritten as a ternary.
+- `pytest -q`: 1070 passed, up from 1069. `ruff` and `mypy` clean.
+- **Live projection over the 169 stored scores:** 93 are thin, and **17 sit
+  above the cap and are corrected to 70**. Afterwards the only posting left
+  above 70 is the one full JD in the backlog (faire, 12,530 chars, 82). The
+  top of the queue stops being 12 Adzuna snippets and one real posting.
+- **Real end-to-end re-score** (Ollama, not mocked): *Software Engineer @
+  Nylas*, 500-char description, stored at 82. Re-scored **70** with
+  `matched=7 gaps=0` — 100% coverage on 7 phrases, textbook confirmation of
+  the bypass this phase closes (7 phrases is far past the `< 3` carve-out, so
+  the old gate never fired). One earlier attempt died on an Ollama-side CUDA
+  illegal-memory-access; the retry succeeded and the error was unrelated to
+  this change.
+- Docs: AGENTS.md and PLAN.md both described the ceiling as living *inside*
+  the tiny-denominator carve-out, which is the exact coupling this phase
+  removed. Both corrected.
+
+### Phase 2: LLM extracts tiered requirements, code computes the score [x] DONE
 
 **Goal:** replace the LLM-chosen integer with a deterministic score computed
 from verified tier-1/tier-2 coverage.
@@ -155,7 +186,62 @@ from verified tier-1/tier-2 coverage.
   re-score the three known jobs (Saje, Tiger, Viv) plus the faire full JD
   with real Ollama and report observed spread. `pytest -q` green.
 
-### Phase 3: weights in config, folded into prompt_hash [ ]
+**Outcome (observed, not predicted):**
+
+- Prompt: schema is now `must_haves` / `nice_to_haves` / `decline_reason` /
+  `ai_bonus_present`. The whole "Score rubric" section and the
+  `score=0`-reserved-for-declines paragraph are gone. Added explicit tier
+  definitions, a "never invent balance" rule (an empty tier-2 is normal), a
+  "do not filter by whether the candidate has the skill" rule (omitting a
+  missed requirement inflates the score), and a worked example.
+- Code: `_phrase_credit` grades evidence (exact 1.0 / bridged 0.7 / none 0.0),
+  `_TierResult` carries matched, gaps and graded credit, `_verify_tier`
+  partitions one tier with a caller-owned `seen` set shared across tiers, and
+  `_compute_score` does the arithmetic. `_coerce_score`,
+  `_clamp_by_coverage`, `_coverage_pct` and `_verify_against_profile` were
+  deleted rather than left dead.
+- Discovered mid-phase: declines must be exempt from the
+  no-requirements-extracted error. The model may legitimately stop reading
+  once a title disqualifies a role, and raising there would mean the decline
+  never persists and the job re-scores on every scan forever. Declines are
+  filtered by `decline_reason`, not by score, so their number is cosmetic.
+- Tests: `tests/test_score_compute.py` is new and pins the calibration table
+  as the contract. `test_score_clamp.py` was ported, not re-baselined — three
+  of its tests had been asserting against the thin `_job()` fixture while
+  claiming to test the coverage clamp, and one (`familiar_only_soft_band`)
+  could not prove its cap fired because the computed score landed below the
+  cap; it now uses two genuinely Familiar-only skills so the uncapped value
+  (90) is well above the cap (58).
+- One of my own assertions was wrong and got corrected rather than kept:
+  `test_tier1_dominates_tier2` asserted a >= 20 point gap I had not computed.
+  The real design gives 15 (missing one of two hard requirements costs 25,
+  missing the sole wish-list item costs 10). Now pinned to the true values.
+- `pytest -q`: 1064 passed. `ruff` and `mypy` clean.
+
+**Live re-score, 17 postings across the old bands (real Ollama):**
+
+Scores now span 30-88 across 13 distinct values, versus six integers covering
+136 of 169 before. The ordering inverted in the intended direction:
+
+```
+old  new   chars   tier1
+ 57   80    8015   6/8     Senior Software Engineer      <- full JD rises
+ 82   73   12530   9/21    faire Product Engineer
+ 82   50     500   1/3     Software Engineer             <- snippet falls
+ 62   35     500   0/2     AI/ML Engineer
+ 58   32   20068   1/10    Observability Architect       <- declined
+ 42   35   15573   0/22    Senior Network Engineering    <- declined
+```
+
+**Follow-up found, not fixed (out of Phase 2 scope):** an LLM-emitted
+Familiar-only decline on a *senior* title is preserved without ever being
+checked against `_all_matched_are_familiar`. Observed live: a 6228-char
+posting scored 88 with 6/8 matched, carrying a Familiar-only decline the
+deterministic check would have rejected. Pre-existing behaviour, not a Phase 2
+regression, and harmless to selection (declines are filtered out regardless),
+but the score/decline pair reads as contradictory. Logged below.
+
+### Phase 3: weights in config, folded into prompt_hash [x] DONE
 
 **Goal:** weight changes are tunable in config.toml and trigger re-scoring.
 
@@ -170,6 +256,37 @@ from verified tier-1/tier-2 coverage.
   knobs. `prompt_hash` extended in place, no new function.
 - Verify: changing a weight in a tmp config changes `prompt_hash` (test),
   defaults reproduce Phase 2's pinned scores exactly (test). `pytest -q`.
+
+**Outcome (observed, not predicted):**
+
+- `[pipeline]` gained the five `score_*` knobs with the planned defaults.
+- New `score.ScoreWeights` frozen dataclass, resolved once per `score_job` via
+  `from_config` and threaded explicitly through `_phrase_credit`,
+  `_verify_tier` and `_compute_score`. Deliberately not read from module
+  globals: a score should be reproducible from its inputs alone, and tests can
+  vary one coefficient without monkeypatching module state. The `SCORE_*`
+  constants stay as the defaults' mirror and as the `ScoreWeights()` fallback,
+  with `test_config_defaults_match_the_module_constants` pinning them together
+  so the two definitions cannot drift.
+- **Signature change:** `prompt_hash(kb_dir)` became `prompt_hash(cfg)`. An
+  optional `weights=` parameter was considered and rejected — a call site that
+  forgot it would produce a hash that did not move on a weight change, leaving
+  old-coefficient scores mixed into the queue and indistinguishable from new
+  ones. Taking the whole `Config` makes that impossible. Both call sites
+  (`scan_cmd`, `apply_cmd`) already had `cfg`.
+- The float is serialized as `{:.6f}` so a `0.7` -> `0.70` reformat cannot
+  change the digest on its own.
+- Verified the hash tests fail without the change: stubbing `prompt_hash` to
+  use `ScoreWeights()` instead of the config fails exactly the five
+  `test_every_weight_moves_the_hash` cases and nothing else. A companion test
+  pins that an unrelated knob (`cover_max_words`) does NOT move the hash, so
+  the coverage is not just "everything invalidates everything".
+- `pytest -q`: 1075 passed, up from 1064. `ruff` clean, `mypy` clean across all
+  80 source files.
+- Live check against the real `config.toml`:
+  `ScoreWeights(base=30, tier1=50, tier2=10, ai_bonus=5,
+  transferable_credit=0.7)`, `prompt_hash` `6547fe1cf5d99577`, and simulating
+  tier1 50 -> 55 moves it to `d6d0b31ff400b2ae`.
 
 ### Phase 4: persist the score breakdown for outcome calibration [ ]
 
@@ -207,7 +324,98 @@ Sources: jobscan.co, airesume.guru/blog/ats-score-resume-match-rates,
 atschecker.ai/guides/ats-score-explained,
 job200.com/blog/how-does-an-ats-score-your-resume-the-full-breakdown.
 
+## Context window: 16k trialled, reverted to 32k + q8_0 KV cache (2026-07-28) [x] DONE
+
+Not part of the scoring plan; requested mid-Phase-2 and done as its own change.
+Net result: **`num_ctx` and `MAX_DESC_CHARS` are unchanged at 32768 / 16000**,
+and the Ollama KV cache moved q4_0 -> q8_0.
+
+**Why 16k was rejected.** Lowering `num_ctx` to 16384 forces `MAX_DESC_CHARS`
+down with it, because the pairing must be measured, not estimated: real
+`prompt_eval_count` runs **~23% above a chars/4 guess** on dense JD text. At
+the 16000-char cap the tailor prompt measures **11886 tokens**, so with
+`num_predict=4096` it needs 15982 of 16384 — **402 tokens of headroom**, and
+the tailor RETRY appends a revisions block, i.e. it grows exactly when things
+are already failing. Overflow is silent: Ollama truncates, the schema
+instruction falls off the end, the model emits prose. Dropping the cap to
+10000 restores headroom but truncates **19% of the 255-job backlog instead of
+9%**, and a trailing "Preferred qualifications" block is exactly the tier-2
+signal Phase 2 started weighting. Not worth it.
+
+**KV cache q4_0 -> q8_0.** AGENTS.md had flagged q4_0 (set 2026-07-27 to save
+VRAM) as a less-exercised path to revert "if CUDA illegal-memory-access faults
+appear during scoring". They appeared twice on 2026-07-28, both mid-score,
+`CUDA error: an illegal memory access was encountered` as an HTTP 500, with the
+immediate retry succeeding each time. Intermittent, so a full backlog scan would
+hit it repeatedly. Casey applied the systemd change.
+
+**Measured consequence, which is a real trade:** at 32768 with q8_0 the model no
+longer fits entirely in VRAM — `ollama ps` reports **6.9 GB, 14%/86% CPU/GPU**
+(it was 5.7 GB / 100% GPU with q4_0). The cost is nominal in practice: three
+consecutive warm score calls on the 12,530-char faire posting each took **5s**
+and returned an identical 66, so the spill is not on the hot path and
+temperature-0 reproducibility holds. Full `apply --no-browser` on
+`adzuna_ca:5813760467` ran the tailor worst case end to end:
+`verdict=ship keyword_coverage=100% missing=0 cover_violations=0`.
+
+Two tests were updated rather than re-baselined during the 16k trial and kept
+after the revert, because they were fragile either way:
+`test_jd_context_caps.py` pinned `MAX_DESC_CHARS == 16000` as a literal and
+sized a fixture JD against it. Its real contract is that prep tracks the
+scoring budget and clears the old 6000 floor, so it now asserts the binding and
+derives the fixture from the live budget instead of a number that goes stale on
+every context change.
+
+## Model comparison (run 2026-07-28, informs nothing in this plan yet)
+
+Extraction quality is the load-bearing input now, so the model matters more
+than it did when the LLM only had to pick a band. Measured on an RTX 3080
+(10 GB VRAM), so both larger models spill to CPU. The user has confirmed a
+speed hit is acceptable if quality justifies it.
+
+Same faire posting (12,530 chars) through all three:
+
+```
+model                       time  score  tier1   notes
+qwen3.5:9b                   11s     74   9/18   some spurious annotations
+gemma4:26b-a4b-it-qat        39s     76   9/15   cleanest tier discipline
+qwen3.6:35b-a3b-mtp-q4_K_M   38s     56  12/30   best matching, worst filtering
+```
+
+And on a clear-decline posting (Bazel/Go staff role, 7,991 chars):
+
+```
+qwen3.5:9b                    5s     40   1/10   declined correctly
+gemma4:26b-a4b-it-qat        30s     43   1/11   declined correctly
+qwen3.6:35b-a3b-mtp-q4_K_M   44s     55    2/9   MISSED the decline; but was
+                                                 the only model to correctly
+                                                 credit verified AWS
+```
+
+Reading: qwen3.6:35b matches individual skills best (it alone caught AWS) but
+has the worst instruction-following on the "skip generic asks" rule, pulling
+in `Problem-solving and collaboration skills`, `Product instincts`, and
+`Fast-moving, cross-functional environments` as requirements. Under a
+coverage-based score, denominator discipline outweighs match recall, so its
+extra matches cost it 18 points. gemma4:26b has the best discipline (15
+requirements, no generic asks) for roughly 3.5x the wall time.
+
+Conclusion for now: **stay on qwen3.5:9b**, because the gap to gemma4 is 2
+points on a single posting, i.e. inside the noise. The higher-leverage lever
+is the prompt's generic-ask rule, which qwen3.6 demonstrates the cost of
+ignoring. Revisit after Phase 3 makes weights tunable, and judge any model
+swap on a fixed set of ~10 postings rather than one. Two postings is not a
+basis for a switch.
+
 ## Deferred / follow-up
+
+- **Unchecked Familiar-only decline on senior titles.** When the model itself
+  emits a Familiar-only `decline_reason` and the title is senior-band, the
+  deterministic layer neither nullifies it nor caps the score, so a posting
+  can carry a high score alongside a Familiar-only decline. The junior path
+  already nullifies these. Pre-existing, harmless to selection, but the pair
+  reads as contradictory. Fix: also nullify when
+  `_all_matched_are_familiar` is False.
 
 - **Per-attempt progress output in the tailor retry loop.** Three failing
   attempts produce up to three minutes of silence followed by one error line,

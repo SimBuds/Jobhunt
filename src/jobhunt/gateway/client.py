@@ -17,13 +17,27 @@ from jobhunt.errors import GatewayError
 #   an explicit num_ctx the prompt is silently truncated to 4096 — the schema
 #   instruction falls off the end and the model emits prose instead of JSON.
 #   (qwen-custom only worked because it baked num_ctx 16384.) Pinning it here is
-#   what lets jobhunt run bare qwen3.5:9b. Pinned at 32768 (2026-06-04): on
-#   Ollama 0.30.3 qwen3.5:9b Q4_K_M stays 100% GPU-resident at 32k (measured
-#   5.6 GB on the 10 GB card), so the extra headroom is free. The score/tailor
-#   prompts still run ~6k tokens, so MAX_DESC_CHARS / MAX_POLICY_CHARS in
-#   pipeline.score need no change — 32k is pure headroom, not a reason to feed
-#   longer inputs. The q8_0 build was rejected: it spills to CPU at both 16k and
-#   32k on this card and the bench showed no quality gain over Q4_K_M.
+#   what lets jobhunt run bare qwen3.5:9b. The q8_0 build was rejected: it spills
+#   to CPU at both 16k and 32k on this card and the bench showed no quality gain
+#   over Q4_K_M.
+#
+#   Pinned at 32768. Briefly lowered to 16384 on 2026-07-28 and reverted the
+#   same day: 16k forced MAX_DESC_CHARS down to 10000, which truncated 19% of
+#   the backlog instead of 9%, and losing a trailing "Preferred qualifications"
+#   block costs real tier-2 scoring signal.
+#
+#   This window is paired with MAX_DESC_CHARS and the pairing must be MEASURED,
+#   never estimated: real `prompt_eval_count` runs ~23% above a chars/4 guess
+#   because dense JD text tokenizes worse than prose. Worst case over the
+#   longest JD in the backlog at MAX_DESC_CHARS=16000:
+#
+#       score 11633 tok | tailor 11886 tok | cover 10131 tok
+#
+#   Plus num_predict=4096 the tailor case uses 15982 — comfortable at 32768,
+#   but only 402 tokens of headroom at 16384, and the tailor RETRY appends a
+#   revisions block, so it grows exactly when things are already failing. That
+#   is why 16k is not viable at this description cap. To re-measure, POST the
+#   rendered prompts to /api/chat with num_predict:1 and read prompt_eval_count.
 #
 #   sampler params: qwen3.5:9b ships `presence_penalty 1.5` — Qwen's
 #   recommendation for *thinking/chat* mode, where it breaks reasoning-loop

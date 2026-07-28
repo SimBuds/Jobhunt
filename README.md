@@ -74,10 +74,13 @@ there is no free-text completion path in the runtime.
 
 **The load-bearing setting is `num_ctx=32768`,** pinned app-side in
 `gateway.client._DEFAULT_OPTIONS` rather than in the Ollama server environment.
-These prompts run ~6k tokens and Ollama's default context is 4096, so without an
+Ollama's default context is 4096, so without an
 explicit `num_ctx` the prompt silently truncates, the JSON-schema instruction
 falls off the end, and the model returns prose instead of JSON. The failure mode
-looks like a parser bug and isn't one. Context is owned at the app level so
+looks like a parser bug and isn't one. This window is paired with
+`pipeline.score.MAX_DESC_CHARS` (16000): measured worst case is 11886 prompt
+tokens plus a 4096 generation ceiling, so change one and you must re-measure the
+other (a 16384 window was trialled and reverted — it left 402 tokens spare). Context is owned at the app level so
 several projects can share one Ollama box, each picking its own window.
 
 ## Honesty enforcement
@@ -95,10 +98,12 @@ prompt-based, so none of them depend on the model choosing to comply:
    re-checks the decoded object against the snapshot. A skill that isn't an
    identity-subset of a verified skill is rejected *after* the model has spoken
    — the guarantee doesn't rest on the prompt.
-4. **Score clamp.** `pipeline.score` re-partitions the model's claimed
-   must-haves against the verified blob, so a requirement can't be counted as
-   matched on the model's say-so. Skipped below 3 must-haves, so signal-poor
-   postings aren't scored on noise.
+4. **Deterministic scoring.** The model never picks the number. It extracts the
+   posting's requirements into two tiers and `pipeline.score` computes the
+   score from how many verify against the snapshot, so a requirement can't be
+   counted as matched on the model's say-so — a hallucinated match becomes a
+   gap and *lowers* the result. Postings too short to state a real bar are
+   capped separately, so signal-poor listings can't outrank described ones.
 5. **Validators with retry.** `pipeline.cover_validate` catches banned phrases,
    defensive patterns, and unverified numbers. A failure re-runs the call at
    `temperature=0` — recovery, not relaxation: every attempt faces the same
@@ -430,6 +435,27 @@ answer_max_words      = 200  # `answer` default word cap
 min_score             = 55   # apply / list default floor
 thin_jd_score_cap     = 70   # confidence ceiling for signal-poor (short) JDs
 thin_jd_chars         = 800  # a JD shorter than this is treated as signal-poor
+
+# Score weights. The model extracts the posting's requirements into two tiers
+# (hard requirements vs wish list) and the score is computed from how many
+# verify against your profile:
+#
+#   score = base + tier1_weight * tier1_coverage
+#                + tier2_weight * tier2_coverage
+#                + ai_bonus
+#
+# Coverage is graded: an exact hit counts 1.0, a peer-family or annotated
+# transferable match counts score_transferable_credit. An empty wish list folds
+# its weight into tier-1, so a posting can't score higher for omitting one.
+# Defaults: perfect fit + AI bonus = 95, full core stack with wish-list gaps
+# = 80, half the hard requirements = 60, nothing matched = 30.
+# All five feed the score prompt hash, so changing one re-scores the backlog
+# on the next `scan` — deliberate, since old scores are otherwise incomparable.
+score_base                = 30
+score_tier1_weight        = 50
+score_tier2_weight        = 10
+score_ai_bonus            = 5
+score_transferable_credit = 0.7
 
 [browser]
 headed        = true

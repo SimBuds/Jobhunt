@@ -110,12 +110,13 @@ class GatewayConfig(BaseModel):
             # Base qwen3.5:9b. The gateway sends its own task prompt (overriding
             # any Modelfile SYSTEM) and its own options (gateway _DEFAULT_OPTIONS),
             # so behavior is fully defined in-repo — no custom Modelfile needed.
-            # The critical app-owned option is num_ctx=32768: these prompts run
-            # ~6k+ tokens and Ollama's 4096 default would truncate them into prose
-            # (qwen-custom only worked by baking num_ctx). Single hot model across
-            # all slots; no intra-scan reload churn. Quality backed by
-            # deterministic post-processing (score clamp, cover validator + retry,
-            # audit). (qwen-custom remains the candidate's general chat model in ~/ai.)
+            # The critical app-owned option is num_ctx=16384: these prompts
+            # measure 7.7k-9.4k tokens and Ollama's 4096 default would truncate
+            # them into prose (qwen-custom only worked by baking num_ctx).
+            # Single hot model across all slots; no intra-scan reload churn.
+            # Quality backed by deterministic post-processing (tiered score
+            # computation, cover validator + retry, audit). (qwen-custom
+            # remains the candidate's general chat model in ~/ai.)
             "score": "qwen3.5:9b",
             "tailor": "qwen3.5:9b",
             "cover": "qwen3.5:9b",
@@ -144,21 +145,45 @@ class PipelineConfig(BaseModel):
     # the "stretch, tailor required" zone where a strong AI/LLM cover hook can
     # break through. Raise back to 65 via config.toml if the list gets noisy.
     min_score: int = 55
-    # Confidence ceiling for signal-poor JDs (2026-05-31 audit fix). When a JD
-    # yields fewer than 3 extracted must-haves the coverage clamp is skipped
-    # (too few to trust the denominator) — without a ceiling the raw LLM score
-    # floats to the top band, so a ~500-char Adzuna snippet scored 82 while the
-    # same role's 7,140-char full JD scored 55. Capping thin postings here keeps
-    # them applyable (> min_score) without letting them outrank fully-described
-    # roles. Tune up if the thin-JD band looks under-ranked, down to push snippet
-    # roles further below full-JD ones. See pipeline.score.score_job.
+    # Confidence ceiling for signal-poor JDs (2026-05-31 audit fix). Without a
+    # ceiling a ~500-char Adzuna snippet scored 82 while the same role's
+    # 7,140-char full JD scored 55: the model cannot penalize requirements it
+    # cannot see, so a snippet reads as near-full coverage. Capping thin
+    # postings here keeps them applyable (> min_score) without letting them
+    # outrank fully-described roles. Tune up if the thin-JD band looks
+    # under-ranked, down to push snippet roles further below full-JD ones.
+    # See pipeline.score.score_job.
     thin_jd_score_cap: int = 70
     # A JD shorter than this (chars) is treated as signal-poor for the cap above.
     # Adzuna snippets run ~500 chars; real ATS JDs 4,000-7,000. 800 matches the
     # "short JD signals Adzuna" threshold the audit must-have fallback already
-    # uses, and exempts full-JD `apply --url` fetches that happened to yield <3
-    # must-haves.
+    # uses, and exempts full-JD `apply --url` fetches.
     thin_jd_chars: int = 800
+
+    # --- Score weights (2026-07-28) -------------------------------------
+    # The model extracts the posting's requirements into two tiers; the score
+    # is computed from how many verify against verified.json:
+    #
+    #   score = base + tier1_weight * tier1_coverage
+    #                + tier2_weight * tier2_coverage
+    #                + ai_bonus
+    #
+    # Coverage is graded: an exact profile hit contributes 1.0, a peer-family
+    # or annotated-bridge hit contributes `score_transferable_credit`. An empty
+    # tier-2 folds its weight into tier-1, so a posting cannot score higher for
+    # simply omitting a wish list.
+    #
+    # These are the calibration dial. Defaults put a perfect fit with the AI
+    # bonus at 95, a full core-stack match with wish-list gaps at 80, half the
+    # hard requirements at 60, and nothing matched at 30. All five feed
+    # `pipeline.score.prompt_hash`, so changing any of them re-scores the
+    # backlog on the next `scan` — that is deliberate, since a weight change
+    # makes existing scores incomparable.
+    score_base: int = 30
+    score_tier1_weight: int = 50
+    score_tier2_weight: int = 10
+    score_ai_bonus: int = 5
+    score_transferable_credit: float = 0.7
 
 
 class BrowserConfig(BaseModel):

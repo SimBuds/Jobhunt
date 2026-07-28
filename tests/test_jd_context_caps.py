@@ -16,16 +16,23 @@ from jobhunt.pipeline.score import MAX_DESC_CHARS
 
 
 def test_prep_jd_cap_matches_score_budget() -> None:
-    # Bound to the shared constant, not a 6000 literal. Fails at the old 6000.
-    assert _JD_MAX_CHARS == MAX_DESC_CHARS == 16000
+    # The contract is that prep tracks the scoring budget, whatever that budget
+    # currently is — asserting a literal only pinned one revision of it. The
+    # value moves with num_ctx (16000 at num_ctx=32768, 10000 at 16384), so pin
+    # the binding plus the floor this initiative existed to clear.
+    assert _JD_MAX_CHARS == MAX_DESC_CHARS
+    assert MAX_DESC_CHARS > 6000  # the old cap that truncated 63% of real JDs
 
 
 def test_answer_jd_context_keeps_midsize_jd_untruncated(
     tmp_path: Path, migrations_dir: Path
 ) -> None:
-    # A 10k-char JD is the median-to-p90 real case: clipped under the old 6000
-    # cap, fully retained under 16000.
-    desc = "Requirements:\n" + ("Strong TypeScript and React. " * 350)
+    # A mid-size JD comfortably above the old 6000 cap: clipped then, fully
+    # retained now. Sized as a fraction of the live budget so this keeps
+    # testing retention rather than silently becoming a truncation test the
+    # next time the budget moves.
+    filler = "Strong TypeScript and React. "
+    desc = "Requirements:\n" + filler * (((MAX_DESC_CHARS * 3 // 4) - 14) // len(filler))
     assert 6000 < len(desc) < MAX_DESC_CHARS
 
     db_path = tmp_path / "jobhunt.db"

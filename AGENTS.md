@@ -203,16 +203,26 @@ A local-first CLI tool for personal job search automation. Pulls jobs from publi
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not** set — the full 10 GB is available to Ollama. On Ollama 0.30.3 (new engine) bare `qwen3.5:9b` Q4_K_M lands at ~5.6 GB resident at `num_ctx=32768`, 100% GPU (measured 2026-06-04, was ~9.1 GB on the old engine). Disk size is no longer a footprint proxy: always confirm residency with `ollama ps` (look for `100% GPU`, not a CPU/GPU split). The `qwen3.5:9b-q8_0` build was evaluated and rejected: its ~10 GB weights spill to CPU at both 16k and 32k on this card, and the bench showed no quality gain over Q4_K_M.
 - Ollama at `http://localhost:11434`
-- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=32768`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is deliberately *not* set on this box (Casey runs these models across projects that each pick their own context window, so context is owned only at the app level) — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx` in the gateway is what makes bare `qwen3.5:9b` work. It was raised from 16384 to 32768 on 2026-06-04 after the new Ollama engine kept Q4_K_M 100% GPU-resident at 32k (~5.6 GB), so the extra context is free headroom. All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=32768` (the score/tailor prompts still run ~6k tokens, so `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` need no change: 32k is headroom, not license to feed longer inputs) with `keep_alive=-1` (per-call override that pins the model in VRAM during active work and takes precedence over the systemd `OLLAMA_KEEP_ALIVE=30m` idle fallback) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
+- Default model: base **`qwen3.5:9b`** (2026-05-28). The gateway always sends its own system message (the task prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime, *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the Modelfile PARAMS — so behavior is fully defined in-repo and no custom Modelfile is needed. **The load-bearing app-owned option is `num_ctx=32768`** (NOT a renderer/parser concern, as was first assumed): these prompts run ~6k+ tokens, Ollama's default context is 4096, and `OLLAMA_CONTEXT_LENGTH` is deliberately *not* set on this box (Casey runs these models across projects that each pick their own context window, so context is owned only at the app level) — so without an explicit `num_ctx` the prompt silently truncates to 4096, the JSON-schema instruction falls off the end, and the model emits prose instead of JSON. Pinning `num_ctx` in the gateway is what makes bare `qwen3.5:9b` work. It was raised from 16384 to 32768 on 2026-06-04. A drop back to 16384 was trialled and reverted on 2026-07-28: it forces `MAX_DESC_CHARS` down to 10000 (see the sizing note below), which truncates 19% of the backlog instead of 9%, and a trailing "Preferred qualifications" block is real tier-2 scoring signal. All task slots (score, tailor, cover, answer) run the same hot model — single-model-per-scan, no intra-scan reload churn — at the gateway-pinned `num_ctx=32768` with `keep_alive=-1` (per-call override that pins the model in VRAM during active work and takes precedence over the systemd `OLLAMA_KEEP_ALIVE=30m` idle fallback) and reasoning (`think`) disabled at the gateway. `nomic-embed-text` reserved for future embeddings. QA is deliberately deterministic (see `pipeline.audit`) — no LLM QA slot.
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service`):
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # q4_0 KV cache (2026-07-27): smallest quantized cache, ~288 MiB at num_ctx=32768 vs ~576 MiB for q8_0. Chosen to preserve VRAM headroom after the Ollama 0.32.x engine grew the resident footprint past the 0.30.3 measurements below. Trade-off: q4_0 is a less-exercised path than q8_0 — if CUDA illegal-memory-access faults appear during scoring, revert this to q8_0 first
+  Environment="OLLAMA_KV_CACHE_TYPE=q8_0"      # q8_0 KV cache (2026-07-28, reverted from q4_0): ~576 MiB at num_ctx=32768 vs ~288 MiB for q4_0. q4_0 was tried on 2026-07-27 to save VRAM, with the noted caveat that it is a less-exercised path and should be reverted "if CUDA illegal-memory-access faults appear during scoring". Those faults did appear, twice on 2026-07-28, both mid-score: `CUDA error: an illegal memory access was encountered`, HTTP 500 from /api/chat, and each time the immediate retry succeeded. Intermittent, so a long scan hits it repeatedly. The extra ~288 MiB is affordable: qwen3.5:9b Q4_K_M sits at ~5.7 GB resident on the 10 GB card
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches our sequential pipeline
   Environment="OLLAMA_KEEP_ALIVE=30m"          # idle unload after 30m (2026-07-27, was -1): the gateway's per-call keep_alive=-1 takes precedence during a run, so this only governs callers that omit the key (e.g. the bench script) and frees VRAM for other projects once the box goes idle
   Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model (2026-07-27): jobhunt runs a single hot model per scan, and on a 10 GB card a second resident model would force a CPU spill
   ```
   Note: `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set. Context is owned only at the app level (the gateway's `num_ctx`) so each project sharing this box picks its own window. A context change is a one-knob gateway edit, not a paired systemd edit.
+
+- **`num_ctx` is NOT a one-knob edit any more (2026-07-28).** It is paired with `pipeline.score.MAX_DESC_CHARS`, and the pairing must be re-measured, never estimated. Real `prompt_eval_count` on the longest JD in the backlog runs **~23% above a chars/4 estimate**, because dense JD text tokenizes worse than prose. Measured worst cases:
+
+  | num_ctx | MAX_DESC_CHARS | score | tailor | cover | tailor + num_predict | headroom | backlog truncated |
+  |---|---|---|---|---|---|---|---|
+  | 32768 | 16000 | 11633 | 11886 | 10131 | 15982 | 16786 | 9% |
+  | 16384 | 16000 | 11633 | 11886 | 10131 | 15982 | **402** | 9% |
+  | 16384 | 10000 | 9164 | 9417 | 7662 | 13513 | 2871 | 19% |
+
+  The middle row is why 16k was reverted: 402 tokens is not headroom, and the tailor RETRY appends a revisions block, so it grows exactly when things are already failing. The third row buys headroom by truncating twice as much of the backlog. To re-measure after any change, POST the rendered prompts to `/api/chat` with `num_predict: 1` and read `prompt_eval_count`. Overflow is silent and looks like a parser bug.
 - The box holds one model at a time (`OLLAMA_MAX_LOADED_MODELS=1`, tightened from 2 on 2026-07-27). The single-model-per-scan design eliminates reload churn between task types, which was a major source of scan freezes prior to the May 2026 consolidation.
 
 ## Stack
@@ -776,15 +786,42 @@ content is genuinely meant to be gone.
    given his interview-rate situation. Raise back to 65 in config.toml if
    the list gets noisy.
 
-   **Thin-JD confidence cap (2026-05-31 audit fix).** The deterministic
-   `must_have_count < 3` carve-out in `pipeline.score` skips the coverage
-   clamp for signal-poor JDs (Adzuna's ~500-char snippets yield 1-2 phrases,
-   so a 1/2 denominator over-penalizes). It used to pass the **raw** LLM
+   **The LLM does not choose the score (2026-07-28).** It returns
+   `must_haves` / `nice_to_haves` (tiered requirement extraction with
+   `(transferable: X)` annotations) and `pipeline.score._compute_score` does
+   the arithmetic: `SCORE_BASE + tier1_weight * tier1_coverage +
+   tier2_weight * tier2_coverage + SCORE_AI_BONUS`, where coverage is graded
+   (exact 1.0, bridged `SCORE_TRANSFERABLE_CREDIT`). **Do not reintroduce a
+   score field or a prose band rubric into `kb/prompts/score.md`** — that is
+   what produced the old 82 ceiling, with six integers covering 136 of 169
+   live scores. Extraction quality, especially the "skip generic asks" rule,
+   is now the load-bearing part of the prompt: every phrase the model emits
+   becomes a denominator entry, so padding the list with soft asks
+   ("problem-solving skills", "product instincts") deflates the score.
+   `_coerce_score`, `_clamp_by_coverage`, `_coverage_pct` and
+   `_verify_against_profile` retired with the LLM integer.
+
+   The five coefficients are `[pipeline] score_base`, `score_tier1_weight`,
+   `score_tier2_weight`, `score_ai_bonus`, `score_transferable_credit`,
+   resolved once per call into `score.ScoreWeights` and threaded explicitly
+   through `_phrase_credit` / `_verify_tier` / `_compute_score` — never read
+   from module globals, so a score is reproducible from its inputs alone. The
+   module-level `SCORE_*` constants exist only as the config defaults' mirror
+   and as a `ScoreWeights()` fallback for tests; if you change one, change the
+   other or `test_config_defaults_match_the_module_constants` fails.
+   **All five feed `prompt_hash`**, which now takes the whole `Config` rather
+   than a `kb_dir` precisely so the weights cannot be omitted at a call site: a
+   weight change that did not move the hash would leave old-coefficient scores
+   mixed into the queue, indistinguishable from new ones and sorted on two
+   scales at once.
+
+   **Thin-JD confidence cap (2026-05-31 audit fix).** Signal-poor JDs
+   (Adzuna's ~500-char snippets) used to pass the **raw** LLM
    score through unbounded — but the model can't penalize gaps it can't see,
    so thin snippets floated to 82-88 and outranked fully-described full-JD
    roles. A 2026-05-31 score audit found the same ZoomInfo *Full Stack
    Engineer* scored **82** from its 500-char Adzuna snippet vs **55** from
-   the 7,140-char Greenhouse JD. The carve-out now caps thin postings at
+   the 7,140-char Greenhouse JD. Thin postings are capped at
    `cfg.pipeline.thin_jd_score_cap` (default **70**) when
    `len(description) < cfg.pipeline.thin_jd_chars` (default **800** — Adzuna
    snippets run ~500, real ATS JDs 4,000-7,000). The cap **only lowers**, so
@@ -796,6 +833,18 @@ content is genuinely meant to be gone.
    cap applies to newly-scored jobs — re-score the backlog to correct an
    existing queue. Both thresholds are config knobs; tune `thin_jd_score_cap`
    up if the thin-JD band looks under-ranked.
+
+   **The cap is gated on description length ALONE (2026-07-28).** It
+   originally sat *inside* a `must_have_count < 3` branch, which made it a
+   near no-op on the postings it most needed to catch. A 500-char Adzuna
+   snippet is keyword-DENSE: it routinely yields 4-6 extracted phrases, all of
+   which verify, so it reached full coverage against a denominator the JD was
+   never substantial enough to justify. Measured on the 2026-07-28 backlog:
+   **12 of the 13 scores at 78+ were 500-char snippets**, which is what pinned
+   the top of the queue at 82. Phrase count was never the signal — how much JD
+   text the model actually got to read is. It matters just as much under tier
+   scoring: a snippet has no Requirements/Preferred structure, so everything
+   lands in tier-1 and matching a few keywords reads as near-full coverage.
 
    **Familiar-only-fit cap (Phase 10.2; senior-gated July 2026).** When
    every matched must-have resolves into `verified.skills_familiar` (read
@@ -1083,6 +1132,9 @@ to it without explicit discussion.
 - Do not write scrapers for LinkedIn, Indeed, Glassdoor, or any site that prohibits it in ToS. If asked, refuse and reference this file.
 - Do not bypass the gateway for LLM calls.
 - Do not commit for the user. Agents never run `git commit`, `git push`, or rewrite git history on the user's behalf — leave every change in the working tree (staged or unstaged) for the human to review and commit. History operations (rebase, `filter-branch`, force-push) happen only when the user explicitly asks for them in that request.
+- **Do not run system-changing commands. Casey runs those himself.** This is a hard stop, not a confirm-first: print the exact command and hand it over, then continue with whatever does not depend on it. Never `sudo` (including `sudo systemctl edit`), never restart or reload services, never install or upgrade system packages, never touch anything outside the repository — `/etc`, systemd units, the Ollama server config, shell profiles. Do not offer to run them either.
+  Repo-local and read-only commands are still the agent's own job, because verification has to be first-hand: `pytest`, `ruff`, `mypy`, read-only `git` (`status`, `diff`, `log`), queries against `data/jobhunt.db`, and `jobhunt` CLI runs including ones that hit Ollama or regenerate `kb/profile/`. Claiming a result without running it is worse than not claiming it.
+  Do not remind Casey to back things up or to commit. He handles both, and the reminders are noise.
 - Do not commit anything in `data/`, `~/.config/jobhunt/`, or files matching `*.secret.*`.
 - Do not auto-submit applications. Ever.
 

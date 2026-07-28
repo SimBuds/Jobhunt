@@ -1,0 +1,16 @@
+-- Score breakdown (July 2026). Records HOW a score was computed, not just what
+-- it came out to, so weight tuning can be driven by interview outcomes instead
+-- of intuition.
+--
+-- The score is `base + tier1_weight * tier1_coverage + tier2_weight *
+-- tier2_coverage + ai_bonus`, then lowered by any deterministic cap (thin-JD,
+-- senior-band, Familiar-only). Storing only the final integer throws away every
+-- input to that: two jobs at 70 may be a full-coverage snippet pulled down by
+-- the thin-JD ceiling and a genuine two-thirds match, which are not the same
+-- bet. `config calibrate` can now group by tier-1 coverage rather than by the
+-- capped number.
+--
+-- Nullable with no default on purpose. Rows scored before this migration read
+-- back as NULL, which is honest — their components were never captured and
+-- cannot be reconstructed. Consumers must treat NULL as "unknown", not zero.
+ALTER TABLE scores ADD COLUMN breakdown TEXT;

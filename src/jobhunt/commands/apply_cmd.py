@@ -408,7 +408,7 @@ async def _resolve_manual(
             except JobHuntError as e:
                 typer.echo(f"  ! score failed: {e}", err=True)
             else:
-                ph = prompt_hash(cfg.paths.kb_dir)
+                ph = prompt_hash(cfg)
                 with conn:
                     write_score(
                         conn,
