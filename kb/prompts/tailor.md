@@ -178,14 +178,17 @@ Hard rules (from kb/policies/tailoring-rules.md):
     at 8 items.
     - First (most-JD-relevant) category: **6–10 items.**
     - Secondary categories: **4–8 items.**
-    - `Familiar` bucket: **at least 4 items** (the shrink ladder may trim
-      below this only when the resume otherwise overflows the page).
+    - `Familiar` bucket: **every item in `verified_facts.skills_familiar`,
+      and nothing else** (the shrink ladder may trim the tail only when the
+      resume otherwise overflows the page). When
+      `verified_facts.skills_familiar` is empty, omit the `Familiar` category
+      entirely rather than inventing items to fill it.
 
     When the JD spans multiple stacks, split skills across two or three
     categories rather than dumping them all in the lead. Example for a
     full-stack role: `Frontend & React` (6–8 items) + `Backend & APIs`
     (6–8 items) + `Data & DevOps` (4–6 items) + `AI & LLM Tooling` (3
-    items) + `Familiar` (4 items).
+    items) + `Familiar` (all verified Familiar items).
 11. **Projects.** Output a `projects` array containing the projects from
     `verified_facts.projects` that are most relevant to this JD. Rules:
     - Each project's `name` and `url` MUST match `verified_facts.projects`

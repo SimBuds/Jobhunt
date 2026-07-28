@@ -61,7 +61,7 @@ between every call. Set in config (`gateway.tasks`).
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset. On the new Ollama engine (0.30.3) bare `qwen3.5:9b` Q4_K_M lands around ~5.6 GB resident at `num_ctx=32768`, 100% GPU, with a `q8_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q8_0` + `OLLAMA_FLASH_ATTENTION=1`). **Context length is app-owned**: the gateway pins `num_ctx=32768` in `_DEFAULT_OPTIONS` on every call (without it Ollama's 4096 default truncates the ~6k-token prompts and the model emits prose instead of schema JSON), and `OLLAMA_CONTEXT_LENGTH` is deliberately unset so each project sharing the box picks its own window. The q8_0 weight build was rejected: it spills to CPU at 16k and 32k here. Single hot model pinned during active work via per-call `keep_alive=-1`, matching the systemd `OLLAMA_KEEP_ALIVE=-1`, plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
+| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset. On the new Ollama engine (0.30.3) bare `qwen3.5:9b` Q4_K_M lands around ~5.6 GB resident at `num_ctx=32768`, 100% GPU, with a `q4_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q4_0` + `OLLAMA_FLASH_ATTENTION=1`, switched from q8_0 on 2026-07-27 to preserve VRAM headroom). **Context length is app-owned**: the gateway pins `num_ctx=32768` in `_DEFAULT_OPTIONS` on every call (without it Ollama's 4096 default truncates the ~6k-token prompts and the model emits prose instead of schema JSON), and `OLLAMA_CONTEXT_LENGTH` is deliberately unset so each project sharing the box picks its own window. The q8_0 weight build was rejected: it spills to CPU at 16k and 32k here. Single hot model pinned during active work via per-call `keep_alive=-1`, which takes precedence over the systemd `OLLAMA_KEEP_ALIVE=30m` idle fallback, plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU, SQLite cache, and Playwright when active. |
 | Disk | Models in `~/.ollama/models`, project DB in `data/jobhunt.db`. |
 
@@ -173,7 +173,15 @@ in six places, not just the prompt:
    `skills_projects`, `skills_familiar`) are **atomic lists** (one item per skill).
    `skills_projects` (Core-grade, demonstrated in Casey's shipped personal
    projects) is treated like a Core bucket by the score and tailor honesty
-   checks, distinct from the academic/light-use `skills_familiar`. `verified.json`
+   checks, distinct from the academic/light-use `skills_familiar`. It is
+   derived from the parsed `projects[].stack` lines, unioned with an explicit
+   "Project Stack:" row in TECHNICAL SKILLS when the resume carries one, and
+   de-duplicated case-insensitively with the first spelling winning. Deriving
+   it matters because the bucket was previously fed by that row alone, so a
+   resume keeping its stack on the project's own `Stack:` line parsed the line
+   into `projects[].stack` and then discarded it: the bucket stayed empty and
+   the tailor could claim none of the stack, since every item was absent from
+   `verified.json` and the fabrication guard read it as invented. `verified.json`
    also carries a `projects[]` narrative (each with `name`, `url`, `stack`,
    `bullets`) parsed from the resume's PROJECTS section. It renders as a PROJECTS
    section on the tailored resume, is credited by audit keyword coverage, and may
@@ -185,6 +193,21 @@ in six places, not just the prompt:
    GPU optimization (cache, flash attention), ..." parses into atomic items with
    no hand-editing. `tests/test_parse_docx.py::test_parse_baseline_positioning_and_atomic_skills`
    locks this behavior.
+
+   **Bucket-regression guard (July 2026).** `convert-resume` refuses to write
+   `kb/profile/` when a bucket that carried items in the previous
+   `verified.json` parses to empty. `parse_baseline` can only warn about rows it
+   saw and could not place, so a row that is simply gone from the document
+   produced no warning and the older partial-profile guard never fired. That
+   blind spot is what let the 2026-07-25 reformat empty `skills_familiar`
+   silently, which then broke `apply` on every job (the tailor rejected every
+   Familiar skill as unverified) and quietly disabled the Familiar-only cap in
+   check (4). `commands.convert_resume_cmd._bucket_regressions` compares the
+   fresh parse against the prior snapshot and emits a loss warning per emptied
+   bucket, so the existing fail-closed refusal, its `--force` hatch, and its
+   exit code all apply unchanged. No prior snapshot, or an unreadable one, never
+   blocks: a first run has nothing to regress against, and a corrupt snapshot is
+   not evidence the resume lost anything.
 2. **Schema-constrained output.** `kb/prompts/tailor.md` declares a JSON
    schema. Ollama's `format=<schema>` enforces shape at decode time.
 3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`:
@@ -204,6 +227,14 @@ in six places, not just the prompt:
    and a final-attempt failure still raises so the apply loop skips the
    job. Recovery, not relaxation. It mirrors the cover-validator retry
    pattern in `pipeline.cover.write_cover_with_retry`.
+
+   **Known gap: the retry loop is silent.** `apply` prints one
+   "tailoring resume" line, then nothing until the loop resolves. Three
+   failing attempts at 30 to 60 seconds each is up to three minutes of no
+   output followed by a single error line, which reads as a hang rather than
+   as work in progress. This is what made the July 2026 empty-`skills_familiar`
+   failure look like a freeze. Per-attempt progress output in `apply_cmd` is
+   the fix and is not yet implemented.
 4. **Score clamp.** `pipeline.score` re-partitions the LLM's claimed
    must-haves against `verified.json` and caps the score band by
    deterministic coverage (100 % → keep, 80-99 % → 89, 60-79 % → 79,

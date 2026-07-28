@@ -493,3 +493,103 @@ def test_parse_baseline_missing_file_errors(tmp_path: Path):
 )
 def test_split_skills_paren_aware(value: str, expected: list[str]):
     assert _split_skills(value) == expected
+
+
+class TestProjectStackFeedsSkillsProjects:
+    """A project's `Stack:` line must reach `skills_projects`.
+
+    `skills_projects` is Core-grade (PLAN.md honesty enforcement item 1):
+    technology demonstrably shipped in a public personal project. It used to be
+    fed only by a "Project Stack:" row inside TECHNICAL SKILLS, so a resume
+    carrying its stack on the project's own `Stack:` line parsed that line into
+    `projects[].stack` and then discarded it. The bucket stayed empty, and the
+    tailor could claim none of it: every item was absent from verified.json, so
+    the fabrication guard read it as invented.
+    """
+
+    @staticmethod
+    def _doc(tmp_path: Path, *rows: str, project_lines: tuple[str, ...] = ()) -> Path:
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("Jane Dev")
+        doc.add_paragraph("Toronto, ON  |  jane@example.com")
+        doc.add_paragraph("TECHNICAL SKILLS")
+        doc.add_paragraph("Core: Python, TypeScript")
+        for row in rows:
+            doc.add_paragraph(row)
+        if project_lines:
+            doc.add_paragraph("PROJECTS")
+            for line in project_lines:
+                doc.add_paragraph(line)
+        path = tmp_path / "r.docx"
+        doc.save(path)
+        return path
+
+    def test_stack_line_populates_the_bucket(self, tmp_path: Path):
+        """The regression: no "Project Stack:" row anywhere, stack on the project."""
+        path = self._doc(
+            tmp_path,
+            project_lines=(
+                "Jobhunt | Job-Search CLI | github.com/jane/jobhunt",
+                "Stack: asyncio, Typer, Pydantic, SQLite",
+            ),
+        )
+
+        facts, _ = parse_baseline(path)
+
+        assert facts.projects, "fixture did not parse a project"
+        assert facts.projects[0].stack == ["asyncio", "Typer", "Pydantic", "SQLite"]
+        # The point of the phase: the stack is claimable, not just recorded.
+        assert facts.skills_projects == ["asyncio", "Typer", "Pydantic", "SQLite"]
+
+    def test_explicit_project_stack_row_still_works(self, tmp_path: Path):
+        """The previously supported shape must not regress."""
+        path = self._doc(tmp_path, "Projects: FastAPI, Redis")
+
+        facts, _ = parse_baseline(path)
+
+        assert facts.skills_projects == ["FastAPI", "Redis"]
+
+    def test_row_and_stack_line_are_unioned(self, tmp_path: Path):
+        """Both shapes together, explicit row first."""
+        path = self._doc(
+            tmp_path,
+            "Projects: FastAPI",
+            project_lines=(
+                "Jobhunt | CLI | github.com/jane/jobhunt",
+                "Stack: asyncio, Typer",
+            ),
+        )
+
+        facts, _ = parse_baseline(path)
+
+        assert facts.skills_projects == ["FastAPI", "asyncio", "Typer"]
+
+    def test_shared_library_is_listed_once(self, tmp_path: Path):
+        """Two projects on the same library must not double up the bucket.
+
+        Case-insensitive, first spelling wins, so the resume's own casing is
+        what survives into verified.json.
+        """
+        path = self._doc(
+            tmp_path,
+            project_lines=(
+                "Alpha | CLI | github.com/jane/alpha",
+                "Stack: Typer, SQLite",
+                "Beta | API | github.com/jane/beta",
+                "Stack: typer, FastAPI",
+            ),
+        )
+
+        facts, _ = parse_baseline(path)
+
+        assert facts.skills_projects == ["Typer", "SQLite", "FastAPI"]
+
+    def test_no_projects_leaves_the_bucket_empty(self, tmp_path: Path):
+        """No stack anywhere must stay empty rather than inventing a bucket."""
+        path = self._doc(tmp_path)
+
+        facts, _ = parse_baseline(path)
+
+        assert facts.skills_projects == []

@@ -11,7 +11,9 @@ difference between "not in the resume" and "the parser lost it".
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -270,3 +272,152 @@ def test_clean_parse_writes_normally(env: Path) -> None:
     # See the note in test_force_overrides_the_guard on asserting the artifact
     # rather than the exit code.
     assert (env / "kb" / "profile" / "verified.json").is_file()
+
+
+class TestBucketRegressions:
+    """A skills row that VANISHES from the resume must block the write.
+
+    The 2026-07-25 reformat dropped the "Familiar" row. `parse_baseline` only
+    warns about rows it saw and could not place, so an absent row produced no
+    warning, `_dropped_content_warnings` had nothing to classify, and
+    `skills_familiar` silently became `[]`. Downstream that is not a smaller
+    profile, it is a wrong one: the tailor's fabrication guard rejected every
+    Familiar skill and `apply` failed on every job, while the score clamp's
+    Familiar-only cap stopped firing unnoticed.
+    """
+
+    @staticmethod
+    def _facts(**overrides: object) -> object:
+        from jobhunt.resume.parse_docx import VerifiedFacts
+
+        base: dict[str, Any] = {
+            "name": "Jane Dev",
+            "contact_line": "jane@example.com",
+            "summary": "Dev.",
+            "skills_core": ["TypeScript"],
+            "skills_cms": ["Shopify"],
+            "skills_data_devops": ["Docker"],
+            "skills_ai": ["Claude API"],
+            "skills_projects": ["FastAPI"],
+            "skills_familiar": ["Java"],
+            "work_history": [],
+            "certifications": [],
+            "education": [],
+            "coursework_baseline": [],
+        }
+        base.update(overrides)  # type: ignore[arg-type]
+        return VerifiedFacts(**base)  # type: ignore[arg-type]
+
+    def test_emptied_bucket_is_reported(self, tmp_path: Path) -> None:
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_familiar": ["Java", "Spring Boot"]}))
+
+        got = _bucket_regressions(self._facts(skills_familiar=[]), snapshot)
+
+        assert len(got) == 1
+        assert "Familiar" in got[0]
+        assert "2 item(s)" in got[0]
+
+    def test_regression_warning_classifies_as_loss(self, tmp_path: Path) -> None:
+        """The whole point: it must reach the existing fail-closed guard.
+
+        A regression phrased so it accidentally matched `_BENIGN_WARNING_MARKERS`
+        would be filtered out and never block anything.
+        """
+        from jobhunt.commands.convert_resume_cmd import (
+            _bucket_regressions,
+            _dropped_content_warnings,
+        )
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_core": ["TypeScript", "React"]}))
+
+        got = _bucket_regressions(self._facts(skills_core=[]), snapshot)
+        assert got, "no regression produced, so the classification proves nothing"
+        assert _dropped_content_warnings(got) == got
+
+    def test_no_prior_snapshot_never_blocks(self, tmp_path: Path) -> None:
+        """A first run has nothing to regress against."""
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        got = _bucket_regressions(
+            self._facts(skills_familiar=[], skills_core=[]),
+            tmp_path / "does-not-exist.json",
+        )
+        assert got == []
+
+    def test_corrupt_snapshot_never_blocks(self, tmp_path: Path) -> None:
+        """A hand-edited or truncated snapshot is not evidence the resume lost
+        anything, so it must not refuse an otherwise clean write."""
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text("{not json")
+
+        assert _bucket_regressions(self._facts(skills_familiar=[]), snapshot) == []
+
+    def test_still_empty_is_not_a_regression(self, tmp_path: Path) -> None:
+        """Empty-to-empty is the steady state for buckets this resume never had.
+
+        Without this, every run would block on a bucket the author simply does
+        not use.
+        """
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_projects": []}))
+
+        assert _bucket_regressions(self._facts(skills_projects=[]), snapshot) == []
+
+    def test_populated_bucket_is_not_a_regression(self, tmp_path: Path) -> None:
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_familiar": ["Java"]}))
+
+        assert _bucket_regressions(self._facts(skills_familiar=["Java"]), snapshot) == []
+
+    def test_vanished_row_blocks_the_write_end_to_end(self, env: Path) -> None:
+        """The regression an absent row causes, driven through the real command."""
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "verified.json").write_text(
+            json.dumps({"skills_familiar": ["Java", "Spring Boot"]})
+        )
+
+        # This resume has no Familiar row at all, exactly like the reformat.
+        docx = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        result = runner.invoke(convert_resume_cmd.app, ["--docx", str(docx)])
+
+        assert result.exit_code == 1
+        assert "NOT written" in result.output
+        assert "Familiar" in result.output
+        # The prior snapshot must survive: refusing the write means keeping the
+        # good profile, not replacing it with the degraded one.
+        got = json.loads((profile / "verified.json").read_text())
+        assert got["skills_familiar"] == ["Java", "Spring Boot"]
+
+    def test_force_still_overrides_a_regression(self, env: Path) -> None:
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "verified.json").write_text(json.dumps({"skills_familiar": ["Java"]}))
+
+        docx = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        runner.invoke(convert_resume_cmd.app, ["--docx", str(docx), "--force"])
+
+        got = json.loads((profile / "verified.json").read_text())
+        assert got["skills_familiar"] == []
