@@ -185,6 +185,33 @@ class PipelineConfig(BaseModel):
     score_ai_bonus: int = 5
     score_transferable_credit: float = 0.7
 
+    # --- Band separation (2026-08-10) -----------------------------------
+    # Deterministic ceiling for Senior/Sr./Lead/Staff/Principal/Architect
+    # titles, applied on the TITLE ALONE.
+    #
+    # This replaces a ceiling that could never fire. The old one was gated on
+    # the model emitting a "Senior-band" decline_reason, but the July 2026
+    # prompt rewrite told the model to stop declining senior titles precisely
+    # because "a deterministic ceiling downstream already keeps them from
+    # outranking full fits". It did not: measured on the 650-score backlog,
+    # the senior_band cap fired on 0 of 62 undeclined senior-titled roles, and
+    # senior titles ended up with a HIGHER median (60) than explicit
+    # junior/mid ones (50) — the opposite of the intent.
+    #
+    # Set at 60 so senior roles stay visible just above `min_score` as
+    # deliberate stretch applications, while any junior/mid or unbanded role
+    # with real coverage outranks them. Raise toward 70 to weight senior
+    # postings back up, or below `min_score` to drop them out of the list
+    # entirely without touching `include_senior_roles`.
+    senior_score_cap: int = 60
+    # Additive preference for titles that explicitly say Junior, Jr,
+    # Intermediate, Mid, Associate, Developer I/II, new grad, co-op, or intern.
+    # These are the roles worth chasing at 3 YoE, and they were ranking below
+    # senior postings because nothing in the model rewarded the band. Applied
+    # before every ceiling, so it lifts ranking within the band without
+    # letting a thin JD or a Familiar-only fit escape its cap.
+    junior_score_bonus: int = 5
+
 
 class BrowserConfig(BaseModel):
     headed: bool = True
