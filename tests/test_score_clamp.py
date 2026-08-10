@@ -517,7 +517,97 @@ async def test_score_job_senior_decline_converts_to_cap_when_opted_in(
     )
     result = await score_job(_cfg(kb_dir), job)
     assert result.decline_reason is None
-    assert result.score == 70  # computed 90, senior ceiling pulls it to 70
+    # Computed 90; the senior ceiling pulls it to `senior_score_cap` (60).
+    assert result.score == 60
+    assert result.breakdown is not None
+    assert "senior_band" in result.breakdown.caps_applied
+
+
+@pytest.mark.asyncio
+async def test_score_job_caps_senior_title_without_any_decline(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The senior ceiling is gated on the TITLE, not on a decline reason.
+
+    Regression for the 2026-08-10 audit: the ceiling used to require a
+    "Senior-band" decline_reason, but the July 2026 prompt told the model to
+    stop emitting one for senior titles. Across the 650-score backlog it fired
+    0 times on 62 undeclined senior-titled roles, and two full-JD senior
+    postings reached 81 and 84 — above every junior role in the list."""
+
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(["TypeScript", "React", "Node.js"]),  # no decline_reason
+    )
+    job = Job(
+        id="test:sr-nodecline",
+        source="test",
+        external_id="sr-nodecline",
+        title="Senior Software Engineer",
+        description="React and Node role. " * 60,  # full JD, so thin_jd cannot bind
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.decline_reason is None
+    assert result.score == 60, "senior title must be capped even when never declined"
+    assert result.breakdown is not None
+    assert result.breakdown.computed == 90  # the uncapped score it used to keep
+    assert result.breakdown.caps_applied == ["senior_band"]
+
+
+@pytest.mark.asyncio
+async def test_score_job_junior_title_outranks_senior_at_equal_coverage(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A junior/mid title must beat a senior one on identical coverage.
+
+    Before the fix the backlog ran the other way: senior titles carried a
+    median of 60 against 50 for explicit junior/mid ones."""
+
+    monkeypatch.setattr(
+        score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"])
+    )
+    common = dict(
+        source="test",
+        description="React and Node role. " * 60,
+        company="Acme",
+    )
+    junior = await score_job(
+        _cfg(kb_dir),
+        Job(id="t:j", external_id="j", title="Intermediate Software Developer", **common),
+    )
+    senior = await score_job(
+        _cfg(kb_dir),
+        Job(id="t:s", external_id="s", title="Staff Software Engineer", **common),
+    )
+    assert junior.score > senior.score, (junior.score, senior.score)
+    assert junior.score == 95  # 90 computed + junior bonus, no ceiling binds
+    assert senior.score == 60
+
+
+@pytest.mark.asyncio
+async def test_score_job_junior_bonus_cannot_escape_thin_jd_cap(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The junior bonus is added before the ceilings, so a signal-poor snippet
+    stays capped rather than riding the bonus past it."""
+
+    monkeypatch.setattr(
+        score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"])
+    )
+    job = Job(
+        id="test:jr-thin",
+        source="test",
+        external_id="jr-thin",
+        title="Junior Software Developer",
+        description="React and Node.",  # under thin_jd_chars
+        company="Acme",
+    )
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.score == 70  # thin_jd_score_cap, not 95
+    assert result.breakdown is not None
+    assert "thin_jd" in result.breakdown.caps_applied
 
 
 @pytest.mark.asyncio

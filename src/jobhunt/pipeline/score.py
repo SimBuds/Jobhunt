@@ -62,6 +62,10 @@ SCORE_AI_BONUS = 5
 # literal tech. Grading it below 1.0 is what lets an exact-stack fit outrank a
 # bridged one instead of tying with it.
 SCORE_TRANSFERABLE_CREDIT = 0.7
+# Band separation. See the `[pipeline] senior_score_cap` / `junior_score_bonus`
+# notes in config.py for why the previous senior ceiling never fired.
+SCORE_SENIOR_CAP = 60
+SCORE_JUNIOR_BONUS = 5
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,8 @@ class ScoreWeights:
     tier2: int = SCORE_TIER2_WEIGHT
     ai_bonus: int = SCORE_AI_BONUS
     transferable_credit: float = SCORE_TRANSFERABLE_CREDIT
+    senior_cap: int = SCORE_SENIOR_CAP
+    junior_bonus: int = SCORE_JUNIOR_BONUS
 
     @classmethod
     def from_config(cls, cfg: Config) -> ScoreWeights:
@@ -88,6 +94,8 @@ class ScoreWeights:
             tier2=p.score_tier2_weight,
             ai_bonus=p.score_ai_bonus,
             transferable_credit=p.score_transferable_credit,
+            senior_cap=p.senior_score_cap,
+            junior_bonus=p.junior_score_bonus,
         )
 
 
@@ -240,7 +248,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     matched = tier1.matched + tier2.matched
     gaps = tier1.gaps + tier2.gaps
     ai_bonus = bool(result.get("ai_bonus_present"))
-    computed = _compute_score(tier1, tier2, ai_bonus, weights)
+    junior_bonus = is_explicit_junior_title(job.title)
+    computed = _compute_score(tier1, tier2, ai_bonus, weights, junior_bonus)
     score = computed
     # Which ceilings actually bound, recorded as they fire. A capped score must
     # never be mistaken for an earned one during calibration.
@@ -285,23 +294,31 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     ):
         decline_reason = None
 
-    # Senior-band exposure (July 2026): when senior titles are opted in via
-    # `applicant.include_senior_roles`, a "Senior-band" decline the model
-    # still emits (the prompt now says score 55-70 instead) converts to a
-    # confidence ceiling — same posture as thin_jd_score_cap. The role stays
-    # applyable in the stretch band without outranking full fits. Only fires
-    # when the title actually is senior-band; body-inferred declines on
-    # non-senior titles are the junior override's job above.
-    if (
-        decline_reason
-        and "senior-band" in decline_reason.lower()
-        and cfg.applicant.include_senior_roles
-        and is_senior_title(job.title)
-    ):
-        decline_reason = None
-        if score > 70:
+    # Senior-band ceiling, gated on TITLE ALONE (2026-08-10).
+    #
+    # This used to require the model to emit a "Senior-band" decline_reason,
+    # which the July 2026 prompt rewrite stopped it from doing — the prompt
+    # now says senior titles are "extracted normally" because "a deterministic
+    # ceiling downstream already keeps them from outranking full fits". That
+    # ceiling was unreachable: across the 650-score backlog it fired 0 times
+    # on 62 undeclined senior-titled roles, so senior postings carried a
+    # higher median (60) than explicit junior/mid ones (50).
+    #
+    # Now unconditional on senior titles. A model-emitted "Senior-band"
+    # decline is still nullified when senior roles are opted in, so the role
+    # stays applyable in the stretch band rather than vanishing.
+    #
+    # Only ever lowers.
+    if is_senior_title(job.title):
+        if (
+            decline_reason
+            and "senior-band" in decline_reason.lower()
+            and cfg.applicant.include_senior_roles
+        ):
+            decline_reason = None
+        if weights.senior_cap < score:
             caps_applied.append("senior_band")
-        score = min(score, 70)
+        score = min(score, weights.senior_cap)
 
     # Phase 10.2: Familiar-only-fit cap. When every matched must-have resolves
     # to a skill that's in verified.skills_familiar (Java/Spring Boot/MCP/...
@@ -378,6 +395,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
                 "tier2": weights.tier2,
                 "ai_bonus": weights.ai_bonus,
                 "transferable_credit": weights.transferable_credit,
+                "senior_cap": weights.senior_cap,
+                "junior_bonus": weights.junior_bonus,
             },
         ),
     )
@@ -577,16 +596,22 @@ def _compute_score(
     tier2: _TierResult,
     ai_bonus: bool,
     weights: ScoreWeights = DEFAULT_WEIGHTS,
+    junior_bonus: bool = False,
 ) -> int:
     """Deterministic score from graded tier coverage.
 
     base + tier1_weight * tier1_coverage + tier2_weight * tier2_coverage
-         + ai_bonus
+         + ai_bonus + junior_bonus
 
     An empty tier-2 folds its weight into tier-1 rather than awarding free
     points. Short postings frequently state hard requirements and no wish
     list at all, and a posting should not score higher merely because it
     forgot to write one.
+
+    `junior_bonus` lifts explicitly junior/mid-titled postings — the band
+    actually worth chasing at this YoE — so they outrank senior stretch roles
+    at equal coverage. Added here rather than after the caps so a thin JD or a
+    Familiar-only fit cannot ride the bonus past its ceiling.
     """
     t1_weight = weights.tier1
     t2_weight = weights.tier2
@@ -597,6 +622,8 @@ def _compute_score(
     score = weights.base + t1_weight * tier1.coverage + t2_weight * tier2.coverage
     if ai_bonus:
         score += weights.ai_bonus
+    if junior_bonus:
+        score += weights.junior_bonus
     return round(score)
 
 
@@ -625,6 +652,7 @@ def prompt_hash(cfg: Config) -> str:
     # reformat cannot change the digest on its own.
     h.update(
         f"base={w.base};t1={w.tier1};t2={w.tier2};"
-        f"ai={w.ai_bonus};transfer={w.transferable_credit:.6f}".encode()
+        f"ai={w.ai_bonus};transfer={w.transferable_credit:.6f};"
+        f"senior_cap={w.senior_cap};junior_bonus={w.junior_bonus}".encode()
     )
     return h.hexdigest()[:16]
