@@ -82,13 +82,14 @@ Hard rules (from kb/policies/tailoring-rules.md):
      Do not move bullets between roles.
 4. Skill categories: keep "Familiar" as a separate category whose items are
    exactly the items in verified_facts.skills_familiar (you may reorder).
-5. Education: include EXACTLY ONE entry — the GBC diploma line (e.g.
-   "Computer Programming & Analysis (Advanced Diploma), George Brown College,
-   Toronto (April 2024)"). Do NOT add a "Dean's List" or "Coursework: …"
+5. Education: include EXACTLY ONE entry — the highest credential in
+   `verified_facts.education`, rendered verbatim from that entry (shape:
+   "<program> (<credential>), <institution>, <city> (<completion date>)").
+   Do NOT add an academic-honours or "Coursework: …"
    entry to `education` — those are rendered separately from `coursework` and
    adding them here produces a duplicated block on the resume. Coursework:
    4–6 items chosen from verified_facts.coursework_baseline OR the broader
-   GBC list mentioned in `policy`, only items that map to the JD.
+   coursework list mentioned in `policy`, only items that map to the JD.
 6. Summary: 3–5 sentences. Strict rules:
    a. Open with a truthful role label that matches the JD's primary lane and
       {candidate_name}'s verified facts. The verified summary's own label ("Full-stack
@@ -118,12 +119,16 @@ Hard rules (from kb/policies/tailoring-rules.md):
    e. If the JD explicitly mentions AI, ML, LLM, generative AI, RAG,
       prompt engineering, automation tooling, developer tooling,
       local-first tooling, or infrastructure work, the summary's first OR
-      second sentence MUST surface {candidate_name}'s local LLM / Ollama / GPU /
-      prompt-engineering work. Use phrasing that includes the literal tokens
-      "AI" and "LLM" (e.g. "AI/LLM tooling with local Ollama hosting") so
-      ATS keyword matchers latch onto both. Do not treat vague phrases like
+      second sentence MUST surface the candidate's own AI/LLM work as it
+      appears in `verified_facts.skills_ai` and `verified_facts.projects`.
+      Use phrasing that pairs the literal tool names found there with the
+      generic tokens "AI" and "LLM" (shape: "AI/LLM tooling with <the
+      verified tool or approach>") so ATS keyword matchers latch onto both.
+      If `verified_facts` contains no AI/LLM work, skip this rule rather
+      than inventing any. Do not treat vague phrases like
       "modern stack", "modern engineering", or "modern tools" as an AI
-      trigger by themselves. Mention the GBC diploma + Dean's List once, but
+      trigger by themselves. Mention the highest credential from
+      `verified_facts.education` (with academic honours, if any) once, but
       in the closing sentence, not the lead.
 7. Bullets must use strong verbs (built, designed, shipped, owned, led,
    integrated, migrated, optimized, deployed, configured, automated). No "I",

@@ -1082,6 +1082,45 @@ Keep responses tight. State results and decisions directly. Do not narrate
 internal deliberation. The phase report, the DoD checklist, and the handoff
 line are the contract. Everything else is optional.
 
+### No standing-workflow reminders
+
+Do not close a response with the workflow Casey already runs. Specifically, no
+reminders to bring staging up or down, to refresh staging to see a change, to
+commit, to push, or to pull on the server to deploy. Casey runs this loop daily.
+Restating it turns every answer into a footer of things he already knew, and it
+buries the part he asked for.
+
+State what changed and what was verified, then stop.
+
+The exception is when the environment is itself the finding rather than a
+sign-off. A container in a state that would silently destroy work is worth a
+sentence: `up.sh` starts pristine and discards whatever is in the running
+container, while `docker start` on a stopped one keeps it. So is a fact that is
+only true in one environment, such as a stale stylesheet being served. The test
+is whether the reader learns something they could not have predicted. A generic
+"remember to deploy" fails that test. "The container is dead, and `up.sh` would
+wipe what you entered" passes it.
+
+Instructed 2026-08-17: "you dont need to give me reminders on staging or pushing
+to github".
+
+### Deliverables land in chat
+
+Reports are chat output. Audits, findings, comparisons, plans, summaries, and
+handoffs are written into the response itself, formatted with markdown. Do not
+publish an Artifact, and do not write a new `*.md` report into the repo, unless
+Casey asks for that file in the same message.
+
+A request for something "full", "thorough", or "complete" is about depth, not
+about format. It is not a request for a document.
+
+The ban covers **new** report files, not maintenance. Editing a tracked doc
+(`README.md`, this file, anything under `docs/`) is ordinary work when
+correcting or extending it is the task.
+
+Instructed 2026-08-27: "make note in AGENTS.md to not generate artifacts or
+markdown reports. should be producing it formatted in chat unless I specify".
+
 ---
 
 ## When stuck
@@ -1124,105 +1163,401 @@ the empty template it defines.
      rules belong here and in PLAN.md or README.md, never in the universal
      body above. -->
 
-### Teach, do not take over
+This repo is the **Atelier Dacko** Shopify theme. Rules below were carried over from
+`old-AGENTS.md` on 2026-08-25 and corrected against the live theme: anything describing the
+removed ring-builder templates, the stepper section, or the old `data-vdb-*` DOM contract was
+dropped or rewritten. Corrections are marked **[updated]**.
 
-This is a learning project with a real deliverable. The human performs each
-infrastructure and WordPress step, whichever provider hosts it.
+### Stack
 
-- Explain what the step does and why it matters.
-- **Always give the exact commands, in runnable form, labelled by where they
-  run.** Never withhold or summarise a command because the human is the one who
-  executes it. "Run this yourself" without the command is a failed instruction.
-- **Prefer commands over console click-paths.** Where a CLI exists, the commands
-  are the primary path and a click-path is an optional addition, never a
-  substitute. A click-path is the only acceptable form when no CLI equivalent
-  exists, such as accepting terms, a browser-only console setting, or the first
-  cloud identity created before any CLI credentials exist.
-- Stop after one step and let the human run it.
-- Answer questions before moving on.
-- Give the read-only verification commands for the human to run, then wait for
-  the output. Do not run them.
-- Update `README.md` only after verification.
-- Do not SSH into the server or configure it for the human. The verification
-  commands under *Verify before documenting* that touch the server are run by
-  the human, who shares the output.
-- Do not generate the complete theme, site, or infrastructure in one pass.
+- Shopify **Dawn 16.0.0** with an Atelier Dacko child layer. All custom work is prefixed `dacko-*`.
+- **`1rem = 10px`.** `page_width` **1400**, gutters `--dacko-container-padding-*` **70 / 20px**
+  → header and page content cap at **1260px** however wide the viewport.
+- Figma MCP file `36KBZtQYIgfRt9a1Dx7Rm6`. The type/spacing source of truth is **real page
+  frames**, not the Style-Guide annotation styles (those are set in Inter, not Manrope).
+- Tokens are extracted locally, not read by eye. `scripts/figma-tokens.py` decodes
+  `figma/Atelier-dacko-redesign.fig` into `docs/figma-design-tokens.md`. Check the per-page
+  usage columns before adopting any row. 16 of the 21 variable collections are pasted UI-kit
+  residue that appears only on `Internal Only Canvas`, including a gold `#936E4A` that is not
+  a brand color. Verified 2026-08-27.
+- Gate every change on `shopify theme check` (0 errors) and `bash scripts/check-globals.sh`.
 
-Editing files in this repository is the assistant's work. Running
-infrastructure, Git, WordPress, and database commands is the human's.
+### Non-negotiables
 
-**Divergence recorded 2026-07-29.** The universal body under *Command
-boundaries* makes repo-local and read-only commands the agent's own job. That
-holds for this repository's own tooling (`git status`, `rg`, `ls`, the test
-runner). It does **not** extend to the hosting account, the container, the
-droplet, MySQL, or WP-CLI, where this rule wins and the human runs everything,
-including read-only checks. The reason is pedagogical rather than technical:
-the human is learning the stack, and an agent that runs the verification
-removes the step being taught.
+1. **Do not edit** `assets/global.js`. Prefer a `dacko-*` override to a stock Dawn section.
+   `assets/base.css` only for approved spacing/token plumbing.
+2. **Prefix:** all custom sections, CSS and JS are `dacko-*`.
+3. **Colors:** use `rgb(var(--color-*))` / `var(--dacko-*)`. No raw hex in sections, snippets or
+   CSS unless the token is already centralized in `dacko-globals.css`. Scheme `button` stays
+   **`#4D6A8F`**.
+   - **Alpha:** color tokens are comma-separated RGB triplets, so opacity uses the comma form
+     `rgba(var(--token), 0.5)` — **never** `rgb(var(--token) / 0.5)`. With comma triplets the
+     slash form is invalid CSS and the browser drops the whole declaration, so the alpha
+     silently disappears. Hex tokens (`--dacko-white`, `--dacko-surface-*`) cannot take alpha
+     at all; add a triplet token if you need a translucent variant.
+4. **Globals:** `assets/dacko-globals.css` loads once from `layout/theme.liquid` and holds
+   **only design tokens + true globals** (typography, buttons, header/footer, color schemes,
+   accessibility). **Never** `stylesheet_tag` it from a section. Section CSS lives in
+   `assets/dacko-<section>.css` loaded from that section only; template/page CSS lives in
+   `assets/dacko-(template|page)-*.css` conditionally loaded from `theme.liquid` and stays
+   **render-blocking** (deferring layout CSS causes a FOUC of the un-overridden Dawn layout).
+   `[id$="__key"]`, `.template-*` and `#shopify-section-*` never belong in globals.
+5. **Assets:** `defer` on scripts; `{% if %}` for page-specific CSS/JS; the Dawn
+   `media="print" onload` pattern only for genuinely non-critical, non-layout CSS.
+6. **Breakpoints [updated 2026-08-27]:** mobile-first; **750px** tablet; **990px** content/grid
+   desktop; **1250px** header inline menu — drawer below it, inline menu above, never both.
+   This was written as 1200px but never shipped as 1200: `dacko-globals.css` forced the drawer
+   row up to 1249px with `!important` and outranked `sections/header.liquid`. Both files now say
+   **1250**. Desktop nav sizing lives in exactly one place, the "Header nav fit" block in
+   `dacko-globals.css` — three overlapping blocks were consolidated into it. The nav track has a
+   **hard ceiling of 966px**; a menu wider than that overflows at every viewport width, so the
+   fix for a too-long menu is shorter labels, never a new breakpoint.
+7. **Customizer:** new sections must render in design mode — use `{% if request.design_mode %}`
+   for placeholders.
+8. **Regression locks:** body letter-spacing **`-0.02em`** on `p` / `.rte` /
+   `.product__description`; Brand/Blue **`#4D6A8F`**. Do not change without explicit approval.
+9. **Audit baseline:** no `console.*` in shipped JS; no label-only Liquid comments (keep only
+   the "why" — brand rationale, Figma reference, a contract); vendor prefixes only where a
+   non-trivial browser still needs them.
 
-Record completed steps in this shape. This is the single definition of the
-build-log entry format, and `README.md` holds the entries themselves:
+### Where styles live (enforced)
 
-```text
-#### Step N — <title> ✅
-**Goal:** one line.
-**Why it matters:** the reasoning.
-**Commands:** the commands that worked, labelled by location.
-**Verify:** the evidence.
-**Q&A:** the human's questions and answers.
-```
+`dacko-globals.css` is tokens + true globals only. It is **not** a scratchpad — do not append a
+section's rules "just for now" (that is how it reached 3,286 lines).
 
-The Q&A block is required, even when it says `none`.
+| The rule styles… | It goes in… |
+| --- | --- |
+| a token, the type ramp, buttons, header/footer, color schemes, accessibility | `dacko-globals.css` |
+| **one section** (`.dacko-<section>__…`, `[id$="__<section>"]`) | `assets/dacko-<section>.css`, `stylesheet_tag`'d from that section only |
+| **a template/page** (`.template-*`) | `assets/dacko-(template\|page)-*.css`, conditionally loaded in `theme.liquid` |
 
-### Command labels
+`scripts/check-globals.sh` enforces this as a **ratchet**: counts of `[id$="__…"]`,
+`.template-*` and `.dacko-<section>__*` selectors in globals may only go **down**, and it
+hard-fails on any `#shopify-section-*` selector or any section that loads globals. When you
+legitimately reduce a count by extracting, lower the baseline in the script.
 
-- `# ON HOST` is the human's desktop terminal.
-- `# IN CONTAINER` is a shell inside the local Docker container, reached with
-  `ssh -p 2222 root@localhost` or `docker compose exec web bash`. This is the
-  only environment that currently exists, and build steps 6 and 7 run in it
-  regardless of the eventual hosting choice. (Restored 2026-07-29 after a
-  label-set migration deleted it while three build-log entries and the two
-  remaining local build steps still depended on it.)
-- `# IN AWS CONSOLE` and `# AWS CLI` were removed 2026-07-29 when hosting was
-  decided for the droplet. They are archived with `# ON AWS SERVER` in
-  `PLAN.md` under the deferred AWS candidate and return together if it does.
-- `# ON DROPLET` is an SSH session on the DigitalOcean droplet. This host also
-  serves a live portfolio site, so every command names it explicitly.
-- `# IN DO CONSOLE` is the DigitalOcean control panel.
-- `# IN WP-ADMIN` is the WordPress dashboard.
-- `# IN MYSQL` is the `mysql>` prompt.
-- `# WP-CLI` is the `wp` command running as the web user.
+**[added 2026-08-27]** The BEM ratchet (`BASE_BEM`, baseline **9**) closes a blind spot: the
+first two checks only match the id and template forms, so plain section classes slipped past
+them. Five `.dacko-category__*` rules were sitting in globals with `assets/dacko-category.css`
+right beside them — and three were **dead**, shadowed at equal specificity by that file's own
+copies, which load later. The 9 that remain are deliberate: `dacko-breadcrumbs` (5),
+`dacko-load-more` (3) and `dacko-vdb-quantity` (1) back snippets rendered from several
+templates, so they are cross-cutting and belong here.
 
-This is the label set the universal body under *Commands handed to the human*
-requires this project to declare.
+Before deleting a duplicated rule as "dead", confirm the class can only render where its own
+stylesheet loads. For the category rules that held: `.dacko-category__*` appears in exactly one
+section, and that section always `stylesheet_tag`s `dacko-category.css`.
 
-More than one environment already exists, and one of them serves a live site.
-Every server, MySQL, and WP-CLI instruction names the environment it targets,
-and WP-CLI always carries an explicit `--path`. The common way to damage a live
-WordPress site is to run a correct command in the wrong environment.
+**[updated]** The "section reloads globals" check matches an actual load — the filename as a
+quoted string piped into a filter — so a prose comment naming the file no longer trips it.
 
-### Verify before documenting
+**Extracting rules out of globals, safely:**
+- Move the **byte-identical** block; tokens still resolve (globals `:root` loads first).
+- Extract into a **new** `dacko-<section>.css`. If the section already has a CSS file, do **not**
+  bulk-append — that file usually carries its own copies that intentionally override globals via
+  load order, and appending flips the cascade (this shipped a category-pill regression).
+  Reconcile rule-by-rule instead.
+- **Leave cross-cutting rules in globals**: `.template-*` and `[id$="__<key>"]` belong to
+  context, not one section.
+- A rule inside a shared `@media` with other sections → split the block.
+- **Render-diff every move.** CSS that parses ≠ CSS that renders.
 
-Tool output is not enough when the filesystem or live service can be checked.
-Confirm with appropriate read-only evidence such as:
+### Type ramp — Manrope, headings uppercase
 
-- the provider's own status view of the host
-- `ssh`, `hostnamectl`, `uname`, `lsb_release`, `free`, and `lsblk`
-- `systemctl status` on the droplet, `service <name> status` in the container
-- `curl`
-- `ls`, `stat`, and `rg`
-- WP-CLI list/get commands
-- MySQL read-only queries
+| | px size / line-height / tracking / weight |
+| --- | --- |
+| H1 | 30 / 42 / 8px / **700** |
+| H2 | 28 / 38 / 4.51px / **700** |
+| H3 | 24 / 30 / 2.7px / **500** *(verified against the `.fig` 2026-08-27: Figma `Heading/H3` is Manrope **Medium**, 2.7px. The previous 700 / 3.84px was an assumption that was never checked. `.dacko-category__heading.h2` had already been drawn at 24 / 30 / 500 / 2.7px, which is the same style)* |
+| H4 | 16 / 24.75 / 2.7px / **500** |
+| Body `p`, `.rte` | 18 / 26 / −0.02em / **500** *(shipped; Figma is 400 at 0 tracking — both are divergences, see below)* |
 
-When a prediction and the live system disagree, correct the plan plainly and trust
-the live evidence.
+`.body--medium` (16 / 20 / 500) carries **0.4px** tracking, per Figma `Body/Med/16px`.
 
-### Secrets and identifiers
+Only Manrope **500 and 700** are loaded. **`600` renders as 700 (Bold)**, not SemiBold — use 500,
+or load `manrope_n6` if a real 600 is needed.
+**[updated 2026-08-26] There are no `font-weight: 600` declarations left.** All 38 were converted
+to `700`, the weight the browser was already resolving them to, so the change is a no-op on
+screen and the CSS now states what actually renders. The dead `.body--semibold` utility — defined
+in globals, used nowhere, and rendering bold despite its name — was deleted. If real SemiBold is
+ever wanted, loading `manrope_n6` is one line, but it would restyle everything that is now 700
+across ~20 files at once, so verify against Figma first.
 
-Passwords, private keys, credentials, live addresses, and unnecessary provider
-resource IDs never belong in the repository. This restates tier 0 for this
-project's specific artefacts: the droplet's ID and IP address (which also
-locates the live portfolio site), DigitalOcean API tokens, database passwords,
-and the banked AWS account's identifiers (Elastic IPs, instance IDs, account
-numbers, and access keys) stay out of `PLAN.md`, `README.md`, and the build
-log.
+### Buttons
+
+Manrope 16/24, 2.7px tracking, uppercase, pill `100px`, padding **10×24px** (mobile 14×32).
+`.button--primary` (brand fill / white), `.button--secondary` (brand border +
+`--dacko-ghost-text`), `.button--text` (link + ↗), `.button--dark` (gradient). Disabled
+`opacity .35`; hover `opacity .82 + translateY(-1px)`. **No `.button--ghost` class exists.**
+
+### Spacing
+
+- Section vertical padding **80 / 40px** (desktop / mobile), enforced with `!important` on
+  `[class*='section-'][class*='-padding']`. **Consequence:** `padding_top` / `padding_bottom` in
+  template JSON and section schemas are **inert** — don't curate them or expect edits to render.
+  Keep new-section defaults at 64/64 for consistency only.
+- Horizontal gutters **70 / 20px** (desktop / mobile).
+- **[updated 2026-08-27]** All four moved onto the Figma measurements, from 64 / 48 vertical and
+  80 / 20 horizontal. The `.fig` puts 80px on 65 desktop sections and 40px on 42 mobile ones, and
+  a 70px gutter on 80 desktop sections. Verified with `scripts/figma-tokens.py`.
+- Header vertical padding **48px** desktop. `header-group.json` carries `padding_top`/`bottom` 80,
+  inert for the same reason as above.
+
+### Intentional divergences from Figma — do NOT "fix"
+
+- **Body/subtext weight 500** (Figma "Body/Reg" is 400) — heavier body per design review
+  (2026-06). Hero subtext uses the same 500; heroes stay distinct via brighter color, not weight.
+- **Body tracking `-0.02em`** (Figma `Body/Reg/18px` is **0**). Shipped and locked. The rationale
+  recorded until 2026-08-27, that this matched a Figma `-2%`, was wrong: the `-2%` belongs to the
+  imported **Inter** UI-kit text styles, which are used nowhere in the Manrope design. The value
+  stays because it shipped and reads well, not because the comp asks for it. Still do not "fix"
+  it to a literal `-2px`, which is 5x larger.
+- **Body/secondary text opacity `0.72`** via `--color-text-secondary` (was `0.5`) — raised to
+  clear WCAG AA (4.5:1) on dark schemes. Accessibility fix approved over the Figma muted look.
+- **Content 1260px** vs Figma's **1300px** (1440px artboard less two 70px gutters, confirmed on
+  55 frames). The 40px gap is `page_width` 1400: Dawn's picker offers 1000/1200/1400/1600 and has
+  no 1440. Gutters now match at 70px, so this is the whole remaining difference.
+- **Dark-button border** solid `rgba(31,47,66,.5)` (Figma: gradient stroke) — gradient borders
+  break on a pill.
+- **Responsive header** vs the desktop-only mockup.
+- **Product cards keep their tile** — `background-color: var(--dacko-black)`, a 1px hairline at
+  alpha `0.08`, and `border-radius: 8px` on `.card__inner`, with `card_corner_radius: 8` in
+  `settings_data.json`. Figma draws them bare: 300+ `Product List` frames across every portfolio
+  and e-commerce artboard at **radius 0, no fill, no stroke**. Verified against the `.fig`
+  2026-08-27 and kept as shipped — approved and tested, the tile gives cards an edge against the
+  dark schemes that bare images do not. This is the one hairline exempt from `--dacko-hairline`.
+- **Header nav weight 700** (Figma nav label is 500) — at 14px uppercase on black the links read
+  thin over the hero imagery. Measured 2026-08-27: the extra weight costs only 12-20px of nav
+  width, so it is not what to give up if the menu runs long.
+- **Light (`scheme-2`) headings** use `--dacko-grey-300` #2F2F2F; body grey `--dacko-grey` #808080.
+- **Hairlines** go through `--dacko-hairline` (added 2026-08-27), not a hand-picked alpha. It is
+  `rgba(var(--color-foreground), 0.2)` by default, which resolves to Figma's `#333333` on the
+  dark schemes, and `0.11` under `.color-scheme-2`, which resolves to Figma's Grey/50 `#DEDEDE`
+  on `#F9F8F8`. Every dacko section divider and box outline was migrated to it on 2026-08-27.
+  **This is a fidelity fix, not an accessibility one** — 0.2 is `#333333` on black, 1.66:1, and
+  no hairline alpha the design uses reaches the 3:1 WCAG 1.4.11 floor. 1.4.11 does not bind on
+  decorative rules anyway. The claim that it did was wrong when first written and is corrected
+  here. **Left alone on purpose:** Dawn's stock component CSS (~15 files, upstream, would
+  conflict on the next merge), the product-card tile and the matching `dacko-product-about`
+  tile (both approved divergences at 0.08), `dacko-testimonials` (an image frame, not a rule),
+  and `dacko-settings-care` (see the separate bug note below).
+
+### New `dacko-*` sections — minimum checklist
+
+- Wrapper: `color-{{ section.settings.color_scheme }}`, `dacko-…`, `section-{{ section.id }}`;
+  inner content in `page-width` unless full-bleed.
+- Schema: `color_scheme`, `padding_top` / `padding_bottom` (default 64 / 64), `presets` array.
+- **CSS goes in `assets/dacko-<section>.css`**, `stylesheet_tag`'d from the section — not globals.
+- **Strings:** the store is English-only at launch, so schema `default` copy may stay literal —
+  but `aria-label`s and visible form label text go through `{{ '…' | t }}` keys in
+  `locales/en.default.json`.
+- **Reusable list/grid content:** before building a new "titled list/grid of icon + label + text"
+  section, extend an existing one — there are already ~15 bespoke variants. Do not add a 16th.
+
+### VDB Ring Creator integration [updated — replaces the old DOM-contract rules]
+
+VDB serves its **own** three-step flow through a Shopify app proxy. The theme does not host,
+embed, or restyle that flow. There is no OS 2.0 app block; the vendor's install method is a
+theme snippet, and its setup guide still documents pre-OS 2.0 element IDs that do not exist in
+Dawn.
+
+- **[updated 2026-08-25] App URL:** the five theme entry points link to
+  `/apps/ring-creator/rb-setting-list?in_journey=true&jewelry_type=ring&view_type=grid`, which
+  opens directly on setting search. **Do not point them back at `rb-get-started`** — that is the
+  Stone-or-Setting chooser, a redundant step in the designed flow, and it cannot be disabled in
+  the admin. Always relative, never absolute, so it survives the switch from `*.myshopify.com`
+  to the primary domain. The vendor guide's `/apps/ring-builder/rb-get-started.php` is stale on
+  prefix, route and extension.
+  The proxy constant in `snippets/vdb-ringbuilder-app.liquid` is a **POST endpoint**, not a
+  link — it stays on `rb-get-started`. Do not repoint it with the others.
+  Full route table in `docs/vdb/readme.md`. The routes are reverse-engineered, not documented.
+- **[updated] The app URL is referenced directly, in six places.** The `page.ring-builder.json`
+  landing page was removed on 2026-08-25; the indirection through `/pages/design-your-own-ring`
+  went with it. Current call sites: `templates/index.json` (`dacko_ring_builder_cta`),
+  `snippets/collection-toolbar.liquid`, `templates/page.{halo,prong,three-stone}-setting.json`,
+  and `snippets/vdb-ringbuilder-app.liquid` (the proxy constant).
+  **A vendor path change is now a repo-wide grep, not a one-file edit** — the prefix already
+  moved once (`ring-builder` → `ring-creator`). Grep `apps/ring-creator` before assuming a count.
+- **[updated] Deep links into a specific setting are supported.** Confirmed live:
+  `/apps/ring-creator/rb-setting-details?in_journey=true&ring_stock_num=<stock>&ring_reference_id=<id>`.
+  `in_journey=true` keeps the shopper inside the builder flow so they continue to stone
+  selection; dropping it strands them on a detail page. Use this for per-setting image cards
+  rather than sending everyone to the unfiltered `rb-get-started` search.
+- **Vendor string is `VDBRC`**, not `VDB`. Confirmed from a live cart. It keys the cart quantity
+  lock in `sections/main-cart-items.liquid` and the line collection in
+  `snippets/vdb-ringbuilder-app.liquid` — change both together.
+- **The bridge is cart-only.** It re-validates externally held VDB stock through the proxy before
+  checkout, and renders nothing on other pages. A failed or `SUCCESS: "FALSE"` response is
+  **non-blocking** — never strand a shopper behind an inventory service that did not answer.
+  Do not re-add a product-page duplicate-add guard: VDB already redirects to the cart, and its
+  products are never published to the online store, so no Dawn product page can render one.
+- **[new] Theme sections CAN wrap the VDB app, per step.** `layout/theme.liquid` maps the route
+  to one of **five** steps and renders that step's section groups around
+  `{{ content_for_layout }}`. `<main>` carries `data-vdb-route` and `data-vdb-step`.
+  **[updated 2026-08-26]** The list and detail steps are separate, because the Figma frames for
+  them are different pages, not the same page with extra content:
+  `setting` · `setting_details` · `diamond` · `diamond_details` · `review`.
+  Matching is by substring and **branch order is load-bearing**: `stone-details` is tested before
+  `stone`, and `setting-details` before the setting fallback, because `rb-stone-details` contains
+  both substrings. Reordering those branches silently routes detail pages to the list groups.
+  Anything unrecognised, `rb-get-started` included, falls back to `setting`.
+  **Only the two list steps have an above-group.** Every detail-type frame goes breadcrumbs
+  straight to the stepper, so `setting_details`, `diamond_details` and `review` deliberately
+  render nothing above the app — an absent `when` branch there is intentional, not an oversight.
+  Full table in `docs/vdb/flow-plan.md`.
+  Confirmed live 2026-08-25. App-proxy pages honour `preview_theme_id`, so test on the
+  unpublished theme, never by publishing. Section group `type` must be `custom.<name>` with an
+  **underscore**-separated name — `custom` alone and hyphens are both rejected by the API.
+  **[new 2026-08-26] The whole `type` string is capped at 25 characters**, `custom.` included,
+  which leaves 18 for the name. `custom.vdb_setting_details_below` (32) was rejected and became
+  `custom.vdb_setdet_below` (23). **`shopify theme check` does not catch this** — it reported 0
+  errors on the invalid file, and only the push rejected it. Check the length yourself when
+  naming a group; the filename is not subject to the cap, so only the `type` field needs
+  abbreviating.
+- **[new] VDB carries the whole shopper selection in GET parameters**, and the app frame is
+  same-origin. `ring_stock_num`, `ring_reference_id`, `natural_stock_num`, `stone_reference_id`
+  and the Shopify Markets params are all readable from the parent page via
+  `iframe.contentWindow.location.search`. That is the integration surface — there is no
+  documented API. It depends on the app staying on the shop domain behind the proxy; a vendor
+  domain would make the frame cross-origin and cut it off. See `docs/vdb/readme.md`.
+- **[new] Never put a straight apostrophe in any VDB admin text field.** VDB interpolates
+  admin values into single-quoted JS string literals without escaping. One `'` throws
+  `SyntaxError: Unexpected identifier` and kills every script on the page — dead buttons,
+  slick carousels that never initialise and so stack vertically, `shop_money_format` undefined.
+  Confirmed live 2026-08-25 from the word `you'd`; it broke pages that never displayed the
+  field, because the strings share a bundle. Reword rather than using a curly apostrophe, so
+  the copy stays ASCII. The same rule governs the Inline CSS field: `docs/vdb/vdb-inline-css.txt`
+  is pasted whole, comments included, so it is written in ASCII with no apostrophes or backticks
+  anywhere. `scripts/check-vdb-css.py` verifies that before you paste.
+  **When VDB behaves oddly, read the browser console before touching CSS.**
+- **[new] Every app-admin setting is recorded in `docs/vdb/readme.md`.** Read it before
+  answering any question about VDB behaviour that is not theme code — search limits, filter
+  show/hide, button and navigation copy, email routing, price and ATC visibility, and the list of
+  known live bugs all live there, with the provenance of each value. Most VDB "bugs" turn out to
+  be an admin field, not CSS. Keep it current when a setting changes.
+- **VDB frontend styling lives in the app's Inline CSS field**, not in theme CSS.
+  `docs/vdb/vdb-inline-css.txt` is the source of truth — edit there and paste, so the repo keeps a
+  copy. The app renders on the theme's **black body**; its "Main Background" setting styles the
+  filter panels only, so results text must be light.
+  **[corrected 2026-08-25] Theme CSS does NOT reach the app.** The builder runs in a same-origin
+  iframe that loads only VDB's own stylesheets — no `dacko-globals.css`, no `base.css`. The
+  Inline CSS field is the only lever. VDB emits its Theme Colors as high-specificity `!important`
+  rules, so overrides need a longer class chain than VDB uses, not more `!important`.
+  Devtools must target the frame, not the top document, or every query returns nothing.
+- **[new] When a VDB selector cannot be identified, colour every descendant of a confirmed
+  container** rather than enumerating guesses. Five targeted selectors for the results-grid price
+  all missed; `.vdb-rb-list-product-item, .vdb-rb-list-product-item *` fixed it first try. Do not
+  blanket `font-family` the same way — VDB draws its stepper, shape and arrow glyphs with an icon
+  font, and overriding it turns every icon into a stray letter.
+- **The app page has no crawlable content** (~630 chars of chrome, JS-rendered). Anything that
+  needs to rank belongs on the theme landing page.
+
+### Article and blog invariants
+
+- **Article section padding:** `36 / 36` in JSON, except `dacko-article-toc` at `12 / 12`.
+- **Body prose:** `text-align: start`. Do not center. TOC heading, takeaways heading, callout and
+  author card stay centered.
+- **Key takeaways:** 3-sided transparent box (no `border-bottom`), max-width 60rem. No filled
+  background.
+- **Callout, bordered variant:** a **double left rule** — 3px brand `border-left` plus a 1px
+  `::before` parallel line ~7px to its right. Both lines together are the design.
+- **Comparison:** a real `<table>` so `feature_N` lines up across columns. Do not regress to a
+  per-column card stack.
+- **Blog hero:** content vertically and horizontally centered at every viewport; overlay is a
+  flat darken, not a left-heavy gradient.
+- **Featured ↔ Latest separator:** `.dacko-blog-main__list-header` carries the visible top border
+  at `0.35` opacity. That border is the divider; do not delete it.
+- **Blog search bar:** boxed input — full 1px border, rounded, solid background. Do not revert to
+  bottom-border-only (it disappears on scheme-2).
+- **Latest cards:** `__card-media` is `aspect-ratio: 1/1`, `position: relative`; `__card-img`
+  absolutely positioned + `object-fit: cover`. This guarantees uniform cards.
+
+### Header and nav
+
+- **Active state:** Dawn puts `.header__active-menu-item` on both a top-level `<a>` that is the
+  current page **and** a `<summary>` parent whose child is current. Only the `<a>` case is
+  styled — when the current page sits inside a dropdown, the highlight belongs to the submenu
+  item. Scope by element; do not patch Dawn's markup.
+- **Nav width budget [updated 2026-08-27]:** after the 130px logo, three 44px icons and two 16px
+  grid gaps, the inline menu gets a **hard ceiling of 966px** of track — reached at 1400px
+  viewport and never wider, because `page_width` caps the header — and **816px** at 1250px.
+  The binding case is the **wide** end, not the narrow one: below 1400 the track grows faster
+  than the nav clamps do, and at 1400 the track stops while the clamps keep growing.
+- **Live menu:** Portfolio / Our Process / Workshop / Settings (dropdown: Prong, Halo,
+  Three-Stone) / Blogs / About Us / Warranty / FAQ / Contact. Nine top-level items, 67
+  characters. Dropdown children cost no bar width, but a dropdown parent gains a ~14px caret.
+  Measured in Chrome against real Manrope: **931px at 1440 and up, against the 966px ceiling** —
+  35px of headroom, 59-72px at every width below.
+- **Before adding a tenth item, shorten one.** "Our Process" to "Process" alone buys 70px;
+  folding FAQ under Contact buys 90px. A label set needing more than 966px overflows at every
+  width including 2560 and no breakpoint can rescue it. Dropping the nav to Figma's 500 weight
+  buys only 12-20px, so it is not the lever. Re-measure rather than estimate: the harness is a
+  flex row of the real labels at the shipped clamps, rendered in headless Chrome.
+
+### Product metafields and metaobjects
+
+`sections/dacko-product-about.liquid` (on the **default** `templates/product.json`, i.e. every
+product) resolves specs **metaobject-first, then legacy flat metafields**, via
+`snippets/dacko-spec-fact.liquid`. The `Setting` / `Metal` / `Cut` / `Stone` metaobjects are
+live on the storefront — do not delete them. They describe Atelier Dacko's own pieces and are
+unrelated to VDB, which never renders through theme product sections.
+
+### File locations
+
+| What | Where |
+| --- | --- |
+| Global AD styles | `assets/dacko-globals.css` |
+| Collection toolbar | `snippets/collection-toolbar.liquid` |
+| Breadcrumbs | `snippets/dacko-breadcrumbs.liquid` |
+| Footer | `sections/dacko-footer.liquid` + `assets/dacko-footer.css` |
+| Header (stock Dawn + globals) | `sections/header.liquid` |
+| Ring builder entry CTA | `templates/index.json` → `dacko_ring_builder_cta` |
+| VDB cart bridge | `snippets/vdb-ringbuilder-app.liquid` |
+| VDB app Inline CSS (paste whole) | `docs/vdb/vdb-inline-css.txt`, checked by `scripts/check-vdb-css.py` |
+| VDB app settings + known bugs | `docs/vdb/readme.md` |
+| VDB constraints + reasoning (internal) | `docs/vdb/vdb-questions.md` |
+| VDB question list to send the vendor | `docs/vdb/vdb-questions-for-vendor.md` |
+| Ring builder flow plan + limitations | `docs/vdb/flow-plan.md` |
+| VDB S3 model assets, IAM, bucket policy | AWS S3 bucket *(no longer mirrored in this repo)* |
+| Article templates | `templates/article.json`, `.v1.json`, `.v2.json` |
+| Blog hub | `templates/blog.json` + `sections/dacko-blog-{hero,featured,main}.liquid` |
+| Template inventory | `README.md` |
+
+### Before commit
+
+> **Enable the guardrail hook once per clone:** `git config core.hooksPath scripts/githooks`
+> — every commit then runs `scripts/check-globals.sh` and is blocked if section/template styles
+> land in globals. (Emergency override: `git commit --no-verify`.)
+
+- [ ] No rogue hex in sections/snippets/CSS.
+- [ ] Token opacity uses `rgba(var(--token), a)` — never `rgb(var(--token) / a)`.
+- [ ] New files prefixed `dacko-*`; no globals reload from a section; no `[id$="__key"]`,
+      `.template-*`, `.dacko-<section>__*` or `#shopify-section-*` in globals.
+      Run `bash scripts/check-globals.sh`.
+- [ ] `shopify theme check` reports **0 errors**.
+- [ ] No `global.js` edits; `base.css` only if the task allows.
+- [ ] No `console.*` in shipped JS; no label-only Liquid comments; no obsolete vendor prefixes.
+- [ ] **[updated]** VDB: vendor string is `VDBRC` in both files. The app URL is relative
+      (`/apps/ring-creator/...`), never absolute. There is no landing-page indirection any more —
+      if the vendor path changes, grep `apps/ring-creator` across `templates/` and `snippets/`.
+- [ ] **[updated]** Toolbar "Custom Collections" href is `/collections/browse-all`.
+- [ ] Article body uses `text-align: start`; TOC padding 12/12; takeaways keeps its 3-sided
+      border; callout keeps the double left rule; comparison stays a `<table>`.
+- [ ] Images: CDN widths; lazy where appropriate. JS `defer`.
+- [ ] **Major change Q/A'd by running it** (`shopify theme dev` or a headless-Chromium harness)
+      — computed/visual result confirmed, not assumed.
+      **Render-diff recipe [added 2026-08-27].** Against `shopify theme dev` on
+      `127.0.0.1:9292`, capture with
+      `google-chrome-stable --headless=new --disable-gpu --no-sandbox --hide-scrollbars
+      --force-prefers-reduced-motion --timeout=8000 --window-size=W,H --screenshot=out.png URL`.
+      Two flags are load-bearing. `--timeout` is required because the dev server holds a
+      hot-reload connection open, so the load event never fires and `--virtual-time-budget`
+      hangs. `--force-prefers-reduced-motion` is required because Dawn's scroll-trigger fades
+      make the render **nondeterministic**: two captures of identical code differed by 3.3% of
+      pixels, which is the same order as a real regression and makes naive diffing useless.
+      With reduced motion forced, identical code gives a byte-identical PNG, so a Pillow
+      `ImageChops.difference` histogram is an exact pass/fail. To prove a scoped rule does not
+      leak, toggle only that rule (e.g. flip its media query to `max-width: 1px`) and diff —
+      that is how the hero fix was shown to be 0px at 1440.
+- [ ] Sanity check in Theme Customizer (desktop + ~390px mobile).
+- [ ] Tokens unchanged: **`#4D6A8F`**, **`-0.02em`** body tracking.

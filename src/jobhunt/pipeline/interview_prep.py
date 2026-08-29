@@ -349,7 +349,7 @@ def validate_prep_sections(
     allowed = _verified_numbers(verified)
     if allowed_numbers:
         allowed.update(allowed_numbers)
-    scratch = _TIME_OF_DAY_RE.sub(" ", _casey_claim_text(sections))
+    scratch = _TIME_OF_DAY_RE.sub(" ", _candidate_claim_text(sections))
     scratch = _YEAR_RANGE_RE.sub(" ", scratch)
     for cluster in _DIGIT_CLUSTER_RE.findall(scratch):
         normalized = cluster.rstrip(".,")
@@ -432,7 +432,7 @@ def validate_prep_sections(
     # length ≥ 5) that appears verbatim in the verified blob (skills + work
     # history + summary). This rejects "Built Kubernetes clusters" (no
     # substantive token traces) while accepting "Built a 14+ page Shopify
-    # storefront for Atelier Dacko" (shopify, storefront, atelier all trace).
+    # storefront for Acme Retail" (shopify, storefront, acme all trace).
     for anchor in sections.strongest_anchors:
         if not _substantive_tokens(anchor):
             # Pure stop-word / numeric anchor — too vague, but don't reject;
@@ -485,7 +485,7 @@ def _concat_freeform(sections: PrepDocSections) -> str:
     return "\n".join(parts)
 
 
-def _casey_claim_text(sections: PrepDocSections) -> str:
+def _candidate_claim_text(sections: PrepDocSections) -> str:
     parts: list[str] = []
     parts.extend(sections.strongest_anchors)
     for q in sections.likely_questions:

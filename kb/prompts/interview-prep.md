@@ -95,17 +95,16 @@ Hard rules:
 3. **AI/LLM lead surfacing.** When the JD explicitly mentions AI, LLM,
    RAG, generative AI, prompt engineering, ML, automation tooling,
    developer tooling, local-first tooling, or infrastructure work, at
-   least one anchor MUST reference {candidate_name}'s Ollama / local LLM /
-   GPU-tuning work using the literal tokens "Ollama" or "LLM". Do not
+   least one anchor MUST reference the candidate's own AI/LLM work as it appears in `verified_facts.skills_ai` and `verified_facts.projects`, naming the literal tool tokens found there (plus the generic tokens "AI" and "LLM") so an AI-screener summarizer pulls them. If `verified_facts` contains no AI/LLM work, skip this rule rather than inventing any. Do not
    treat vague phrases like "modern stack", "modern engineering", or
    "modern tools" as an AI trigger by themselves.
 
 4. **Concrete project nouns.** Anchors and beats should cite real items from
-   work history: Atelier Dacko (Shopify storefront, WordPress-to-Shopify
-   migration, ring builder app (in progress), 16+ pages), AI Agency (HubSpot theme, HubL, GitHub
-   Actions CI, 30% page-load reduction), Vintage Gaming Retailer (Shopify
-   catalog, 400+ items, CSV inventory exports), Multiple Venues (ten years
-   culinary leadership of teams 5–20). Use real numbers from `verified_facts`;
+   work history, drawn from `verified_facts.work_history` and
+   `verified_facts.projects`: name the employer or project, then the concrete
+   nouns its own bullets give you (the platform, the artifact built, the scale
+   figure). Never name an employer, project, or technology absent from
+   `verified_facts`. Use real numbers from `verified_facts`;
    never invent new metrics.
 
 5. **Honest gaps, no defensive volunteering.** The `honest_gaps` array is
@@ -120,10 +119,10 @@ Hard rules:
    unverified work. For example, if the JD says "automated content upload
    systems" or "AI-generated content pipeline", do not write "I have
    built automated content upload systems" in any reframe bullet unless
-   that phrase exists in verified_facts. Use narrower verified bridges
-   such as Shopify Liquid templates, HubSpot HubL modules, GitHub Actions
-   linting, CSV inventory exports, API integrations, or Ollama/local-LLM
-   workflow only when those facts appear in verified_facts. This same
+   that phrase exists in verified_facts. Use narrower verified bridges —
+   a specific template language, CI configuration, data-import pipeline, or
+   API integration — and only when that exact fact appears in
+   verified_facts. This same
    restriction applies to every bullet inside `likely_questions[].beats`
    and to `strongest_anchors`: do not write "zero errors", "replace
    manual uploads", "scripts and API integrations", "pipelines running
@@ -145,8 +144,9 @@ Hard rules:
    Avoid: "What's the team like?", "What does success look like?" (too generic;
    surface them only with concrete framing tied to the JD).
 
-8. **No exclamation marks. No first-person superlatives.** No GBC diploma /
-   coursework references — that belongs on the resume. Contractions OK.
+8. **No exclamation marks. No first-person superlatives.** No degree,
+   diploma, or coursework references — that belongs on the resume.
+   Contractions OK.
 
 9. **Logistics honesty.** For salary, use {candidate_name}'s configured salary expectation,
    not the JD's posted range. Never write "I am looking for" followed by the
@@ -196,8 +196,10 @@ Cover-letter draft (anchors already chosen): {cover_summary}
 - `likely_questions`: 4-8 entries. Each entry's `beats` field is a list of
   **3-5 talking-point bullets**, each ≤ 25 words. Bullets are stand-alone
   talking points — {candidate_name} reads one bullet and has enough to speak for 15-30
-  seconds. Bullet 1 leads with the real project name (e.g. "Atelier Dacko
-  Shopify storefront — 16+ pages"). Bullets 2-N add specifics
+  seconds. Bullet 1 leads with the real project name taken from
+  `verified_facts`, followed by its platform and a scale figure from that same
+  entry's bullets (shape: "<employer or project> <artifact> — <figure>").
+  Bullets 2-N add specifics
   drawn from `verified_facts` (tools used, real numbers, follow-up framing,
   adjacent project the question might pivot to). Each bullet must
   independently stand up to the honesty validator — no shared verb

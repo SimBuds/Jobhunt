@@ -53,6 +53,7 @@ from jobhunt.ingest._filter import (
     is_research_title,
     is_senior_title,
     is_within_age_window,
+    location_search_terms,
 )
 from jobhunt.models import Job
 from jobhunt.pipeline.score import prompt_hash, score_job
@@ -406,8 +407,19 @@ async def _ingest_all(
                     ),
                 )
             )
+        workday_terms = location_search_terms(
+            city=cfg.applicant.city,
+            region=cfg.applicant.region,
+            country=cfg.applicant.country,
+        )
         for spec in cfg.ingest.workday:
-            adapters.append(("workday", spec, workday.fetch(client, limiter, spec)))
+            adapters.append(
+                (
+                    "workday",
+                    spec,
+                    workday.fetch(client, limiter, spec, search_terms=workday_terms),
+                )
+            )
         for slug in cfg.ingest.workable:
             adapters.append(("workable", slug, workable.fetch(client, limiter, slug)))
         for slug in cfg.ingest.recruitee:
@@ -444,6 +456,7 @@ async def _ingest_all(
                             app_id=secrets.adzuna_app_id,
                             app_key=secrets.adzuna_app_key,
                             query=query,
+                            where=cfg.applicant.city,
                             pages=cfg.ingest.adzuna.pages,
                             results_per_page=cfg.ingest.adzuna.results_per_page,
                         ),

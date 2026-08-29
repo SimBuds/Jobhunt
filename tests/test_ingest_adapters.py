@@ -430,8 +430,11 @@ def test_workday_blank_scan_small_board(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_workday_term_scan_large_board_dedupes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Boards > _BLANK_SCAN_MAX switch to the GTA search-term union; a posting
-    surfaced under two terms is emitted once and the probe page isn't walked."""
+    """Boards > _BLANK_SCAN_MAX switch to the search-term union; a posting
+    surfaced under two terms is emitted once and the probe page isn't walked.
+
+    Terms come from the applicant profile via `location_search_terms`, not from
+    a hardcoded GTA tuple, so they are passed in explicitly here."""
     from jobhunt.ingest import workday
 
     pages = {
@@ -453,7 +456,14 @@ def test_workday_term_scan_large_board_dedupes(monkeypatch: pytest.MonkeyPatch) 
         return {"total": 50, "jobPostings": pages.get(term, [])}
 
     monkeypatch.setattr(workday, "post_json", fake_post_json)
-    jobs = _drain(workday.fetch(client=None, limiter=None, spec="big:wd5:Careers"))  # type: ignore[arg-type]
+    jobs = _drain(
+        workday.fetch(
+            client=None,  # type: ignore[arg-type]
+            limiter=None,  # type: ignore[arg-type]
+            spec="big:wd5:Careers",
+            search_terms=("Toronto", "Ontario", "Remote, Canada"),
+        )
+    )
 
     titles = [j.title for j in jobs]
     ids = [j.id for j in jobs]
@@ -555,3 +565,55 @@ def test_url_extract_unknown_host_returns_none() -> None:
     from jobhunt.discover.url_extract import extract
 
     assert extract("https://example.com/jobs/123") is None
+
+
+# ---------------------------------------------------------------------------
+# location search terms (profile-derived, replaces the hardcoded GTA tuple)
+# ---------------------------------------------------------------------------
+
+
+def test_location_search_terms_are_built_from_the_profile() -> None:
+    from jobhunt.ingest._filter import location_search_terms
+
+    assert location_search_terms(
+        city="Berlin", region="Berlin", country="Germany"
+    ) == ("Berlin", "Remote, Germany")  # region deduped against city
+    assert location_search_terms(
+        city="Toronto", region="Ontario", country="Canada"
+    ) == ("Toronto", "Ontario", "Remote, Canada")
+    # A partially-filled profile still yields usable probes.
+    assert location_search_terms(city="Lisbon") == ("Lisbon",)
+    # Nothing configured -> no narrowing possible, never an invented location.
+    assert location_search_terms() == ()
+    assert location_search_terms(city="   ") == ()
+
+
+def test_workday_large_board_falls_back_to_blank_scan_without_terms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unconfigured profile must not skip large tenants.
+
+    Scanning wide and letting `is_gta_eligible` filter beats yielding nothing,
+    which is what an empty search-term tuple would otherwise cause.
+    """
+    from jobhunt.ingest import workday
+
+    async def fake_post_json(*args: Any, json_body: Any, **kwargs: Any) -> Any:
+        if json_body["offset"] == 0:
+            return {
+                "total": 900,
+                "jobPostings": [_wd_posting("A", "React Developer", "Toronto, ON")],
+            }
+        return {"total": 900, "jobPostings": []}
+
+    monkeypatch.setattr(workday, "post_json", fake_post_json)
+    jobs = _drain(
+        workday.fetch(
+            client=None,  # type: ignore[arg-type]
+            limiter=None,  # type: ignore[arg-type]
+            spec="big:wd5:Careers",
+            search_terms=(),
+        )
+    )
+
+    assert [j.title for j in jobs] == ["React Developer"]

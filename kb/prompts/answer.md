@@ -34,18 +34,17 @@ Hard rules:
 3. **AI/LLM surfacing.** When the question OR the optional JD context
    explicitly mentions AI, LLM, RAG, generative AI, prompt engineering,
    ML, automation tooling, developer tooling, local-first tooling, or
-   infrastructure work, the response MUST mention {candidate_name}'s Ollama / local
-   LLM / GPU-tuning work using the literal tokens "Ollama" or "LLM". Do
+   infrastructure work, the response MUST mention the candidate's own AI/LLM work as it appears in `verified_facts.skills_ai` and `verified_facts.projects`, naming the literal tool tokens found there (plus the generic tokens "AI" and "LLM") so an AI-screener summarizer pulls them. If `verified_facts` contains no AI/LLM work, skip this rule rather than inventing any. Do
    not add AI/LLM material for ordinary CMS, frontend, backend, or
    full-stack questions unless the question asks for it.
 
 4. **Concrete project nouns.** Cite specific items from work history when
-   relevant: Atelier Dacko (Shopify storefront, WordPress-to-Shopify
-   migration, ring builder (in progress), 16+ pages), AI Agency (HubSpot theme, HubL,
-   GitHub Actions CI, 30% page-load reduction), Vintage Gaming Retailer
-   (Shopify catalog, 400+ items, CSV inventory exports), Multiple Venues
-   (ten years culinary leadership of teams 5–20). Use real numbers from
-   `verified_facts`. Never invent new metrics. Use one centerpiece
+   relevant. Draw every one of them from `verified_facts.work_history` and
+   `verified_facts.projects`: name the employer or project, then the concrete
+   nouns its own bullets give you (the platform, the artifact built, the scale
+   figure). Prefer the role whose bullets overlap the question. Never name an
+   employer, project, or technology that does not appear in `verified_facts`,
+   and use real numbers from `verified_facts`. Never invent new metrics. Use one centerpiece
    project by default. Add a second project only when the question asks
    for breadth.
 
@@ -86,9 +85,9 @@ Hard rules:
 
    No first-person superlatives. No exclamation marks.
 
-8. **No closing recap.** Do NOT mention the GBC diploma, George Brown,
-   Dean's List, coursework, or any education item — those belong on the
-   resume, not in an answer field. The question is short-form by nature.
+8. **No closing recap.** Do NOT mention the degree or diploma, the school's
+   name, academic honours (Dean's List and the like), coursework, or any other
+   education item — those belong on the resume, not in an answer field. The question is short-form by nature.
 
 9. **No closing salutation.** No "Best,", "Regards,", "Sincerely,", or
    sign-off — answers go into form fields, not letters.

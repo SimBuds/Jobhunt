@@ -42,12 +42,11 @@ _PAGE_LIMIT = 20
 # GTA search-term union below. See `_scan`.
 _BLANK_SCAN_MAX = 200
 
-# GTA-targeted CXS `searchText` queries for large boards — unioned, deduped, then
-# narrowed by `is_gta_eligible`. "Ontario" empirically returns a superset of
-# "Toronto", and "Remote, Canada" adds remote roles. "Canada" is deliberately
-# excluded: on some tenants it matched every posting (boilerplate), making it a
-# useless discriminator.
-_GTA_SEARCH_TERMS: tuple[str, ...] = ("Toronto", "Ontario", "Remote, Canada")
+# Location-targeted CXS `searchText` queries for large boards are built per-run
+# from the applicant profile by `_filter.location_search_terms`, then unioned,
+# deduped, and narrowed by `is_gta_eligible`. The bare country name is
+# deliberately never used on its own: on some tenants it matched every posting
+# (boilerplate), making it a useless discriminator.
 
 # Per-tenant wall-clock budget. Workday tenants have no server-side GTA filter
 # and giants like RBC/TD paginate through hundreds of global postings before
@@ -159,15 +158,25 @@ def _body(search_text: str, offset: int) -> dict[str, Any]:
 
 
 async def fetch(
-    client: httpx.AsyncClient, limiter: RateLimiter, spec: str, *, max_pages: int = 5
+    client: httpx.AsyncClient,
+    limiter: RateLimiter,
+    spec: str,
+    *,
+    max_pages: int = 5,
+    search_terms: tuple[str, ...] = (),
 ) -> AsyncIterator[Job]:
+    """`search_terms` narrows large boards; build it with
+    `_filter.location_search_terms` from the applicant profile. Empty means no
+    narrowing is possible, and a large board falls back to a blank scan."""
     tenant, host, site = _parse_tenant(spec)
     base = f"https://{tenant}.{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
     url = f"{base}/jobs"
 
     try:
         async with asyncio.timeout(_TENANT_BUDGET_SECONDS):
-            async for job in _scan(client, limiter, url, base, tenant, host, max_pages):
+            async for job in _scan(
+                client, limiter, url, base, tenant, host, max_pages, search_terms
+            ):
                 yield job
     except TimeoutError as e:
         raise IngestError(
@@ -183,12 +192,17 @@ async def _scan(
     tenant: str,
     host: str,
     max_pages: int,
+    search_terms: tuple[str, ...] = (),
 ) -> AsyncIterator[Job]:
     """Adaptive scan: a blank first-100 walk for small boards, or a union of
-    GTA-targeted searchText queries for large ones.
+    location-targeted searchText queries for large ones.
 
     A single `seen` set spans the whole tenant run so a posting surfaced under
-    multiple search terms (e.g. both "Toronto" and "Ontario") yields once.
+    multiple search terms (e.g. both a city and its region) yields once.
+
+    A large board with no search terms still gets the blank walk: scanning wide
+    and letting `is_gta_eligible` filter is strictly better than skipping the
+    tenant, and it is what an unconfigured profile deserves.
     """
     seen: set[str] = set()
 
@@ -198,14 +212,14 @@ async def _scan(
         return
     total = first.get("total") or 0
 
-    if total <= _BLANK_SCAN_MAX:
+    if total <= _BLANK_SCAN_MAX or not search_terms:
         async for job in _walk(
             client, limiter, url, base, tenant, host, "", max_pages, seen, first_page=first
         ):
             yield job
         return
 
-    for term in _GTA_SEARCH_TERMS:
+    for term in search_terms:
         async for job in _walk(client, limiter, url, base, tenant, host, term, max_pages, seen):
             yield job
 

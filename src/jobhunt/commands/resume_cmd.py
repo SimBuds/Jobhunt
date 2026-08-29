@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -45,10 +46,39 @@ class Lane:
     label: str
 
 
-LANES: dict[str, Lane] = {
-    "ai": Lane(slug="ai-automation", label="AI_Automation"),
-    "cms": Lane(slug="cms-ecommerce", label="CMS_Ecommerce"),
-}
+def _lane_label(slug: str) -> str:
+    """DOCX filename suffix for a lane slug: `ai-automation` -> `AI_Automation`.
+
+    Known acronyms are upper-cased so the common slugs render the way a person
+    would write them; everything else is title-cased.
+    """
+    acronyms = {"ai", "ml", "llm", "seo", "cms", "qa", "ui", "ux", "api", "sre", "devops"}
+    parts = [p for p in re.split(r"[-_\s]+", slug) if p]
+    return "_".join(p.upper() if p.lower() in acronyms else p.capitalize() for p in parts)
+
+
+def discover_lanes(kb_dir: Path) -> dict[str, Lane]:
+    """Map focus key -> Lane for every `kb/lanes/*.md` brief on disk.
+
+    Discovered rather than hardcoded: the lane set is the user's positioning
+    decision, and the previous fixed `{"ai": ..., "cms": ...}` dict meant a
+    candidate whose lanes are, say, `data-engineering` and `platform-sre` could
+    write the brief files but never render them — `--focus` rejected every name
+    that was not one of the author's own two.
+
+    The focus key is the slug's first segment ("ai-automation" -> "ai") when
+    that is unambiguous, else the full slug, so the short names people actually
+    type keep working without colliding.
+    """
+    lanes_dir = kb_dir / "lanes"
+    slugs = sorted(p.stem for p in lanes_dir.glob("*.md")) if lanes_dir.is_dir() else []
+    heads = Counter(s.split("-", 1)[0] for s in slugs)
+    out: dict[str, Lane] = {}
+    for slug in slugs:
+        head = slug.split("-", 1)[0]
+        key = head if heads[head] == 1 else slug
+        out[key] = Lane(slug=slug, label=_lane_label(slug))
+    return out
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
@@ -66,7 +96,12 @@ class LaneBrief:
 def load_lane_brief(kb_dir: Path, focus: str) -> LaneBrief:
     """Parse `kb/lanes/<slug>.md`: minimal `key: value` frontmatter (title,
     company) + markdown body used verbatim as the pseudo-JD description."""
-    lane = LANES[focus]
+    lanes = discover_lanes(kb_dir)
+    lane = lanes.get(focus)
+    if lane is None:
+        raise PipelineError(
+            f"unknown lane {focus!r} — found: {', '.join(lanes) or 'none'}"
+        )
     path = kb_dir / "lanes" / f"{lane.slug}.md"
     if not path.is_file():
         raise PipelineError(f"missing lane brief {path}")
@@ -101,7 +136,7 @@ def lane_job(brief: LaneBrief) -> Job:
         external_id=brief.slug,
         company=brief.company,
         title=brief.title,
-        location="Toronto, ON (base resume)",
+        location="(base resume)",
         description=brief.description,
     )
 
@@ -152,25 +187,36 @@ def run(
     focus: str = typer.Option(
         "all",
         "--focus",
-        help="Which base resume to render: ai | cms | all.",
+        help=(
+            "Which base resume to render: `all`, or a lane key discovered "
+            "from kb/lanes/*.md."
+        ),
     ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
-    if focus not in ("all", *LANES):
+    cfg = load_config()
+    ensure_profile(cfg)
+
+    lanes = discover_lanes(cfg.paths.kb_dir)
+    if not lanes:
         typer.echo(
-            f"error: unknown focus {focus!r} — use one of: all, {', '.join(LANES)}",
+            f"error: no lane briefs found in {cfg.paths.kb_dir / 'lanes'} — "
+            "add a `<slug>.md` with `title:` frontmatter to define a lane.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if focus not in ("all", *lanes):
+        typer.echo(
+            f"error: unknown focus {focus!r} — use one of: all, {', '.join(lanes)}",
             err=True,
         )
         raise typer.Exit(code=2)
 
-    cfg = load_config()
-    ensure_profile(cfg)
-
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     verified: dict[str, object] = json.loads(verified_path.read_text(encoding="utf-8"))
 
-    focuses = list(LANES) if focus == "all" else [focus]
+    focuses = list(lanes) if focus == "all" else [focus]
     try:
         briefs = [load_lane_brief(cfg.paths.kb_dir, f) for f in focuses]
     except JobHuntError as e:
@@ -194,4 +240,12 @@ def run(
     typer.echo(f"\ndone — {len(paths)} resume(s) in {out_dir}")
 
 
-__all__ = ["app", "run", "LANES", "LaneBrief", "load_lane_brief", "lane_job"]
+__all__ = [
+    "app",
+    "run",
+    "Lane",
+    "discover_lanes",
+    "LaneBrief",
+    "load_lane_brief",
+    "lane_job",
+]

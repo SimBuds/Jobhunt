@@ -193,8 +193,9 @@ def validate_answer(
             continue
         violations.append(f"unverified number: {cluster!r}")
 
-    # Resume-recap suppression. Answers should NOT cite the GBC diploma /
-    # coursework — that material lives on the resume.
+    # Resume-recap suppression. Answers should NOT cite the degree, diploma,
+    # institution, or coursework — that material lives on the resume. The
+    # institution names come from `verified`, so this holds for any candidate.
     for token in recap_tokens(verified, extra=_RECAP_EXTRA):
         if token in body_lower:
             violations.append(f"answer recaps resume material: {token!r}")

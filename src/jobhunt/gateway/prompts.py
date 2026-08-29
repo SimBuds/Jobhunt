@@ -31,7 +31,7 @@ class Prompt:
 
         Exists so prompts can name the *configured* applicant instead of
         hard-coding one person's name. Replacing the name with an abstract
-        noun was measured and rejected: swapping "Casey" for "the candidate"
+        noun was measured and rejected: swapping the name for "the candidate"
         across the prompt library cost 17 points of keyword coverage on the
         golden set (IMPLEMENT.md A13), because the model grounds better on a
         concrete referent. Injecting the real name keeps that grounding while

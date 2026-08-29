@@ -173,12 +173,17 @@ def test_parse_baseline_positioning_and_atomic_skills():
     facts, warnings = parse_baseline(BASELINE)
     assert warnings == []
 
-    # Atomic + paren-aware: a naive comma split would shatter an entry like
-    # "local LLM hosting and inference tuning (Ollama)" at the inner comma.
-    # Asserted by shape rather than by one exact string so an intentional resume
-    # edit does not read as a parser regression (see IMPLEMENT.md Phase A12).
-    assert any("(" in item and ")" in item for item in facts.skills_ai)
-    # No item is a comma-split artifact (a stray dangling close-paren with no open).
+    # Atomic: no item is a comma-split artifact (a stray dangling close-paren
+    # with no open), which is what a naive comma split produces on an entry like
+    # "local LLM hosting and inference tuning (Ollama)".
+    #
+    # Requiring at least one PARENTHESISED item used to live here too, but that
+    # was content-coupled despite the comment claiming otherwise: the 2026-08-10
+    # rewrite legitimately dropped every parenthetical from the AI row
+    # ("Claude API, Ollama, Model Context Protocol, ...") and the assertion
+    # started failing on a resume edit, exactly the false positive it was
+    # supposed to avoid. Paren-awareness itself is covered content-independently
+    # by `test_split_skills_paren_aware`, so only the invariant belongs here.
     for item in facts.skills_ai:
         assert item.count("(") == item.count(")"), f"unbalanced parens: {item!r}"
 
@@ -276,6 +281,63 @@ def test_compound_skill_labels_map_to_buckets(tmp_path: Path):
     assert "Next.js" in facts.skills_core
     assert "Claude API" in facts.skills_ai
     assert "Ollama" in facts.skills_ai
+
+
+def test_aspirational_labels_land_in_familiar(tmp_path: Path):
+    """An aspirational row must NOT become claimable production skill.
+
+    Regression for 2026-08-24: a lane-tailored baseline carried
+    "Currently developing: RAG pipelines, embeddings and vector search, Azure".
+    No Familiar keyword matched, so inference fell through to Core's "develop"
+    stem and promoted skills the candidate explicitly said they were still
+    learning — the one bucket error `tailoring-rules.md` treats as fabrication,
+    which would then let the tailor write "Azure" onto a resume as experience.
+
+    Matching is on the LABEL, so it holds for any lane: the items differ
+    (RAG/Azure for AI, Google Ads/GA4 for programmatic) and are never
+    enumerated in the parser.
+    """
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL SKILLS")
+    doc.add_paragraph("Engineering: TypeScript, Python")
+    doc.add_paragraph("Currently developing: RAG pipelines, Azure")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert warnings == []
+    assert facts.skills_familiar == ["RAG pipelines", "Azure"]
+    assert "Azure" not in facts.skills_core
+    assert "RAG pipelines" not in facts.skills_core
+
+
+def test_development_labels_stay_core(tmp_path: Path):
+    """The Familiar keywords must not swallow real development rows.
+
+    Familiar is tested before Core, so a "develop" stem in the Familiar
+    keyword set would demote "Software Development" — inverting the bug above
+    and hiding real production skill from the tailor.
+    """
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("TECHNICAL SKILLS")
+    doc.add_paragraph("Software Development: Python, Go")
+    doc.add_paragraph("Web Development: React, Next.js")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert warnings == []
+    assert facts.skills_familiar == []
+    for skill in ("Python", "Go", "React", "Next.js"):
+        assert skill in facts.skills_core
 
 
 def test_technical_projects_heading_is_recognized(tmp_path: Path):

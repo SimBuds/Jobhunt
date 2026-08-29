@@ -20,13 +20,13 @@ projects and platforms.
 
 Hard rules:
 1. Use ONLY facts in `verified_facts` JSON. No invented projects, metrics,
-   employers, or **technologies**. Cite specific project nouns from his work
-   history (Shopify storefront, HubSpot theme, Ring builder) OR from the
-   `projects` array (his shipped personal projects, e.g. the jobhunt local-LLM
-   CLI) where they're relevant. When you anchor on a `projects` entry, use its
+   employers, or **technologies**. Cite specific project nouns drawn from
+   `verified_facts.work_history` bullets OR from the `projects` array (the
+   candidate's shipped personal projects) where they're relevant. When you anchor on a `projects` entry, use its
    exact `name` and only the tech in its `stack` or `bullets` — do not invent
-   stack items or conflate it with a work-history project. Do **not** mention the GBC diploma, George Brown, Dean's List,
-   coursework, or any education item anywhere in the cover letter — that
+   stack items or conflate it with a work-history project. Do **not** mention the degree or diploma, the
+   school's name, academic honours (Dean's List and the like), coursework, or
+   any other education item anywhere in the cover letter — that
    material lives in the resume's Education section and recapping it in the
    letter is auto-rejected. Do **not** claim familiarity with a tech the JD
    mentions but `verified_facts` does not (e.g. Elasticsearch, Kafka,
@@ -54,9 +54,7 @@ Hard rules:
    **AI/LLM lead-paragraph rule (May 2026).** If the JD explicitly
    mentions AI, LLM, RAG, generative AI, prompt engineering, ML,
    automation tooling, developer tooling, local-first tooling, or
-   infrastructure work, the lead's hook MUST surface {candidate_name}'s Ollama /
-   local LLM / GPU-tuning work, naming the literal token "Ollama" or
-   "LLM" so an AI-screener summarizer pulls it. Do not treat vague
+   infrastructure work, the lead's hook MUST surface the candidate's own AI/LLM work as it appears in `verified_facts.skills_ai` and `verified_facts.projects`, naming the literal tool tokens found there (plus the generic tokens "AI" and "LLM") so an AI-screener summarizer pulls them. If `verified_facts` contains no AI/LLM work, skip this rule rather than inventing any. Do not treat vague
    phrases like "modern stack", "modern engineering", or "modern tools"
    as an AI trigger by themselves. For ordinary CMS, frontend, backend,
    or full-stack roles, lead with the strongest work-history project.
@@ -64,18 +62,17 @@ Hard rules:
    as the centerpiece and go deep — what the problem was, what shipped,
    what changed. The centerpiece may be a work-history project OR a
    `projects` entry. For AI, LLM, automation, infrastructure, or
-   developer-tooling JDs, the jobhunt local-LLM CLI (or another
-   `projects` entry whose stack matches explicit JD requirements) is
-   often the strongest centerpiece. Go deep on what it does and what
-   shipped. A second project may get one supporting sentence. Do
+   developer-tooling JDs, the `projects` entry whose stack best matches the
+   JD's explicit requirements is often the strongest centerpiece. Go deep on
+   what it does and what shipped. A second project may get one supporting sentence. Do
    NOT march through three projects in parallel ("At X… At Y… For Z…")
-   — that reads like a CV recap, not a letter. Numbers ("16+ page
-   Shopify storefront", "30% page load reduction") only if they appear
-   in verified_facts.
+   — that reads like a CV recap, not a letter. Quantities (page counts,
+   percentage improvements, catalog sizes) only if they appear verbatim in
+   verified_facts.
 4. If the JD lists a hard skill {candidate_name} is "Familiar" with rather than Core,
    **omit it from the letter entirely.** Do NOT introduce the gap
-   defensively. Phrasings like "rather than Java", "while I have... rather
-   than", "the model transfers", "coming from X rather than Y" are
+   defensively. Phrasings like "rather than <the missing tech>", "while I
+   have... rather than", "the model transfers", "coming from X rather than Y" are
    FORBIDDEN — they volunteer weakness the reader did not ask about. Lead
    with what {candidate_name} *does* have for the role; let the resume show
    the rest. Do not pretend a Familiar skill is Core, and do not apologize
@@ -83,19 +80,23 @@ Hard rules:
 5. Closing paragraph (1–2 sentences): forward-looking, not a re-recap of
    the resume. If the JD gives material about the company / product /
    mission, name what specifically draws {candidate_name} to *this* role. Otherwise
-   a brief, plain offer to talk. Do NOT restate the GBC diploma,
+   a brief, plain offer to talk. Do NOT restate the degree or diploma,
    coursework, or skills here — those belong on the resume, not the
    letter's closing. Do NOT start the closing with "I am ready to" or
    "I'm ready to" — that's a formulaic gap-volunteering opener the
    validator rejects. Prefer concrete next-step phrasing that references
    a specific thing from earlier in the letter. Approved patterns:
 
-   - "Happy to walk through the Atelier Dacko ring builder build."
-   - "Happy to step through the Shopify→HubSpot migration in more detail."
-   - "Available to walk through the HubSpot migration design."
-   - "Glad to step through how the Ollama tooling work would apply here."
-   - "Glad to step through the Ollama tooling work if AI tooling is part of the role."
-   - "Happy to dig into the Contentful side over a call."
+   Each pattern below is a SHAPE: replace the angle-bracketed slot with a
+   project, migration, or tool that appears in `verified_facts` and was
+   already mentioned earlier in this letter. Never invent one.
+
+   - "Happy to walk through the <project> build."
+   - "Happy to step through the <migration> in more detail."
+   - "Available to walk through the <system> design."
+   - "Glad to step through how the <tool> work would apply here."
+   - "Glad to step through the <tool> work if that is part of the role."
+   - "Happy to dig into the <platform> side over a call."
 
    Each of these names a concrete artifact from earlier in the letter.
    Generic abstractions ("I'd welcome the chance to discuss how my

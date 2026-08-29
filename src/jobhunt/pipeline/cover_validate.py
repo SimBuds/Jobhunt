@@ -107,7 +107,7 @@ _BRIDGE_PATTERNS: tuple[tuple[str, str], ...] = (
         "overconfident bridge: 'exactly where' exact-fit claim",
     ),
     # "this mirrors your stack" — employer-aimed; but not "this mirrors the
-    # approach I used at Atelier" (self-referential comparison).
+    # approach I used at Acme" (self-referential comparison).
     (
         r"\b(?:this|that|it|which) mirrors\b[^.!?]*\byour\b",
         "overconfident bridge: 'this mirrors your …' claim",

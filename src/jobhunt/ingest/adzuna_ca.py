@@ -1,4 +1,7 @@
-"""Adzuna CA — `where=Toronto&distance=100&country=ca`. https://developer.adzuna.com/"""
+"""Adzuna CA — `where=<applicant.city>&distance=100&country=ca`.
+
+https://developer.adzuna.com/
+"""
 
 from __future__ import annotations
 
@@ -23,9 +26,23 @@ async def fetch(
     app_id: str,
     app_key: str,
     query: str,
+    where: str,
     pages: int = 3,
     results_per_page: int = 50,
 ) -> AsyncIterator[Job]:
+    """`where` is the Adzuna location anchor, paired with `distance=100`.
+
+    Required rather than defaulted: it used to be the literal "Toronto", which
+    silently ignored `config.applicant.city` and searched the GTA no matter what
+    the user had configured. A default here would let that regress quietly, and
+    the caller always has the applicant profile to hand.
+    """
+    if not where.strip():
+        raise IngestError(
+            "Adzuna requires a location: set applicant.city in config.toml "
+            "(run `jobhunt setup`, or re-run `jobhunt convert-resume` to fill "
+            "it from the resume contact line)."
+        )
     if not app_id or not app_key:
         raise IngestError("Adzuna requires app_id and app_key in secrets.toml")
     for page in range(1, pages + 1):
@@ -38,7 +55,7 @@ async def fetch(
                 "app_key": app_key,
                 "results_per_page": results_per_page,
                 "what": query,
-                "where": "Toronto",
+                "where": where,
                 "distance": 100,
                 "content-type": "application/json",
             },

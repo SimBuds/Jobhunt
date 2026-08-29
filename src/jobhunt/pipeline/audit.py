@@ -74,30 +74,67 @@ class AuditResult:
 # with no curated term list to maintain.
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
-# Generic resume/employer filler that should never become an anchor term even
-# when it lands in a single source. Cross-source words are already dropped by
-# the distinctiveness filter; this list only guards single-source noise.
+# Domain-neutral resume/employer filler that should never become an anchor term
+# even when it lands in a single source. Cross-source words are already dropped
+# by the distinctiveness filter; this list only guards single-source noise.
+#
+# Every entry here must be generic across ALL candidates. Terms tied to one
+# person's stack or city ("shopify", "storefront", "toronto") used to live in
+# this set, tuned to the author's own resume — which silently degraded the
+# alignment check for anyone else: a candidate with a single Shopify role has
+# "shopify" as a genuinely distinctive anchor, and their own filler words were
+# never covered. `_profile_stopwords` derives those per-profile instead.
 _ANCHOR_STOPWORDS: frozenset[str] = frozenset({
     "built", "build", "maintained", "designed", "shipped", "developed", "created",
     "page", "pages", "item", "items", "skus", "monthly", "visitors", "serving",
     "custom", "brand", "agency", "retailer", "confidential", "company", "group",
     "studio", "solutions", "technologies", "labs", "venue", "venues", "multiple",
-    "toronto", "client", "clients", "project", "projects", "team", "teams",
-    "stack", "developer", "development", "theme", "themes", "module", "modules",
-    "layouts", "storefront", "years", "year", "shopify",
+    "client", "clients", "project", "projects", "team", "teams",
+    "stack", "developer", "development", "years", "year",
 })
 
+_SKILL_BUCKET_KEYS: tuple[str, ...] = (
+    "skills_core",
+    "skills_cms",
+    "skills_data_devops",
+    "skills_ai",
+    "skills_projects",
+    "skills_familiar",
+)
 
-def _anchor_terms(text: str) -> set[str]:
+
+def _profile_stopwords(verified: dict[str, Any]) -> frozenset[str]:
+    """Per-candidate terms that identify the PERSON, not one of their projects.
+
+    Two sources, both universal rules rather than curated words:
+
+    - Every verified skill. A skill is shared vocabulary by construction — it is
+      the toolset the candidate carries between roles — so it can never identify
+      which project a cover letter is talking about. Distinctiveness already
+      catches a skill that spans two sources; this also catches the one-role
+      case, where "Shopify" would otherwise anchor and make any Shopify sentence
+      look like a specific project reference.
+    - The contact line: the candidate's own name, city, and domains. None of
+      those distinguish one project from another.
+    """
+    out: set[str] = set()
+    for key in _SKILL_BUCKET_KEYS:
+        for skill in verified.get(key, []) or []:
+            out.update(_TOKEN_RE.findall(str(skill).lower()))
+    out.update(_TOKEN_RE.findall(str(verified.get("contact_line", "")).lower()))
+    return frozenset(out)
+
+
+def _anchor_terms(text: str, stopwords: frozenset[str] = _ANCHOR_STOPWORDS) -> set[str]:
     """Mine candidate anchor terms (unigrams >= 4 chars + adjacent bigrams) from
     one source's text, lowercased and normalized to alnum tokens."""
     toks = _TOKEN_RE.findall(text.lower())
     terms: set[str] = set()
     for tok in toks:
-        if len(tok) >= 4 and not tok.isdigit() and tok not in _ANCHOR_STOPWORDS:
+        if len(tok) >= 4 and not tok.isdigit() and tok not in stopwords:
             terms.add(tok)
     for a, b in zip(toks, toks[1:], strict=False):
-        if a in _ANCHOR_STOPWORDS and b in _ANCHOR_STOPWORDS:
+        if a in stopwords and b in stopwords:
             continue
         if len(a) < 2 or len(b) < 2:
             continue
@@ -107,7 +144,7 @@ def _anchor_terms(text: str) -> set[str]:
 
 def _anchor_key(name: str) -> str:
     """Stable, readable key for an anchor source. Prefers a non-generic
-    parenthetical proper name (e.g. 'Atelier Dacko'), else the leading words."""
+    parenthetical proper name (e.g. 'Acme Retail'), else the leading words."""
     inner_match = re.search(r"\(([^)]+)\)", name)
     inner = inner_match.group(1) if inner_match else ""
     base = (
@@ -138,7 +175,8 @@ def _derive_project_anchors(
         )
         sources.append((_anchor_key(proj.get("name", "")), text))
 
-    per_source = [_anchor_terms(text) for _, text in sources]
+    stopwords = _ANCHOR_STOPWORDS | _profile_stopwords(verified)
+    per_source = [_anchor_terms(text, stopwords) for _, text in sources]
     df: Counter[str] = Counter()
     for terms in per_source:
         df.update(terms)
