@@ -152,17 +152,19 @@ Use these sparingly.
 - Domain requires regulated experience (clinical software, securities
   trading, medical devices, defense) and verified_facts shows none.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
-- **Every satisfied requirement is Familiar-only AND the title is
-  Senior-band.** When the only entries the candidate satisfies resolve into
-  `verified_facts.skills_familiar` (read that list from the profile, never
-  from memory — it is academic / coursework / light-use only) and the title
-  is Senior/Lead/Staff/Principal/Architect, the role is a misrepresentation
-  risk — decline with reason
-  `"role's matched skills are all Familiar (academic/light use); not Core
-  production experience"`. For **junior/intermediate titles**, do NOT decline
-  on Familiar-only matches — coursework fundamentals plus production JS/TS is
-  a legitimate coachable-junior story. The deterministic post-filter enforces
-  the senior decline and the junior ceiling either way.
+- **Every satisfied requirement resolves into a Familiar-only skill bucket.**
+  Read `verified_facts.skills_familiar` from the profile, never from memory.
+  When that list is **empty** — as it is whenever the profile carries no
+  Familiar tier — this rule cannot apply: there is no Familiar-only fit to
+  find, so never decline for this reason. When the list is non-empty and the
+  only entries the candidate satisfies resolve into it, and the title is
+  Senior/Lead/Staff/Principal/Architect, the role is a misrepresentation risk
+  — decline with reason `"role's matched skills are all Familiar (academic/
+  light use); not Core production experience"`. For **junior/intermediate
+  titles**, do NOT decline on Familiar-only matches — coursework fundamentals
+  plus production JS/TS is a legitimate coachable-junior story. The
+  deterministic post-filter enforces the senior decline, the junior ceiling,
+  and the empty-bucket case either way.
 
 If none apply, set `decline_reason` to null.
 

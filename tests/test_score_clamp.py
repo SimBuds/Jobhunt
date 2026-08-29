@@ -777,3 +777,71 @@ async def test_score_job_full_coverage_with_ai_bonus_tops_out(
     result = await score_job(_cfg(kb_dir), _full_jd_job())
     assert result.score == 95
     assert result.gaps == []
+
+
+# --- pure-tenure asks leave the denominator (2026-08-29) ---------------------
+# A tenure statement can never be satisfied by a resume keyword, so it sat in
+# the tier denominator as a permanent miss while the YoE auto-decline rule was
+# already consuming the same requirement. Counting it twice deflated exactly
+# the senior-leaning postings the tenure rule had already judged.
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "7+ years of professional software engineering experience",
+        "5+ years of experience (Candidate has 3 YoE)",
+        "10 Years Experience",
+        "3+ years professional experience",
+        "2 to 6 years of professional software engineering experience",
+        "4+ years experience required (Candidate has 3)",
+        "10+ years of work experience",
+    ],
+)
+def test_pure_tenure_asks_are_dropped(phrase: str) -> None:
+    assert score_mod._is_pure_tenure_ask(phrase)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        # Each names something a resume can actually cover.
+        "2+ years leading cross-functional technical initiatives",
+        "3+ years architecting distributed systems",
+        "5+ years in systems administration",
+        "10 years of experience in Full Stack development",
+        "10+ years shipping production software",
+        "2+ years of NLP industry experience",
+        # No tenure clause at all.
+        "TypeScript",
+        "5xx error budgets",
+    ],
+)
+def test_qualified_tenure_asks_are_kept(phrase: str) -> None:
+    assert not score_mod._is_pure_tenure_ask(phrase)
+
+
+def test_drop_pure_tenure_asks_preserves_order_and_keeps_the_rest() -> None:
+    phrases = [
+        "TypeScript",
+        "8+ years of professional experience",
+        "React",
+        "3+ years architecting distributed systems",
+    ]
+    assert score_mod._drop_pure_tenure_asks(phrases) == [
+        "TypeScript",
+        "React",
+        "3+ years architecting distributed systems",
+    ]
+
+
+def test_tenure_only_denominator_entry_no_longer_lowers_coverage() -> None:
+    """The point of the filter: identical real coverage, no tenure drag."""
+    with_tenure = _tier(["TypeScript", "7+ years of professional experience"])
+    without = _tier(["TypeScript"])
+    assert with_tenure.total == 2  # unfiltered helper still sees both
+    assert without.coverage == 1.0
+    # After filtering, the tenure ask never reaches the tier at all.
+    assert score_mod._drop_pure_tenure_asks(
+        ["TypeScript", "7+ years of professional experience"]
+    ) == ["TypeScript"]

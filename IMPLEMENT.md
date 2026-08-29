@@ -479,3 +479,166 @@ basis for a switch.
   attempts produce up to three minutes of silence followed by one error line,
   which reads as a hang. Recorded in PLAN.md under honesty enforcement item 3
   as a known gap. Lives in `apply_cmd`.
+
+---
+
+## Current work: surface-form false gaps in `phrase_present` (2026-08-29)
+
+**Request restated:** review where the tailor/score gaps actually are, then
+close the ones that are pipeline artifacts rather than real skill gaps.
+
+## Evidence (682 live scores, 829 jobs)
+
+Backlog gap counts for phrases whose skill IS verified Core:
+
+```
+ci/cd            13 gaps  (5 matched elsewhere)
+ci/cd pipelines   9 gaps  (2 matched elsewhere)
+react.js          7 gaps  (3 matched elsewhere)
+reactjs           5 gaps  (2 matched elsewhere)
+```
+
+Reproduced directly against the current profile blob:
+
+```
+React      -> True      CI/CD            -> True
+React.js   -> False     CI/CD pipelines  -> False
+ReactJS    -> False
+```
+
+Two independent causes:
+
+1. `React.js` tokenizes to the single token `react.js` (`_TOKEN_RE` keeps
+   `.`), which is not a substring of a blob containing `react`. `ReactJS`
+   likewise yields `reactjs`. The `.js` / `js` suffix is a surface form of one
+   technology, not a different one.
+2. `CI/CD pipelines` yields tokens `ci/cd` + `pipelines`. `pipelines` is
+   absent from any resume, so `_all_tokens_present` fails. The whole-phrase
+   '/'-split then gives `ci` (below `_MIN_ALT_LEN`) and `cd pipelines`
+   (absent), so that path fails too. The blocker is a generic trailing noun
+   carrying no technical discrimination — the same class `_STOPWORDS` already
+   handles for `experience` / `skills` / `knowledge`.
+
+## Phases
+
+### Phase 1: `.js` surface-form equivalence + generic trailing nouns [x] DONE
+- Status: complete. `pytest -q` 1121 passed, ruff + mypy --strict clean.
+  Measured on the live backlog: 12 gap phrases across 12 jobs newly verify
+  (`react.js` 7, `reactjs` 5) and nothing else changed — the delta was diffed
+  phrase-by-phrase against the pre-change implementation to confirm no
+  collateral widening.
+- Scope correction during the phase: the first cut added "tools", "tooling",
+  "technologies", "frameworks", "workflows", "practices", "principles",
+  "standards" to `_STOPWORDS` and broke
+  `test_verify_demotes_llm_matched_when_not_in_profile` (the Pigment
+  regression: "AI/LLM tools" scored as matched against a profile that never
+  claimed it). Those words are what make a vague ask vague. Narrowed to
+  "pipeline"/"pipelines", the only pair with direct backlog evidence.
+- Not swept into this diff: `_keywords.py` already failed
+  `ruff format --check` at HEAD (PEER_FAMILIES and _STOPWORDS are
+  hand-formatted compact). Running the formatter produced a 143-line
+  cosmetic diff, which was reverted per the "do not rewrite working code
+  purely to conform" rule. Worth its own phase if it should be settled.
+- Files to touch: `src/jobhunt/pipeline/_keywords.py`,
+  `tests/test_keywords_matching.py`
+- Functions to add or change: `_token_present` (add `_surface_variants`),
+  `_STOPWORDS` (extend)
+- Reuse audit: `_strip_parenthetical` and the '/'-alternative path already
+  exist and handle the other two surface-form classes; neither reaches these
+  two cases. `PEER_FAMILIES` holds `node.js`/`nodejs`/`node` as peers but
+  peer matching is only consulted by the audit fallback on short JDs, never by
+  `phrase_present`, so it cannot close this.
+- Simplest approach considered: add `react.js`/`reactjs` to PEER_FAMILIES.
+  Rejected — it fixes React only, leaves every other `X.js` library broken,
+  and abuses a table whose documented meaning is "peer technologies you could
+  substitute", not "spellings of one technology".
+- Scenarios (written from the requirement, before any code):
+  - `React.js` / `ReactJS` / `react.js` match a blob containing `react`
+  - `React` matches a blob containing only `react.js`
+  - `CI/CD pipelines` matches a blob containing `github actions ci/cd`
+  - `CI/CD` still does NOT match `we use circleci and a cdn` (existing test)
+  - Genuinely-absent skills stay absent: Terraform, GraphQL/WPGraphQL,
+    Kubernetes (existing tests)
+  - A generic noun alone (`pipelines`) never matches on its own
+- Verification: `pytest tests/test_keywords_matching.py tests/test_audit.py -q`,
+  then full `pytest -q`, then re-measure the four gap counts above.
+- Deferred out of this phase: denominator pollution (28% of extracted phrases
+  are prose asks), the stale prompt_hash re-score, the profile-drift decision.
+
+### Phase 2: drop pure-tenure asks from the tier denominator [x] DONE
+- Status: complete. `pytest -q` 1121 passed + 12 new, ruff + mypy --strict clean.
+- Files touched: `src/jobhunt/pipeline/score.py`, `tests/test_score_clamp.py`
+- Functions added: `_is_pure_tenure_ask`, `_drop_pure_tenure_asks`, applied to
+  both tier lists in `score_job` after the "model extracted nothing" check.
+- Problem: "7+ years of professional software engineering experience" is
+  extracted as a requirement and can never be satisfied by a resume keyword,
+  so it is a permanent denominator miss. The YoE auto-decline rule already
+  consumes the same requirement from `applicant.years_experience`, so the
+  tenure bar was counted twice — once as a decline input, once as drag on
+  coverage — against exactly the senior-leaning postings it had already judged.
+- Precision check before wiring: over all 3,017 distinct extracted phrases the
+  predicate drops 46, every one a bare tenure statement, and keeps all 91
+  other phrases that name a year count because each carries a real qualifier
+  ("2+ years leading cross-functional technical initiatives").
+- Measured effect, replaying stored breakdowns with gaps split by tier:
+  44 jobs shrink their denominator, pre-cap gain median +5 / max +30. Two
+  postings cross `min_score` (50 -> 60, both Senior React/Three.js roles).
+- **Honest limit:** most of the big pre-cap gains land on senior-titled
+  postings, which `senior_score_cap=60` clamps straight back to 60, so the
+  gain shows up in `computed`, not in `final`. That still matters — AGENTS.md
+  requires `computed` and `final` stay distinct precisely so calibration has
+  an uncapped number to work from — but it is not a ranking change for those
+  rows. The rows it genuinely moves are the non-senior ones and the two
+  promotions above.
+- Deferred: the non-engineering title leak (161 jobs with >=3 prose asks, 0 of
+  them caught by `is_non_engineering_title` / `is_management_title` — "Vehicle
+  Inspector", "Car Detailer", "Chief of Staff", "Sales Executive" all pass).
+  These score 30-43 and never reach the queue, so the cost is wasted LLM
+  scoring passes, not bad ranking. Separate phase.
+
+### Phase 3: Familiar decline is impossible against an empty bucket [x] DONE
+- Status: complete. `pytest -q` 1138 passed, ruff + mypy --strict clean.
+- Files touched: `src/jobhunt/pipeline/score.py`, `kb/prompts/score.md`
+- Trigger: found by RUNNING the pipeline, not by reading it. A 12-job probe
+  declined 4 (33%) with `"role's matched skills are all Familiar (academic/
+  light use); not Core production experience"` — the prompt's string, not the
+  code's, so the model was emitting it. With `skills_familiar` now `[]` the
+  rule's premise cannot hold, and the existing nullification exempted senior
+  titles, which is exactly where the false declines landed: Senior Generative
+  AI Software Engineer, Senior Full-Stack Developer, Senior Java Full Stack
+  Developer, Technical Lead (Java/AWS/Full Stack).
+- Fix, both halves:
+  - `score.py`: nullify any Familiar decline when `skills_familiar` is empty,
+    regardless of title. Keyed on the bucket being empty rather than on the
+    feature being removed, so reintroducing a Familiar tier restores the old
+    behaviour with no further edit.
+  - `score.md`: the rule now states that an empty list means the rule cannot
+    apply. Removing it outright was considered and rejected — the tier may
+    come back, and the deterministic post-filter still enforces the senior
+    decline and junior ceiling when the bucket is populated.
+- Verified on the four affected job ids: one now declines for a legitimate
+  reason (`4+ tier-1 requirements the candidate cannot satisfy`, score 35),
+  the other three clear at 60 with no decline.
+- **Changes `prompt_hash` (98232fa2eb1d8110 -> 64415ae8e88a74cf)**, so this
+  had to land before the backlog re-score, not after.
+
+### Phase 4: backlog re-score [in progress]
+- `jobhunt scan --skip-ingest --max-age-days 0`, 829 jobs, started 2026-08-29.
+- `--skip-ingest` on purpose: no network ingest, no auto-discovery, so
+  `config.toml` is untouched and the run is purely a re-score.
+- Unblocked by the KV-cache change below.
+
+## Environment note: q4_0 KV cache stalled the backlog (2026-08-29)
+
+`OLLAMA_KV_CACHE_TYPE=q4_0` produced `CUDA error: an illegal memory access was
+encountered` (HTTP 500 from /api/chat) on **2 of 5** score calls, not the
+"intermittent" rate AGENTS.md recorded from 2026-07-28. Casey switched the
+systemd override to `q8_0` (and `OLLAMA_KEEP_ALIVE` 10m -> 0); a 12-job probe
+then scored **12/12** with zero faults. Cost: ~13.7 s/job vs ~8 s/job, which
+is the documented CPU/GPU split, and it completes.
+
+**AGENTS.md is wrong on one point.** It says those faults were "each recovered
+by the gateway's immediate retry". They are not recoverable: `client._post`
+raises `GatewayError` on any status >= 400, and the only retry in
+`complete_json` covers invalid JSON, not HTTP 500. A CUDA fault is a hard
+per-job skip. Either add a 500-retry or correct the claim.
