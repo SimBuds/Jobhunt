@@ -16,17 +16,18 @@ from typer.testing import CliRunner
 
 from jobhunt.cli import app
 from jobhunt.commands import resume_cmd
-from jobhunt.commands.resume_cmd import LANES, lane_job, load_lane_brief
+from jobhunt.commands.resume_cmd import discover_lanes, lane_job, load_lane_brief
 from jobhunt.config import PipelineConfig
 from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume, TailoredRole
 
 REPO_KB = Path(__file__).resolve().parent.parent / "kb"
+REPO_LANES = discover_lanes(REPO_KB)
 
 
 # --- lane briefs (real kb files) --------------------------------------------
 
 
-@pytest.mark.parametrize("focus", sorted(LANES))
+@pytest.mark.parametrize("focus", sorted(REPO_LANES))
 def test_lane_brief_parses(focus: str) -> None:
     brief = load_lane_brief(REPO_KB, focus)
     assert brief.title
@@ -36,19 +37,70 @@ def test_lane_brief_parses(focus: str) -> None:
     assert len(brief.description) > PipelineConfig().thin_jd_chars
 
 
-@pytest.mark.parametrize("focus", sorted(LANES))
+@pytest.mark.parametrize("focus", sorted(REPO_LANES))
 def test_lane_job_is_valid(focus: str) -> None:
     job = lane_job(load_lane_brief(REPO_KB, focus))
-    assert job.id == f"lane-{LANES[focus].slug}"
+    assert job.id == f"lane-{REPO_LANES[focus].slug}"
     assert job.source == "lane"
     assert job.description
 
 
-def test_missing_brief_raises(tmp_path: Path) -> None:
+def test_unknown_lane_raises_and_lists_what_exists(tmp_path: Path) -> None:
+    """With lanes discovered from disk, an unknown focus reports the real set.
+
+    The old hardcoded LANES dict could only ever fail with "missing lane
+    brief"; now the failure names what the user actually has, which is the
+    useful message when their lanes aren't the author's two.
+    """
     from jobhunt.errors import PipelineError
 
-    with pytest.raises(PipelineError, match="missing lane brief"):
+    with pytest.raises(PipelineError, match="unknown lane 'ai' — found: none"):
         load_lane_brief(tmp_path, "ai")
+
+    lanes = tmp_path / "lanes"
+    lanes.mkdir()
+    (lanes / "data-engineering.md").write_text(
+        "---\ntitle: Data Engineer\n---\n\nPipelines.\n", encoding="utf-8"
+    )
+    with pytest.raises(PipelineError, match="found: data"):
+        load_lane_brief(tmp_path, "ai")
+
+
+def test_lanes_are_discovered_from_disk(tmp_path: Path) -> None:
+    """Any candidate's lane slugs work, not just `ai` and `cms`."""
+    from jobhunt.commands.resume_cmd import discover_lanes
+
+    lanes = tmp_path / "lanes"
+    lanes.mkdir()
+    for slug in ("data-engineering", "platform-sre", "seo-technical"):
+        (lanes / f"{slug}.md").write_text(
+            f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8"
+        )
+
+    got = discover_lanes(tmp_path)
+
+    assert set(got) == {"data", "platform", "seo"}
+    assert got["data"].slug == "data-engineering"
+    # Known acronyms upper-case; other segments title-case.
+    assert got["seo"].label == "SEO_Technical"
+    assert got["platform"].label == "Platform_SRE"
+    assert got["data"].label == "Data_Engineering"
+
+
+def test_colliding_slug_heads_fall_back_to_the_full_slug(tmp_path: Path) -> None:
+    """Two lanes sharing a first segment must both stay reachable."""
+    from jobhunt.commands.resume_cmd import discover_lanes
+
+    lanes = tmp_path / "lanes"
+    lanes.mkdir()
+    for slug in ("ai-automation", "ai-research", "cms-ecommerce"):
+        (lanes / f"{slug}.md").write_text(
+            f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8"
+        )
+
+    got = discover_lanes(tmp_path)
+
+    assert set(got) == {"ai-automation", "ai-research", "cms"}
 
 
 def test_brief_without_frontmatter_raises(tmp_path: Path) -> None:

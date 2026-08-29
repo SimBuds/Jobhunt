@@ -487,6 +487,46 @@ def test_derive_project_anchors_is_distinctive_and_data_driven() -> None:
     assert _find_project_anchor("a generic Shopify build", anchors) is None
 
 
+def test_anchor_suppression_is_profile_derived_not_hardcoded() -> None:
+    """Skills and contact-line terms are suppressed for ANY candidate.
+
+    The stoplist used to carry the author's own vocabulary ("shopify",
+    "storefront", "toronto"), which broke two ways for everyone else: their
+    stack terms anchored when they shouldn't, and this data engineer's would
+    not have been covered at all. Both sides are asserted here on a profile
+    that shares nothing with the author's.
+    """
+    v = {
+        "contact_line": "Priya Raman  |  Berlin, DE  |  priya@example.com",
+        "skills_data_devops": ["Airflow", "Snowflake"],
+        "work_history": [
+            {
+                "employer": "Logistics Co (Confidential)",
+                "dates": "x",
+                "bullets": ["Built Airflow DAGs feeding a Snowflake warehouse."],
+            },
+        ],
+        "projects": [
+            {
+                "name": "Tidewatch",
+                "url": "https://example.com/tidewatch",
+                "stack": ["Airflow"],
+                "bullets": ["Airflow pipeline charting Baltic tide gauges."],
+            },
+        ],
+    }
+    anchors = _derive_project_anchors(v)
+
+    # A verified skill never anchors, even though "Snowflake" appears in
+    # exactly one source and would otherwise pass the distinctiveness filter.
+    assert _find_project_anchor("we run Snowflake here", anchors) is None
+    assert _find_project_anchor("some Airflow work", anchors) is None
+    # The candidate's own city is not a project identifier either.
+    assert _find_project_anchor("our Berlin office", anchors) is None
+    # A genuinely distinctive project term still resolves.
+    assert _find_project_anchor("the Baltic tide gauge charts", anchors) is not None
+
+
 def test_audit_topics_categorisation(verified: dict) -> None:
     """The _audit_topics helper in apply_cmd produces coarse-grained labels
     for end-of-loop summarisation. Confirm each category lights up correctly

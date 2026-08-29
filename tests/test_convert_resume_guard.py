@@ -275,15 +275,21 @@ def test_clean_parse_writes_normally(env: Path) -> None:
 
 
 class TestBucketRegressions:
-    """A skills row that VANISHES from the resume must block the write.
+    """A REQUIRED skills row that vanishes from the resume must block the write.
 
-    The 2026-07-25 reformat dropped the "Familiar" row. `parse_baseline` only
-    warns about rows it saw and could not place, so an absent row produced no
-    warning, `_dropped_content_warnings` had nothing to classify, and
-    `skills_familiar` silently became `[]`. Downstream that is not a smaller
-    profile, it is a wrong one: the tailor's fabrication guard rejected every
-    Familiar skill and `apply` failed on every job, while the score clamp's
-    Familiar-only cap stopped firing unnoticed.
+    `parse_baseline` only warns about rows it saw and could not place, so an
+    absent row produces no warning at all and `_dropped_content_warnings` has
+    nothing to classify. For a required bucket that silence is dangerous: an
+    emptied `skills_data_devops` is not a smaller profile but a wrong one, since
+    the tailor's fabrication guard then rejects Docker/AWS/Postgres on every
+    future job.
+
+    Familiar is the exception (`_OPTIONAL_BUCKETS`). Dropping a
+    "Familiar"/"Exposure" row narrows what the candidate CLAIMS, which is a
+    legitimate authoring choice, and every consumer already reads the empty
+    bucket as "no Familiar skills": `_complete_familiar_bucket` early-returns,
+    `tailor.md` rule 10 omits the category, and `_all_matched_are_familiar`
+    returns False so the Familiar-only cap never fires. It advises instead.
     """
 
     @staticmethod
@@ -308,17 +314,60 @@ class TestBucketRegressions:
         base.update(overrides)  # type: ignore[arg-type]
         return VerifiedFacts(**base)  # type: ignore[arg-type]
 
-    def test_emptied_bucket_is_reported(self, tmp_path: Path) -> None:
+    def test_emptied_required_bucket_blocks(self, tmp_path: Path) -> None:
+        from jobhunt.commands.convert_resume_cmd import _bucket_regressions
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_data_devops": ["Docker", "AWS"]}))
+
+        blocking, advisory = _bucket_regressions(
+            self._facts(skills_data_devops=[]), snapshot
+        )
+
+        assert len(blocking) == 1
+        assert "Data & DevOps" in blocking[0]
+        assert "2 item(s)" in blocking[0]
+        assert advisory == []
+
+    def test_emptied_familiar_advises_instead_of_blocking(
+        self, tmp_path: Path
+    ) -> None:
+        """Familiar is optional: report it, but let the write through."""
         from jobhunt.commands.convert_resume_cmd import _bucket_regressions
 
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_familiar": ["Java", "Spring Boot"]}))
 
-        got = _bucket_regressions(self._facts(skills_familiar=[]), snapshot)
+        blocking, advisory = _bucket_regressions(
+            self._facts(skills_familiar=[]), snapshot
+        )
 
-        assert len(got) == 1
-        assert "Familiar" in got[0]
-        assert "2 item(s)" in got[0]
+        assert blocking == []
+        assert len(advisory) == 1
+        assert "Familiar" in advisory[0]
+        assert "2 item(s)" in advisory[0]
+
+    def test_advisory_never_classifies_as_loss(self, tmp_path: Path) -> None:
+        """The optional-bucket note must not reach the fail-closed guard.
+
+        Guards the seam directly: if advisory were ever folded back into the
+        warnings list, `_dropped_content_warnings` would classify it as loss
+        (it carries no `_BENIGN_WARNING_MARKERS` substring) and Familiar would
+        silently start blocking again.
+        """
+        from jobhunt.commands.convert_resume_cmd import (
+            _bucket_regressions,
+            _dropped_content_warnings,
+        )
+
+        snapshot = tmp_path / "verified.json"
+        snapshot.write_text(json.dumps({"skills_familiar": ["Java"]}))
+
+        blocking, advisory = _bucket_regressions(
+            self._facts(skills_familiar=[]), snapshot
+        )
+        assert advisory, "no advisory produced, so this proves nothing"
+        assert _dropped_content_warnings(blocking) == []
 
     def test_regression_warning_classifies_as_loss(self, tmp_path: Path) -> None:
         """The whole point: it must reach the existing fail-closed guard.
@@ -334,9 +383,9 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_core": ["TypeScript", "React"]}))
 
-        got = _bucket_regressions(self._facts(skills_core=[]), snapshot)
-        assert got, "no regression produced, so the classification proves nothing"
-        assert _dropped_content_warnings(got) == got
+        blocking, _ = _bucket_regressions(self._facts(skills_core=[]), snapshot)
+        assert blocking, "no regression produced, so the classification proves nothing"
+        assert _dropped_content_warnings(blocking) == blocking
 
     def test_no_prior_snapshot_never_blocks(self, tmp_path: Path) -> None:
         """A first run has nothing to regress against."""
@@ -346,7 +395,7 @@ class TestBucketRegressions:
             self._facts(skills_familiar=[], skills_core=[]),
             tmp_path / "does-not-exist.json",
         )
-        assert got == []
+        assert got == ([], [])
 
     def test_corrupt_snapshot_never_blocks(self, tmp_path: Path) -> None:
         """A hand-edited or truncated snapshot is not evidence the resume lost
@@ -356,7 +405,7 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text("{not json")
 
-        assert _bucket_regressions(self._facts(skills_familiar=[]), snapshot) == []
+        assert _bucket_regressions(self._facts(skills_familiar=[]), snapshot) == ([], [])
 
     def test_still_empty_is_not_a_regression(self, tmp_path: Path) -> None:
         """Empty-to-empty is the steady state for buckets this resume never had.
@@ -369,7 +418,7 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_projects": []}))
 
-        assert _bucket_regressions(self._facts(skills_projects=[]), snapshot) == []
+        assert _bucket_regressions(self._facts(skills_projects=[]), snapshot) == ([], [])
 
     def test_populated_bucket_is_not_a_regression(self, tmp_path: Path) -> None:
         from jobhunt.commands.convert_resume_cmd import _bucket_regressions
@@ -377,19 +426,24 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_familiar": ["Java"]}))
 
-        assert _bucket_regressions(self._facts(skills_familiar=["Java"]), snapshot) == []
+        assert _bucket_regressions(
+            self._facts(skills_familiar=["Java"]), snapshot
+        ) == ([], [])
 
-    def test_vanished_row_blocks_the_write_end_to_end(self, env: Path) -> None:
+    def test_vanished_required_row_blocks_the_write_end_to_end(
+        self, env: Path
+    ) -> None:
         """The regression an absent row causes, driven through the real command."""
         from jobhunt.commands import convert_resume_cmd
 
         profile = env / "kb" / "profile"
         profile.mkdir(parents=True, exist_ok=True)
         (profile / "verified.json").write_text(
-            json.dumps({"skills_familiar": ["Java", "Spring Boot"]})
+            json.dumps({"skills_data_devops": ["Docker", "AWS"]})
         )
 
-        # This resume has no Familiar row at all, exactly like the reformat.
+        # This resume has no Data & DevOps row at all: its single skills row is
+        # "Languages & Frameworks", which infers to Core.
         docx = _resume(
             env,
             skill_label="Languages & Frameworks",
@@ -399,18 +453,51 @@ class TestBucketRegressions:
 
         assert result.exit_code == 1
         assert "NOT written" in result.output
-        assert "Familiar" in result.output
+        assert "Data & DevOps" in result.output
         # The prior snapshot must survive: refusing the write means keeping the
         # good profile, not replacing it with the degraded one.
         got = json.loads((profile / "verified.json").read_text())
-        assert got["skills_familiar"] == ["Java", "Spring Boot"]
+        assert got["skills_data_devops"] == ["Docker", "AWS"]
+
+    def test_vanished_familiar_row_still_writes(self, env: Path) -> None:
+        """The 2026-08 change: an absent Familiar row must not gate the write.
+
+        A lane-tailored baseline legitimately carries no Familiar/Exposure row.
+        The write proceeds with `skills_familiar` empty, the user is told, and
+        tailoring falls back to the main buckets.
+        """
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "verified.json").write_text(
+            json.dumps({"skills_familiar": ["Java", "Spring Boot"]})
+        )
+
+        docx = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        result = runner.invoke(convert_resume_cmd.app, ["--docx", str(docx)])
+
+        assert result.exit_code == 0
+        assert "NOT written" not in result.output
+        # Reported, not silent — the silent-empty case is what the guard exists
+        # to prevent.
+        assert "Familiar" in result.output
+        got = json.loads((profile / "verified.json").read_text())
+        assert got["skills_familiar"] == []
+        assert got["skills_core"], "main buckets must still be populated"
 
     def test_force_still_overrides_a_regression(self, env: Path) -> None:
         from jobhunt.commands import convert_resume_cmd
 
         profile = env / "kb" / "profile"
         profile.mkdir(parents=True, exist_ok=True)
-        (profile / "verified.json").write_text(json.dumps({"skills_familiar": ["Java"]}))
+        (profile / "verified.json").write_text(
+            json.dumps({"skills_data_devops": ["Docker"]})
+        )
 
         docx = _resume(
             env,
@@ -420,4 +507,4 @@ class TestBucketRegressions:
         runner.invoke(convert_resume_cmd.app, ["--docx", str(docx), "--force"])
 
         got = json.loads((profile / "verified.json").read_text())
-        assert got["skills_familiar"] == []
+        assert got["skills_data_devops"] == []

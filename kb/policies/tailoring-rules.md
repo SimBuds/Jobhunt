@@ -42,7 +42,7 @@ injected): `kb/policies/authoring.md`.
 - Reorder bullets within a job. Never move bullets between jobs.
 - The **Present** role (current contract) keeps ≥2 bullets — older roles
   shrink first when overflowing one page.
-- Surface specific GBC courses (from `verified.json` coursework_baseline + the broader
+- Surface specific courses (from `verified.json` coursework_baseline + the broader
   coursework list in §2) only when they map to JD requirements.
 
 ## ATS-safe output (§5)

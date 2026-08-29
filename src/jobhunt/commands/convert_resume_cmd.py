@@ -240,41 +240,78 @@ _TRACKED_BUCKETS: tuple[tuple[str, str], ...] = (
     ("projects", "projects"),
 )
 
+# Buckets whose disappearance is a legitimate authoring choice rather than a
+# parse failure, so losing one advises instead of blocking.
+#
+# Familiar is the only such bucket. A "Familiar"/"Exposure" row is optional on a
+# resume in a way no other tracked bucket is: dropping it narrows what the
+# candidate CLAIMS, and every downstream consumer already treats the empty
+# bucket as "no Familiar skills" rather than "unknown" —
+# `tailor._complete_familiar_bucket` early-returns, `tailor.md` rule 10 omits
+# the category rather than inventing items, and `score._all_matched_are_familiar`
+# returns False so the Familiar-only cap simply never fires. Tailoring then
+# draws on the main buckets, which is the correct behaviour for a resume that
+# claims no side skills.
+#
+# The other buckets stay blocking. An absent Core/Data/AI row is not a narrower
+# claim, it is a partial profile: the fabrication guard rejects every skill
+# missing from `verified.json`, so a silently-emptied Data & DevOps bucket
+# permanently strips Docker/AWS/Postgres from every future tailored document.
+_OPTIONAL_BUCKETS: frozenset[str] = frozenset({"skills_familiar"})
 
-def _bucket_regressions(facts: VerifiedFacts, verified_path: Path) -> list[str]:
-    """Warnings for buckets that carried content last run and parse empty now.
 
-    Compares the freshly parsed facts against the previous `verified.json`
-    snapshot. Emitted as warning strings rather than handled inline so they flow
-    through `_dropped_content_warnings` and inherit the existing fail-closed
-    write refusal, its `--force` escape hatch, and its exit code. The strings
-    deliberately avoid every `_BENIGN_WARNING_MARKERS` substring so they
-    classify as loss.
+def _bucket_regressions(
+    facts: VerifiedFacts, verified_path: Path
+) -> tuple[list[str], list[str]]:
+    """Buckets that carried content last run and parse empty now.
 
-    Returns `[]` when there is no readable prior snapshot. A first run has
+    Returns `(blocking, advisory)`. Blocking entries are appended to the parser
+    warnings so they flow through `_dropped_content_warnings` and inherit the
+    existing fail-closed write refusal, its `--force` escape hatch, and its exit
+    code; those strings deliberately avoid every `_BENIGN_WARNING_MARKERS`
+    substring so they classify as loss. Advisory entries are for
+    `_OPTIONAL_BUCKETS` — reported to the user but never counted as loss, so the
+    write proceeds.
+
+    Advisory is returned as a separate list rather than smuggled past
+    `_dropped_content_warnings` with a benign marker: classification by
+    substring is what the marker list is for, and an optional bucket is a
+    property of the bucket, not of the wording of its message.
+
+    Both lists are `[]` when there is no readable prior snapshot. A first run has
     nothing to regress against, and a corrupt or hand-edited snapshot is not
     evidence the *resume* lost anything, so neither may block the write.
     """
     if not verified_path.is_file():
-        return []
+        return [], []
     try:
         previous = json.loads(verified_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return []
+        return [], []
     if not isinstance(previous, dict):
-        return []
+        return [], []
 
-    regressions = []
+    blocking: list[str] = []
+    advisory: list[str] = []
     for key, label in _TRACKED_BUCKETS:
         was = previous.get(key) or []
         now = getattr(facts, key, None) or []
-        if was and not now:
-            regressions.append(
+        if not (was and not now):
+            continue
+        if key in _OPTIONAL_BUCKETS:
+            advisory.append(
+                f"{label}: had {len(was)} item(s) in the previous "
+                f"verified.json and parses to nothing now. This bucket is "
+                f"optional — tailoring will draw on the main skill buckets and "
+                f"omit the {label} section. Re-add the row if that is wrong."
+            )
+        else:
+            blocking.append(
                 f"{label}: had {len(was)} item(s) in the previous "
                 f"verified.json and parses to nothing now. The matching row is "
                 f"likely missing from the resume after an edit."
             )
-    return regressions
+    return blocking, advisory
 
 
 @app.callback(invoke_without_command=True)
@@ -313,8 +350,13 @@ def run(
 
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
     # Appended BEFORE classification so a vanished row inherits the same
-    # fail-closed refusal the parser's own loss warnings already get.
-    warnings = warnings + _bucket_regressions(facts, verified)
+    # fail-closed refusal the parser's own loss warnings already get. Optional
+    # buckets come back separately and never gate the write.
+    bucket_blocking, bucket_advisory = _bucket_regressions(facts, verified)
+    warnings = warnings + bucket_blocking
+
+    for note in bucket_advisory:
+        typer.echo(f"note: {note}", err=True)
 
     dropped = _dropped_content_warnings(warnings)
     if dropped and not force:

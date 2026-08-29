@@ -112,6 +112,35 @@ def is_gta_eligible(location: str | None) -> bool:
 # DOES NOT match Senior / Lead / Staff / Principal / Architect — those are
 # handled separately by `is_senior_title`, which is YoE-gated at ingest in
 # scan_cmd (drops them when `applicant.years_experience < 4`).
+def location_search_terms(
+    *, city: str = "", region: str = "", country: str = ""
+) -> tuple[str, ...]:
+    """Board-side `searchText` probes for the applicant's location.
+
+    Used by adapters whose boards have no server-side location filter and must
+    narrow with free-text queries before `is_gta_eligible` does the real work.
+
+    Ordered city, region, then remote-in-country, because a region query
+    empirically returns a superset of its cities and the remote term adds rows
+    neither covers. Blank fields are skipped and duplicates dropped, so a
+    partially-filled profile still yields usable probes.
+
+    Returns `()` when nothing is configured — callers treat that as "no
+    narrowing possible" and fall back to a blank scan rather than inventing a
+    location. Replaces a hardcoded ("Toronto", "Ontario", "Remote, Canada")
+    tuple that ignored the applicant profile entirely.
+    """
+    terms: list[str] = []
+    for term in (city.strip(), region.strip()):
+        if term and term not in terms:
+            terms.append(term)
+    if country.strip():
+        remote = f"Remote, {country.strip()}"
+        if remote not in terms:
+            terms.append(remote)
+    return tuple(terms)
+
+
 _MANAGEMENT_TITLE_RE = re.compile(
     r"\b(?:manager|director|head\s+of|vp|vice\s+president|"
     r"engineering\s+manager|people\s+manager|chief\s+\w+\s+officer)\b",

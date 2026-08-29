@@ -159,9 +159,22 @@ _SKILL_LINE_RE = re.compile(r"^([A-Za-z][^:]*?):\s*(.+)$")
 # production skill, which is the one bucket error the honesty rules treat as
 # fabrication (`kb/policies/tailoring-rules.md`, Core vs Familiar).
 _BUCKET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # "currently"/"developing"/"progress" catch the aspirational row a
+    # lane-tailored resume uses to name skills that are being built but are NOT
+    # yet claimable ("Currently developing: RAG pipelines, embeddings and vector
+    # search, Azure"). Matching on the LABEL keeps this lane-agnostic: the items
+    # differ per lane (RAG/Azure for AI, Google Ads/GA4 for programmatic, a
+    # crawler for SEO) and must never be enumerated here.
+    #
+    # "developing" is listed WITHOUT the shorter "develop" stem on purpose.
+    # Familiar is tested first, so a "develop" keyword would capture Core rows
+    # named "Development"/"Software Development" and demote real production
+    # skill to Familiar — the mirror of the fabrication bug this bucket order
+    # exists to prevent.
     ("Familiar", (
         "familiar", "additional", "exposure", "other", "academic", "beginner",
         "basic", "learning", "coursework", "supplementary",
+        "currently", "developing", "upskilling", "progress",
     )),
     ("AI & Tooling", (
         "ai", "ml", "llm", "genai", "automation", "agent", "agentic", "assisted",
@@ -255,6 +268,9 @@ _SKILL_LABEL_ALIASES: dict[str, str] = {
     "tools": "AI & Tooling",
     "projects": "Project Stack",
     "exposure": "Familiar",
+    "currently developing": "Familiar",
+    "currently learning": "Familiar",
+    "in progress": "Familiar",
 }
 
 # Supports these formats:

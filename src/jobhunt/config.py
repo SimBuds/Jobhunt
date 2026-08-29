@@ -227,9 +227,14 @@ class ApplicantProfile(BaseModel):
     linkedin_url: str = ""
     github_url: str = ""
     portfolio_url: str = ""
-    city: str = "Toronto"
-    region: str = "Ontario"
-    country: str = "Canada"
+    # Empty by default and filled by `jobhunt setup` or `convert-resume` (which
+    # reads them off the resume contact line). They used to default to
+    # Toronto/Ontario/Canada — the author's own city — which meant an
+    # unconfigured user silently searched the GTA instead of being told to set
+    # a location. Ingest adapters that need a location now fail loudly on blank.
+    city: str = ""
+    region: str = ""
+    country: str = ""
     work_auth_canada: bool = True
     requires_visa_sponsorship: bool = False
     salary_expectation_cad: str = ""
