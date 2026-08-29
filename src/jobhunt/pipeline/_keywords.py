@@ -126,6 +126,16 @@ _STOPWORDS = frozenset(
         "year", "years", "experience", "skills", "knowledge", "ability",
         "strong", "good", "great", "able", "must", "should", "would",
         "preferred", "plus", "bonus", "required", "required.",
+        # A JD writes "CI/CD pipelines" where a resume writes "CI/CD": the
+        # noun carries no technical discrimination of its own, so requiring it
+        # makes a real match unfindable (9 such gaps in the 2026-08-29
+        # backlog). Kept to this one word-pair on purpose. "tools",
+        # "frameworks" and "technologies" were tried and reverted — they are
+        # exactly what makes a vague ask vague, and dropping them let the
+        # Pigment regression ("AI/LLM tools", guarded by
+        # test_verify_demotes_llm_matched_when_not_in_profile) score as
+        # matched against a profile that never claimed it.
+        "pipeline", "pipelines",
     }
 )
 
@@ -153,12 +163,35 @@ def _strip_parenthetical(phrase: str) -> str:
     return stripped or phrase
 
 
+# `React` / `React.js` / `ReactJS` are three spellings of one technology, and
+# JDs use all three interchangeably. `_TOKEN_RE` keeps `.`, so `react.js` is a
+# single token that is not a substring of a blob containing `react` — which
+# variant a JD happened to use decided whether a verified skill counted. The
+# base must be >= _MIN_ALT_LEN so a bare suffix never stands alone as a match.
+_JS_SUFFIX_RE = re.compile(rf"^([a-z0-9+#-]{{{_MIN_ALT_LEN},}})(?:\.js|js)$")
+
+
+def _surface_variants(token: str) -> tuple[str, ...]:
+    """Spellings of one technology: base, base.js, basejs.
+
+    Applied in both directions, so a `React.js` must-have matches a resume
+    listing `React`, and a `React` must-have matches a resume listing
+    `React.js`. Only the `.js`/`js` suffix is folded — it is the one suffix
+    that names no distinct technology of its own.
+    """
+    m = _JS_SUFFIX_RE.match(token)
+    base = m.group(1) if m else token
+    return (token, base, f"{base}.js", f"{base}js")
+
+
 def _token_present(token: str, blob: str) -> bool:
     """Substring presence with '/'-compound handling: a token like
     'css3/sass' names alternatives, but a resume lists the parts as separate
     items, so the token also counts when any part >= _MIN_ALT_LEN chars is
-    present. Shorter parts ('ci/cd') keep whole-token semantics."""
-    if token in blob:
+    present. Shorter parts ('ci/cd') keep whole-token semantics.
+
+    `.js`/`js` spelling variants are folded first via `_surface_variants`."""
+    if any(v in blob for v in _surface_variants(token)):
         return True
     if "/" in token:
         return any(p in blob for p in token.split("/") if len(p) >= _MIN_ALT_LEN)

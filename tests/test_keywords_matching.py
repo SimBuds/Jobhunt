@@ -160,3 +160,57 @@ def test_rippling_audit_coverage_clears_hard_floor() -> None:
         "Terraform (not in verified_facts; only coursework listed, no production usage)",
         "GraphQL/WPGraphQL (JD lists as integration requirement)",
     }
+
+
+# --- surface-form false gaps found in the 2026-08-29 backlog review ---
+# Measured over 682 live scores: `react.js` (7) / `reactjs` (5) /
+# `ci/cd pipelines` (9) recurred as GAPS while the same skills matched
+# elsewhere as `react` (99) and `ci/cd` (5). The JD's chosen spelling, not the
+# candidate's actual coverage, was deciding.
+
+
+def test_js_suffix_variants_match_the_bare_form() -> None:
+    # A JD writing React.js or ReactJS names the resume's "React".
+    assert phrase_present("React.js", _RESUME_BLOB)
+    assert phrase_present("ReactJS", _RESUME_BLOB)
+    assert phrase_present("React.js (Core)", _RESUME_BLOB)
+
+
+def test_bare_form_matches_a_js_suffixed_resume() -> None:
+    # The fold runs both ways: a "Vue" must-have against a Vue.js resume.
+    assert phrase_present("Vue", "vue.js and vuex")
+    assert phrase_present("Express", "expressjs api layer")
+
+
+def test_js_suffix_does_not_invent_a_technology() -> None:
+    # Folding the suffix must not make unrelated libraries interchangeable.
+    assert not phrase_present("Vue.js", _RESUME_BLOB)
+    assert not phrase_present("EmberJS", _RESUME_BLOB)
+
+
+def test_generic_trailing_noun_does_not_block_the_match() -> None:
+    # Resume says "GitHub Actions CI/CD"; JD says "CI/CD pipelines".
+    assert phrase_present("CI/CD pipelines", _RESUME_BLOB)
+    assert phrase_present("CI/CD pipeline (Core)", _RESUME_BLOB)
+
+
+def test_vague_asks_are_still_not_credited() -> None:
+    # Only "pipeline(s)" is dropped. "tools"/"frameworks" are what make a
+    # vague ask vague and stay required — dropping them regressed
+    # test_verify_demotes_llm_matched_when_not_in_profile (the Pigment case).
+    assert not phrase_present("AI/LLM tools", "ai_tooling and local llm")
+    assert not phrase_present("testing frameworks", "jest and vitest")
+
+
+def test_generic_noun_alone_matches_nothing() -> None:
+    # Dropping the noun must not leave an empty token list that matches
+    # everything — a phrase made only of stopwords stays uncovered.
+    assert not phrase_present("pipelines", _RESUME_BLOB)
+    assert not phrase_present("tools and frameworks", _RESUME_BLOB)
+
+
+def test_discriminating_nouns_are_still_required() -> None:
+    # "systems"/"development" carry real meaning and stay out of _STOPWORDS,
+    # so an abstract category ask is still a genuine miss.
+    assert not phrase_present("distributed systems", _RESUME_BLOB)
+    assert not phrase_present("relational databases", _RESUME_BLOB)

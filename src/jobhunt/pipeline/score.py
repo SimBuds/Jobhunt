@@ -230,6 +230,15 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         raise PipelineError(
             f"job {job.id}: model extracted no requirements from the posting"
         )
+    # Drop tenure-only asks AFTER the extraction check above, so a model that
+    # read the posting but found only a years bar is not misreported as having
+    # extracted nothing. An emptied tier-1 falls through to the promotion
+    # below; if both tiers empty out, every coverage is 0.0 and the job scores
+    # at the base, which is the right floor for a posting whose only stated
+    # requirement was time served.
+    tier1_phrases = _drop_pure_tenure_asks(tier1_phrases)
+    tier2_phrases = _drop_pure_tenure_asks(tier2_phrases)
+
     # A posting whose requirements all read as optional still has a real bar.
     # Promote rather than score it out of the queue on a phrasing quirk.
     if not tier1_phrases:
@@ -334,6 +343,27 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # Senior-band titles, but qwen3.5:9b still emits it on junior/mid
     # postings (it pattern-matches the example string). Nullify those so
     # they fall through to the soft-band cap below.
+    #
+    # 2026-08-29: nullify unconditionally when the profile has no Familiar
+    # bucket at all. An empty `skills_familiar` makes the rule's premise
+    # ("every satisfied requirement resolves into skills_familiar")
+    # impossible to satisfy, so any such decline is the model reciting the
+    # prompt's example string rather than reading the profile. The
+    # title-gated branch below never reached these, because it exempts
+    # senior titles — which is exactly where the false declines landed
+    # (observed: "Senior Applied AI Engineer - GenAI Systems" and "AI
+    # Enginering Technical Lead" both declined against an empty bucket).
+    # Deliberately keyed on the bucket being empty rather than on the
+    # feature being removed, so reintroducing a Familiar tier restores the
+    # old behaviour with no further edit.
+    if decline_reason and "familiar" in decline_reason.lower():
+        try:
+            _v = json.loads(verified)
+        except (ValueError, TypeError):
+            _v = {}
+        if not (_v.get("skills_familiar") or []):
+            decline_reason = None
+
     if (
         decline_reason
         and "familiar" in decline_reason.lower()
@@ -496,6 +526,64 @@ def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
 # "Vue (transferable: React)" / "Postgres (transferable: school project —
 # SQLite)". This regex pulls out the annotation body so the clamp can verify
 # the named bridge against the profile instead of demoting the whole phrase.
+# --- pure-tenure requirement filter (2026-08-29) -----------------------------
+#
+# The model extracts "7+ years of professional software engineering experience"
+# as a requirement, and it then sits in the tier denominator forever: no resume
+# keyword can ever satisfy a tenure statement, so it is a guaranteed miss that
+# only ever subtracts. It is also already accounted for — the YoE auto-decline
+# rule in `kb/prompts/score.md` reads `applicant.years_experience` and declines
+# when years required exceeds YoE + 3. Counting it twice, once as a decline
+# input and once as an unmatchable denominator entry, deflates exactly the
+# senior-leaning postings that the tenure rule has already judged.
+#
+# Measured on the 2026-08-29 backlog: 46 distinct phrases, of which every one
+# was a bare tenure statement. 91 other phrases that also name a year count
+# were kept, because each carries a real qualifier ("2+ years leading
+# cross-functional technical initiatives") that a resume can genuinely cover.
+_TENURE_RE = re.compile(r"\b\d+\s*(?:[-+]|to)?\s*\d*\s*\+?\s*years?\b")
+
+# Words that can surround a tenure ask without adding a requirement of their
+# own. Anything outside this set means the phrase is asking for something
+# beyond time served, so the phrase stays. Deliberately does NOT include
+# domain words ("full", "stack", "shipping", "production"): keeping a phrase
+# is the conservative direction, since a kept phrase can only lower the score.
+_TENURE_FILLER = frozenset(
+    {
+        "professional", "software", "development", "developing", "engineering",
+        "engineer", "experience", "experiences", "work", "working", "relevant",
+        "commercial", "industry", "role", "total", "demonstrated", "hands-on",
+        "hands", "on", "minimum", "min", "at", "least", "plus", "or", "more",
+        "of", "in", "a", "an", "as", "the", "with", "and", "to", "candidate",
+        "has", "have", "gap", "yoe", "actual", "required", "vs", "exceeds",
+        "cushion", "meets", "threshold", "hard", "tenure",
+    }
+)
+
+
+def _is_pure_tenure_ask(phrase: str) -> bool:
+    """True when the phrase asks only for time served.
+
+    Parenthetical commentary is dropped first: the model annotates these with
+    its own arithmetic ("(candidate has 3 YoE)"), which is reasoning about the
+    requirement, not part of it.
+    """
+    body = re.sub(r"\([^)]*\)", " ", phrase.lower())
+    if not _TENURE_RE.search(body):
+        return False
+    rest = _TENURE_RE.sub(" ", body)
+    return not [
+        t
+        for t in re.findall(r"[a-z0-9+#./-]+", rest)
+        if any(ch.isalnum() for ch in t) and t not in _TENURE_FILLER
+    ]
+
+
+def _drop_pure_tenure_asks(phrases: list[str]) -> list[str]:
+    """Strip tenure-only requirements from one extracted tier list."""
+    return [p for p in phrases if not _is_pure_tenure_ask(p)]
+
+
 _TRANSFER_BRIDGE_RE = re.compile(
     r"\(\s*transferable\b[:\s—–-]*([^)]+)\)", re.IGNORECASE
 )
