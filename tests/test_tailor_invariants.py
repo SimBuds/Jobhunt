@@ -25,7 +25,7 @@ VERIFIED = {
     "skills_familiar": ["Java", "Python"],
     "projects": [
         {"name": "jobhunt", "url": "github.com/SimBuds/Jobhunt"},
-        {"name": "Auto-Agent", "url": "github.com/SimBuds/Auto-Agent"},
+        {"name": "Sidecar", "url": "github.com/SimBuds/Sidecar"},
     ],
 }
 
