@@ -1201,10 +1201,10 @@ Beyond the four pillars, these project docs are load-bearing:
 - Ollama systemd env (Arch, `sudo systemctl edit ollama.service` — **the human
   runs this, never the agent**):
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # ~288 MiB at num_ctx=32768 vs ~576 MiB for q8_0, and that difference is what keeps the model 100% GPU-resident (q8_0 measured 6.9 GB with a 14%/86% CPU/GPU split). Known caveat, accepted: q4_0 is the less-exercised path and produced intermittent `CUDA error: an illegal memory access was encountered` (HTTP 500 from /api/chat) twice on 2026-07-28, each recovered by the gateway's retry. If those get frequent enough to stall a backlog scan, q8_0 is the known-good fallback
+  Environment="OLLAMA_KV_CACHE_TYPE=q8_0"      # q8_0 since 2026-08-29. q4_0 is cheaper (~288 MiB at num_ctx=32768 vs ~576 MiB) and keeps the model 100% GPU-resident, but it is the less-exercised path and its `CUDA error: an illegal memory access was encountered` faults (HTTP 500 from /api/chat) escalated from "twice on 2026-07-28" to **2 of 5 score calls**, which stalls a backlog scan outright. q8_0 measured 12/12 clean on the same jobs at ~13.7 s/job vs ~8 s, accepting the 14%/86% CPU/GPU split. Do NOT switch back to q4_0 to reclaim the speed
   Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
   Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches the sequential pipeline
-  Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload; the gateway's per-call keep_alive=-1 takes precedence during a run, so this only governs callers that omit the key (e.g. the bench script)
+  Environment="OLLAMA_KEEP_ALIVE=0"            # unload as soon as the box goes idle (2026-08-29, was 10m). The gateway's per-call keep_alive=-1 takes precedence while requests are in flight, and `gateway.warm` sends it too, so a scan still holds the model for its whole run. This only governs callers that omit the key (e.g. the bench script)
   Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model — on a 10 GB card a second would force a CPU spill
   ```
   `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set. Context is owned only at
@@ -1570,6 +1570,14 @@ missing. Fix the resume or the parser first.
 1. **Every structured call uses a JSON schema.**
    `gateway.client.complete_json(schema=...)` posts to `/api/chat` with
    `format: <schema>`. No free-form JSON parsing.
+   **There is no HTTP-error retry.** `client._post` raises `GatewayError` on
+   any status >= 400, and `complete_json`'s single retry covers invalid JSON
+   only. A server-side fault (a CUDA OOM, a 500) is therefore a hard per-job
+   skip: `scan` logs it and moves on, and the job stays stale. Verified
+   2026-08-29 after an earlier version of this file wrongly claimed such
+   faults "recovered by the gateway's immediate retry" — they do not. If a
+   fault class ever becomes routine, fix the server setting (see the KV-cache
+   note above) or add an explicit 5xx retry; do not assume one exists.
 2. **Reasoning disabled.** The gateway sends `"think": false`. Quality is held
    by the deterministic post-processing layers (score arithmetic, cover
    validator plus retry, audit), not by reasoning tokens. If a future task slot
@@ -1577,7 +1585,7 @@ missing. Fix the resume or the parser first.
    the default.
 3. **Keep-alive and warm-up.** `keep_alive=-1` in the payload pins the model in
    VRAM for the duration of a run, and the per-call value is what Ollama uses
-   while a request is in flight. The systemd `OLLAMA_KEEP_ALIVE=10m` is the
+   while a request is in flight. The systemd `OLLAMA_KEEP_ALIVE=0` is the
    idle fallback once the pipeline stops calling. `gateway.warm` fires a tiny
    chat before the scoring loop so the first real call does not pay cold-load
    on top of the 240 s gateway timeout.
@@ -1642,7 +1650,7 @@ the list with soft asks deflates the score.
 
 The coefficients are `[pipeline] score_base` (30), `score_tier1_weight` (50),
 `score_tier2_weight` (10), `score_ai_bonus` (5), `score_transferable_credit`
-(0.7), `senior_score_cap` (60), and `junior_score_bonus` (5). They resolve once
+(0.7), `senior_score_cap` (45), and `junior_score_bonus` (5). They resolve once
 per call into `score.ScoreWeights` and are threaded explicitly through
 `_phrase_credit` / `_verify_tier` / `_compute_score` — never read from module
 globals, so a score is reproducible from its inputs alone. The module-level
@@ -1661,15 +1669,23 @@ Every cap only lowers.
   Applied **before** every ceiling, so it lifts ranking within the band without
   letting a thin JD or a Familiar-only fit escape its cap. These roles were
   ranking below senior postings because nothing rewarded the band.
-- **Senior cap (60)**, unconditional on senior titles. This replaced a
-  conditional ceiling that was unreachable: across the 650-score backlog it
-  fired 0 times on 62 undeclined senior-titled roles, and senior titles carried
-  a higher median (60) than explicit junior/mid ones (50) — the opposite of the
-  intent. At 60 they stay just above `min_score` as deliberate stretch
-  applications while any junior/mid role with real coverage outranks them.
-  Raise toward 70 to weight them back up, or below `min_score` to drop them
-  entirely without touching `include_senior_roles`. A model-emitted
-  "Senior-band" decline is nullified when senior roles are opted in.
+- **Senior cap (45, below `min_score`)**, unconditional on senior titles. It
+  started as a conditional ceiling that was unreachable (across the 650-score
+  backlog it fired 0 times on 62 undeclined senior-titled roles, and senior
+  titles carried a higher median, 60, than explicit junior/mid ones, 50 — the
+  opposite of the intent), then became an unconditional 60. **Lowered to 45 on
+  2026-08-29**: at 3 YoE the candidate is junior/intermediate and does not want
+  senior roles surfaced at all, and 60 sat *above* `min_score` so they stayed
+  in the queue. 51% of the backlog is senior-titled, so this is the difference
+  between half the queue being off-target and none of it. Verified on a 100-job
+  sample: 0 of 47 senior-titled postings reach `min_score`, while 18 of 53
+  non-senior ones do.
+  `include_senior_roles` stays **true** on purpose — senior postings are still
+  ingested and stay searchable in the DB, they just cannot reach the ranked
+  queue. Raise the cap above `min_score` to make them visible again; set
+  `include_senior_roles=false` only to stop ingesting them entirely. A
+  model-emitted "Senior-band" decline is nullified when senior roles are opted
+  in.
 - **Thin-JD confidence cap** (`thin_jd_score_cap`, default 70) when
   `len(description) < thin_jd_chars` (default 800). Signal-poor JDs (Adzuna's
   ~500-char snippets) used to pass through unbounded, but the model cannot
@@ -1698,6 +1714,38 @@ Every cap only lowers.
   written down here — it is regenerated from the resume and an enumeration in
   prose goes stale silently. Word-boundary matching is used so "Java" does not
   match the "JavaScript" substring.
+
+  **`skills_familiar` is empty as of 2026-08-24, by choice.** The tier was
+  removed from the baseline resume because Familiar entries (Java, Spring Boot,
+  Angular) were matching lower-priority roles and diluting focus onto skills
+  the candidate does not have in production. Two consequences. First, this cap
+  is currently **inert** — `_all_matched_are_familiar` cannot return True
+  against an empty bucket — so do not rely on it as protection today; it
+  reactivates automatically if a Familiar tier ever returns. Second,
+  qwen3.5:9b still emits the prompt's Familiar decline string from memory even
+  though the premise is now impossible, and the title-gated nullification
+  exempted senior titles, so real targets were being declined on a phantom
+  rationale (measured: 4 of 12 on a probe, including "Senior Generative AI
+  Software Engineer"). `score.py` now nullifies **any** Familiar decline when
+  the bucket is empty, regardless of title, and `kb/prompts/score.md` states
+  that an empty list means the rule cannot apply. Both are keyed on the bucket
+  being empty rather than on the tier being gone, so nothing needs re-editing
+  if it comes back.
+
+- **Pure-tenure asks never enter the denominator** (2026-08-29).
+  `score._is_pure_tenure_ask` drops extracted requirements that ask only for
+  time served ("7+ years of professional software engineering experience").
+  They can never be satisfied by a resume keyword, and the YoE auto-decline
+  rule already consumes the same requirement from
+  `cfg.applicant.years_experience`, so leaving them in counted the tenure bar
+  twice: once as a decline input, once as permanent coverage drag on exactly
+  the senior-leaning postings it had already judged. The predicate is
+  deliberately narrow — over 3,017 distinct extracted phrases it drops 46, all
+  bare tenure statements, and keeps all 91 phrases that name a year count
+  alongside a real qualifier ("2+ years leading cross-functional technical
+  initiatives"). Keeping a phrase is the conservative direction, since a kept
+  phrase can only lower a score. Do not widen `_TENURE_FILLER` with domain
+  words.
 
 **Auto-decline triggers are YoE-aware.** The score prompt receives
 `cfg.applicant.years_experience` and drives decisions from that single value:
@@ -1755,6 +1803,21 @@ call to it without explicit discussion.
      `job_title` union `job_description`. Title is part of the source because
      Adzuna ships ~500-char snippets where canonical tech names often only
      survive in the title. New tailoring capabilities must not break this path.
+   - **Surface-form folding** (2026-08-29). `_keywords._surface_variants`
+     treats `X`, `X.js` and `Xjs` as one technology in both directions, so a
+     `React.js` or `ReactJS` must-have matches a resume listing `React`.
+     `_TOKEN_RE` keeps `.`, so `react.js` was a single token that could not
+     substring-match `react`, and which spelling a JD happened to use decided
+     whether a verified skill counted (measured: 12 such false gaps in the
+     backlog). Only the `.js`/`js` suffix is folded — it is the one suffix
+     naming no distinct technology of its own. `pipeline`/`pipelines` also
+     joined `_STOPWORDS` so "CI/CD pipelines" matches "CI/CD". **Do not widen
+     this further**: adding "tools", "frameworks" or "technologies" to
+     `_STOPWORDS` was tried and reverted, because those words are what make a
+     vague ask vague, and dropping them let the Pigment regression ("AI/LLM
+     tools", guarded by
+     `test_verify_demotes_llm_matched_when_not_in_profile`) score as matched
+     against a profile that never claimed it.
    - **Phrase normalization.** `_keywords.phrase_present` strips parenthetical
      qualifiers before matching (the score LLM decorates must-haves with
      commentary whose tokens can never appear in a resume) and treats
