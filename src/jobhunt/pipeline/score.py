@@ -13,6 +13,7 @@ from jobhunt.ingest._filter import is_explicit_junior_title, is_senior_title
 from jobhunt.models import Job
 from jobhunt.pipeline._keywords import peer_match, phrase_present
 from jobhunt.pipeline._profile import candidate_name, render_policy
+from jobhunt.pipeline._untrusted import scrub_jd
 
 # Cap inputs to keep prompts within the app-owned context window the gateway
 # pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
@@ -203,7 +204,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
-        description=truncate(job.description, MAX_DESC_CHARS),
+        description=truncate(scrub_jd(job.description).text, MAX_DESC_CHARS),
     )
     model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks["score"]
     result = await complete_json(

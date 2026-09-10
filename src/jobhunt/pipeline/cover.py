@@ -12,6 +12,7 @@ from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline._profile import first_name as _first_name
+from jobhunt.pipeline._untrusted import scrub_jd
 from jobhunt.pipeline.score import MAX_DESC_CHARS, truncate
 
 # Trailing sign-off closer ("Best,", "Regards,", "Sincerely,", etc.). The
@@ -81,7 +82,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
-        description=truncate(job.description, MAX_DESC_CHARS),
+        description=truncate(scrub_jd(job.description).text, MAX_DESC_CHARS),
         revisions=revisions,
     )
     model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks["cover"]

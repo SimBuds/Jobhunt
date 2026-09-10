@@ -29,6 +29,7 @@ from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.pipeline._profile import candidate_name
 from jobhunt.pipeline._recap import recap_tokens
+from jobhunt.pipeline._untrusted import scrub_jd
 from jobhunt.pipeline.cover_validate import (
     _BRIDGE_PATTERNS,
     _DEFENSIVE_PATTERNS,
@@ -78,7 +79,7 @@ async def write_answer(
     user = prompt.render_user(
         verified_facts=verified_text,
         question=question,
-        jd_context=jd_context or "(none — standalone answer)",
+        jd_context=scrub_jd(jd_context).text or "(none — standalone answer)",
         max_words=str(max_words),
         revisions=revisions,
     )

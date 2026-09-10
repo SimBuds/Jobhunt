@@ -30,6 +30,7 @@ from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.pipeline._profile import FALLBACK_NAME, display_name
 from jobhunt.pipeline._profile import candidate_name as _name
 from jobhunt.pipeline._recap import recap_tokens
+from jobhunt.pipeline._untrusted import scrub_jd
 from jobhunt.pipeline.cover_validate import (
     _DEFENSIVE_PATTERNS,
     _DIGIT_CLUSTER_RE,
@@ -168,7 +169,7 @@ async def draft_prep_sections(
         stage=ctx.stage,
         job_title=ctx.job_title or "(unknown)",
         job_company=ctx.job_company or "(unknown)",
-        job_description=_truncate(ctx.job_description, _JD_MAX_CHARS),
+        job_description=_truncate(scrub_jd(ctx.job_description).text, _JD_MAX_CHARS),
         applicant_salary_expectation=(
             ctx.applicant_salary_expectation
             or cfg.applicant.salary_expectation_cad

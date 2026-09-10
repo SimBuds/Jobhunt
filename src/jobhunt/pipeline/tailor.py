@@ -14,6 +14,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline._keywords import phrase_present
 from jobhunt.pipeline._profile import candidate_name as _candidate_name
 from jobhunt.pipeline._profile import render_policy
+from jobhunt.pipeline._untrusted import scrub_jd
 from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
 
 
@@ -96,7 +97,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
         title=job.title or "(unknown)",
         company=job.company or "(unknown)",
         location=job.location or "(unknown)",
-        description=truncate(job.description, MAX_DESC_CHARS),
+        description=truncate(scrub_jd(job.description).text, MAX_DESC_CHARS),
     )
     # Retry attempts force temperature to 0 so qwen deterministically obeys
     # the correction hint ("REMOVE 'Redux'") rather than re-sampling the same
