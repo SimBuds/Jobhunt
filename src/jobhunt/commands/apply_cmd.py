@@ -775,11 +775,14 @@ async def _apply_llm_phase(
         f"keyword_coverage={coverage_label} "
         f"missing={len(audit_result.missing_must_haves)} "
         f"cover_violations={len(audit_result.cover_letter_violations)} "
-        f"alignment={len(audit_result.alignment_flags)}"
+        f"alignment={len(audit_result.alignment_flags)} "
+        f"specificity={len(audit_result.specificity_flags)}"
     )
 
     topics = _audit_topics(audit_result)
     early_exit = audit_result.verdict == "block"
+    for flag in audit_result.injection_flags:
+        echo(f"    ! {flag}", err=True)
     if early_exit:
         for flag in audit_result.fabrication_flags:
             echo(f"    BLOCK: {flag}", err=True)
@@ -977,6 +980,10 @@ def _audit_topics(audit_result: AuditResult) -> list[str]:
     topics: list[str] = []
     if audit_result.fabrication_flags:
         topics.append("fabrication")
+    if audit_result.injection_flags:
+        topics.append("injection")
+    if audit_result.specificity_flags:
+        topics.append("specificity")
     if audit_result.cover_letter_violations:
         topics.append("cover-violation")
     if (

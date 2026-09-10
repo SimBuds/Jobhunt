@@ -24,11 +24,20 @@ _MUST_HAVES = ["TypeScript", "React", "Node.js", "GitHub Actions", "Shopify"]
 # active `verified` fixture so the audit's fabrication re-check always sees a
 # matching (employer, dates) — robust to the date format (e.g. bare "2023 –
 # Present" vs the parenthesized "(2023 – Present)" the 2026-06 docx uses).
+# Bullets carry the figures their verified counterparts carry, so the
+# specificity guard (`_specificity.specificity_report`, added with the
+# hidden-text defenses) sees a faithful tailoring rather than one that
+# generalized every number away. These stubs predate that check and were
+# written only to exercise keyword coverage, which reads the summary and
+# skills categories rather than the bullets.
 _ROLE_CONTENT = [
-    ("Web Developer (Contract)", ["Built Shopify storefront."]),
-    ("Web Developer (Contract)", ["Built HubSpot theme."]),
+    ("Web Developer (Contract)", ["Built a 16+ page Shopify storefront on a Dawn 2.0 theme."]),
+    (
+        "Web Developer (Contract)",
+        ["Built an 8-page HubSpot theme.", "Cut page load time by 30%."],
+    ),
     ("Web Developer (Contract)", ["Built Shopify layouts."]),
-    ("Sous Chef & Team Lead", ["Led culinary teams."]),
+    ("Sous Chef & Team Lead", ["Led culinary teams of 5-20."]),
 ]
 
 

@@ -165,7 +165,7 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
 ## Honesty enforcement (the structural part)
 
 The "no fabrication" rule from `kb/policies/tailoring-rules.md` is enforced
-in six places, not just the prompt:
+in eight places, not just the prompt:
 
 1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.
    The tailoring prompt is constrained to only use facts from this file.
@@ -341,8 +341,30 @@ in six places, not just the prompt:
    coverage check misses: both can technically pass while the artifacts
    still read inconsistent to an AI-screener reading both.
 
-If any check (1)-(3) fails, the apply pipeline aborts for that job rather
-than producing a misleading resume. (4), (5), and (6) downgrade rather than block.
+7. **Untrusted-JD scrub + outbound hidden-text guard** (September 2026).
+   `pipeline._untrusted` treats a fetched job description as data, not
+   instructions, and enforces that mechanically: invisible and control
+   characters are deleted before the text reaches any prompt, and imperatives
+   aimed at a model are redacted in place. The same module runs *outbound* in
+   `audit()` over the finished resume and cover, because the realistic failure
+   is not an invented instruction but an echoed one — a posting carries it, the
+   tailor mirrors JD language as designed, and it lands in a .docx uploaded
+   under Casey's name. That is the case that gets an applicant dropped or
+   blacklisted, so it blocks. The scrub deliberately stays out of `prompt_hash`:
+   it is a no-op on clean postings, and re-scoring the backlog to change nothing
+   on ~99% of rows is the worse trade.
+8. **Specificity retention** (September 2026). `pipeline._specificity` measures
+   how many of the profile's quantified figures survived into the tailored
+   bullets. A rewrite turning "cut page load time 30%" into "improved site
+   performance" fabricates nothing, may even raise keyword coverage, and still
+   ships a weaker document — the LLM ranking layer rewards quantified claims,
+   and the human penalty for AI-sounding prose is aimed at generic phrasing.
+   Below 40% retention, or any role that had figures and kept none, downgrades
+   to `revise`.
+
+If any check (1)-(3) fails, or the outbound half of (7) fires, the apply
+pipeline aborts for that job rather than producing a misleading resume.
+(4), (5), (6) and (8) downgrade rather than block.
 
 ## Success criteria
 

@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from jobhunt.errors import PipelineError
 from jobhunt.pipeline._keywords import peer_family_of, peer_match, phrase_present
+from jobhunt.pipeline._specificity import specificity_report
+from jobhunt.pipeline._untrusted import hidden_text_flags, scrub_jd
 from jobhunt.pipeline.cover import CoverLetter
 from jobhunt.pipeline.cover_validate import validate_cover
 from jobhunt.pipeline.score import ScoreResult
@@ -59,6 +61,9 @@ class AuditResult:
     cover_letter_violations: list[str]
     alignment_flags: list[str]  # resume↔cover project-drift warnings
     verdict: str  # ship | revise | block
+    # Appended with defaults so existing positional construction stays valid.
+    injection_flags: list[str] = field(default_factory=list)
+    specificity_flags: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -405,13 +410,31 @@ def audit(
 
     alignment = _alignment_flags(tailored, cover, _derive_project_anchors(verified))
 
-    if fabrication_flags or (
+    # Outbound hidden-text guard. Covers the cover letter as well as the resume:
+    # both are rendered and uploaded, and the cover is the one the tailor is
+    # most likely to let a phrase from the posting through into.
+    outbound_injection = hidden_text_flags(
+        "\n".join([_resume_text(tailored), cover.to_markdown()])
+    )
+    # Posting-side hits are recorded but never block: a posting that tried to
+    # steer the model is the employer's or aggregator's doing, not a defect in
+    # the candidate's application. The inbound scrub already neutralized it
+    # before the prompt; this is the audit trail saying so.
+    posting_injection = [
+        f"posting: {flag}" for flag in scrub_jd(job_description).flags
+    ]
+    injection_flags = outbound_injection + posting_injection
+
+    specificity_flags = specificity_report(tailored, verified).flags
+
+    if fabrication_flags or outbound_injection or (
         coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT
     ):
         verdict = "block"
     elif (
         cover_violations
         or alignment
+        or specificity_flags
         or (coverage_pct is not None and coverage_pct < MIN_KEYWORD_COVERAGE_PCT)
     ):
         verdict = "revise"
@@ -426,6 +449,8 @@ def audit(
         cover_letter_violations=cover_violations,
         alignment_flags=alignment,
         verdict=verdict,
+        injection_flags=injection_flags,
+        specificity_flags=specificity_flags,
     )
 
 
