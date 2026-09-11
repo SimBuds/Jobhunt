@@ -240,13 +240,22 @@ def _add_bottom_border(paragraph: Any) -> None:
 # 48 lines with wrap-aware skill/summary/bullet counts produces reliable
 # single-page output.
 LINES_PER_PAGE = 48
-# One line of headroom: the flat per-section estimates accumulate small
-# rounding errors, so a resume estimated at exactly LINES_PER_PAGE renders onto
-# a second line in practice (observed 2026-05-28 when a 6th skills category —
+# Two lines of headroom: the flat per-section estimates accumulate small
+# rounding errors, so a resume estimated close to LINES_PER_PAGE renders onto
+# a second page in practice (observed 2026-05-28 when a 6th skills category —
 # the Projects tier — tipped a real resume's Dean's List onto page 2 while the
 # estimate landed exactly on 48). The shrink ladder trims until the estimate is
 # within this margin.
-_PAGE_SAFETY_MARGIN = 1
+#
+# Raised 1 -> 2 on 2026-09-10. A margin of 1 still let the boundary through: a
+# `jobhunt resume` CMS lane estimated at exactly 47 (== the budget, so
+# `fits_one_page` returned True and the ladder stopped) rendered its diploma
+# line onto page 2, while the AI lane at 46 fit. Measured against LibreOffice,
+# 46 fits and 47 does not, so the usable budget is 46. This mattered beyond one
+# stray page: the tailor samples at temperature 0.3, so output length varies
+# run to run and the same lane fit one day and overflowed the next — and every
+# `apply` resume goes through this same ladder.
+_PAGE_SAFETY_MARGIN = 2
 BULLET_CHARS_PER_LINE = 95
 SUMMARY_CHARS_PER_LINE = 100
 SKILL_CHARS_PER_LINE = 95

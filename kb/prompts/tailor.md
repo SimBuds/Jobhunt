@@ -1,6 +1,6 @@
 ---
 task: tailor
-temperature: 0.3
+temperature: 0.4
 schema:
   type: object
   required: [summary, skills_categories, roles, certifications, education, coursework]
