@@ -147,7 +147,20 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     skills_md = (kb / "profile" / "skills.md").read_text()
     assert skills_md.count("## Familiar") == 1
     assert skills_md.count("## Project Stack") == 1
-    assert "FastAPI" in skills_md
+    # Every populated bucket reaches the markdown. Asserted against what the
+    # resume actually carries rather than a fixed skill name (was "FastAPI"), so
+    # trimming a skills row is not a test failure — same reasoning as the
+    # projects assertion below (Phase A12). The 2026-09 skills trim dropped
+    # FastAPI and turned this into a red suite for a legitimate resume edit.
+    for bucket in (
+        facts.skills_core,
+        facts.skills_cms,
+        facts.skills_data_devops,
+        facts.skills_ai,
+        facts.skills_projects,
+    ):
+        assert bucket, "a populated skills bucket is expected on the curated master"
+        assert bucket[0] in skills_md
     projects_md = (kb / "profile" / "projects.md").read_text()
     # Every parsed project gets its own H2 in the markdown sidecar. Asserted
     # against what the resume actually carries rather than a fixed project name,
