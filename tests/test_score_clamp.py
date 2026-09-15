@@ -764,6 +764,67 @@ async def test_score_job_familiar_only_still_declines_senior_title(
 
 
 @pytest.mark.asyncio
+async def test_score_job_model_familiar_decline_on_senior_title_needs_familiar_matches(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-09-15: lite declined "Senior AI Engineer" as Familiar-only although
+    the matches were Core. A senior title no longer preserves that decline on
+    its own; the matched phrases must all be Familiar."""
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(
+            ["TypeScript", "React"],
+            decline_reason=(
+                "role's matched skills are all Familiar (academic/light use); "
+                "not Core production experience"
+            ),
+        ),
+    )
+    job = _full_jd_job(title="Senior AI Engineer")
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.decline_reason is None
+
+
+@pytest.mark.asyncio
+async def test_score_job_clears_years_decline_the_jd_does_not_back(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(["TypeScript", "React"], decline_reason="years_required_exceeds_limit"),
+    )
+    cfg = _cfg(kb_dir)
+    cfg.applicant.years_experience = 3
+    job = _full_jd_job(
+        title="Senior Full Stack Developer",
+        description="5+ years of experience with React and TypeScript. " * 30,
+    )
+    result = await score_job(cfg, job)
+    assert result.decline_reason is None
+
+
+@pytest.mark.asyncio
+async def test_score_job_keeps_years_decline_the_jd_backs(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(["TypeScript", "React"], decline_reason="years_required_exceeds_limit"),
+    )
+    cfg = _cfg(kb_dir)
+    cfg.applicant.years_experience = 3
+    job = _full_jd_job(
+        title="Staff Software Engineer",
+        description="10+ years of experience with React and TypeScript. " * 30,
+    )
+    result = await score_job(cfg, job)
+    assert result.decline_reason == "years_required_exceeds_limit"
+
+
+@pytest.mark.asyncio
 async def test_score_job_does_not_cap_when_core_skill_also_matched(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -795,12 +856,12 @@ async def test_score_job_does_not_cap_when_already_declined(
         "complete_json",
         _extraction(
             ["Java"],
-            decline_reason="Title is people-management (Engineering Manager)",
+            decline_reason="Domain requires regulated experience (clinical)",
         ),
     )
     result = await score_job(_cfg(kb_dir), _job())
     # Pre-existing decline reason preserved.
-    assert result.decline_reason == "Title is people-management (Engineering Manager)"
+    assert result.decline_reason == "Domain requires regulated experience (clinical)"
 
 
 @pytest.mark.asyncio
