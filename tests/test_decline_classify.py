@@ -11,6 +11,7 @@ from jobhunt.pipeline._decline_classify import (
     VALID_CATEGORIES,
     backfill_existing,
     classify_decline_reason,
+    reclassify_all,
 )
 
 
@@ -129,3 +130,47 @@ def test_backfill_skips_already_classified(conn) -> None:
     # Already stamped by set_decline_reason. Backfill should be a no-op.
     updated = backfill_existing(conn)
     assert updated == 0
+
+
+# --- live `lite` reason shapes (2026-09-15: 114 of 150 declines fell to "other")
+
+
+@pytest.mark.parametrize("reason,expected", [
+    # snake_case codes: `_` is a word character, so `\b` never fired inside them
+    ("years_required_exceeds_limit", "years_gap"),
+    ("years_required_exceeds_threshold", "years_gap"),
+    ("years_exceeded", "years_gap"),
+    ("years_gap", "years_gap"),
+    ("regulated_domain_gap", "regulated_domain"),
+    ("domain_requires_regulated_experience", "regulated_domain"),
+    ("location_outside_toronto", "location_mismatch"),
+    ("domain_mismatch", "wrong_domain"),
+    # prose
+    ("4+ tier-1 requirements the candidate cannot satisfy by any path", "tier1_gaps"),
+    ("4+ tier-1 requirements (RISC-V CPU, Compilers) are gaps", "tier1_gaps"),
+    ("Title is a non-engineering function (Sales Development Representative)",
+     "non_engineering"),
+    ("Domain requires regulated experience (banking/financial services)",
+     "regulated_domain"),
+    # a title-function decline wins over a second cited ground
+    ("Title is non-engineering function (Risk Analyst) and domain requires "
+     "regulated experience", "non_engineering"),
+])
+def test_classify_live_reason_shapes(reason: str, expected: str) -> None:
+    assert classify_decline_reason(reason) == expected
+
+
+def test_reclassify_all_rewrites_stale_categories(conn) -> None:
+    upsert_job(conn, _job("a"))
+    upsert_job(conn, _job("b"))
+    conn.execute(
+        "UPDATE jobs SET decline_reason = 'years_gap', decline_category = 'other' "
+        "WHERE id = 'greenhouse:acme:a'"
+    )
+    set_decline_reason(conn, "greenhouse:acme:b", "Requires 5+ years")
+    conn.commit()
+
+    assert reclassify_all(conn) == 1  # only the stale row changes
+    cats = dict(conn.execute("SELECT id, decline_category FROM jobs").fetchall())
+    assert cats["greenhouse:acme:a"] == "years_gap"
+    assert cats["greenhouse:acme:b"] == "years_gap"
