@@ -2,14 +2,11 @@
 
 Standing rules for any AI coding agent working on Casey's projects. Everything
 above the final `## Project-specific rules` section is **project-agnostic and
-portable**. Drop this file into the root of any repo and the universal body
-applies as-is. Nothing project-specific belongs in the universal body: stack,
+portable**. Drop this file into the repo and the universal body applies as-is. 
+Nothing project-specific belongs in the universal body: stack,
 build commands, domain rules, and paths live only in the
 `## Project-specific rules` section at the end, which each repo owns and fills
 in for itself.
-
-This file is named `AGENTS.md`, uppercase, matching its siblings. Refer to it
-by that exact name.
 
 **This is a living baseline.** Casey revises it as projects reveal gaps.
 When a session exposes a gap or a rule that fights the work, the agent proposes
@@ -48,14 +45,23 @@ one of these does not override it. Surface the conflict and stop.
 
 - **No system-changing commands.** Never `sudo` (including
   `sudo systemctl edit`), never restart or reload services, never install or
-  upgrade system packages, and never touch anything outside the repository:
-  `/etc`, systemd units, service configs, shell profiles. This is a hard stop,
-  not a confirm-first. Print the exact command, hand it over, then continue
-  with whatever does not depend on it. Do not offer to run it either.
+  upgrade system packages, and never write to anything outside the
+  repository: `/etc`, systemd units, service configs, shell profiles, other
+  repos. This is a hard stop, not a confirm-first. Print the exact command,
+  hand it over, then continue with whatever does not depend on it. Do not
+  offer to run it either. Read-only inspection outside the repo (reading
+  files and other repos, `systemctl status`, `journalctl`, `nvidia-smi`) is
+  allowed and is often the evidence a check needs. A project rule may still
+  put a read-only surface off limits, such as a production host. (Clarified
+  2026-09-15: "touch" had been read both as any access and as writes only.)
 - **No git writes on the user's behalf.** Never run `git commit`, `git push`,
-  `git tag`, or any history rewrite (`rebase`, `filter-branch`,
-  `git reset --hard`, force-push). Leave every change in the working tree,
-  staged or unstaged, for Casey to review and commit. When Casey explicitly
+  `git tag`, any history rewrite (`rebase`, `filter-branch`,
+  `git reset --hard`, force-push), or anything that changes the index or the
+  stash (`git add`, `git mv`, `git rm`, `git stash`, `git restore --staged`).
+  Move, rename, and delete files with plain filesystem commands, so every
+  change stays unstaged in the working tree for Casey to review, stage, and
+  commit. (Index and stash named 2026-09-15: "staged or unstaged" had left
+  staging ambiguous.) When Casey explicitly
   asks for a history operation in that request, print the exact commands and
   hand them over. Read-only git (`status`, `diff`, `log`) is the agent's own
   job.
@@ -93,8 +99,8 @@ continuously to maintain context. Do not rely on conversational memory.
 3. **`README.md`**: the developer-facing and user-facing entry point. What the
    application is, how it works, how to run it.
 4. **`IMPLEMENT.md`**: the execution engine. Granular phase-by-phase task
-   breakdown, progress checkboxes, current state. **Untracked and
-   gitignored.** It is the working file of whoever is mid-task, not a repo
+   breakdown, phase status, current state. **Untracked and
+gitignored.** It is the working file of whoever is mid-task, not a repo
    artifact. A fresh clone has none, so create it at Stage 2. Its absence means
    "no work in flight", not "state lost". Because it does not survive a clone,
    anything durable learned during a phase must land in the tracked docs
@@ -104,7 +110,9 @@ continuously to maintain context. Do not rely on conversational memory.
 
 `IMPLEMENT.md` always follows this template. Create it from the template,
 extend it per phase, and clean it back to the template when Casey approves the
-work as complete. Do not leave completed phase logs in it.
+work as complete, keeping the `## Deferred` list. Do not leave completed phase
+logs in it. (Deferred list added 2026-09-15: the reset had been deleting
+deferred work.)
 
 ```markdown
 # IMPLEMENT.md
@@ -130,6 +138,10 @@ work as complete. Do not leave completed phase logs in it.
   each boundary, each error case, each state>
 - Verification (three bullets or fewer):
 - Deferred out of this phase:
+
+## Deferred
+<!-- one bullet per deferred item, with its source phase. It survives the
+     reset to template, and an item becomes a phase only when Casey picks it. -->
 
 ## Phase reports
 <!-- pasted at Stage 5, newest first -->
@@ -168,7 +180,7 @@ trivial-tier exemption stated there.
 - Update or create `IMPLEMENT.md` from the skeleton. The plan is **never**
   left only in the conversation.
 - Each phase in `IMPLEMENT.md` carries a goal sentence, files to touch,
-  functions to add or change, the reuse audit, and verification steps.
+  functions to add or change, the reuse audit, and verification.
 - Ask for approval of the updated `IMPLEMENT.md` before writing any code.
 
 ### Stage 3: break the work into phases (context anchoring)
@@ -203,8 +215,8 @@ trivial-tier exemption stated there.
 
 - Run the verification listed in `IMPLEMENT.md` for this phase. Report
   observed output, not predicted output.
-- Stop background processes and remove temp files created for verification
-  now, before the handoff line.
+- Clean up what you started (see *Command boundaries*) before the handoff
+  line.
 - Paste the definition-of-done checklist below with a pass or fail per item.
 - Paste `git diff --stat` and compare it line by line against the planned
   file list. Name any mismatch. A mismatch is a failed audit, not a footnote.
@@ -244,6 +256,14 @@ phase's diff is committed, or explicitly accepts stacking uncommitted work.
 Without this, "atomic revert" is fiction: three phases deep, nothing is
 individually revertible.
 
+Approval and commit are separate gates. A yes to the handoff line approves the
+phase. It does not report that the phase is committed. Before starting the next
+phase, run `git status --short` and `git log --oneline -1`. If the approved
+phase is still uncommitted, say so in one line and ask whether to stack, rather
+than starting. An instruction that names several phases to run in a row counts
+as accepting the stack for those phases. (Added 2026-09-15 after a yes was read
+as covering both.)
+
 ### Execution-assist phases
 
 Some phases deliver instructions the human runs, not a diff the agent writes:
@@ -256,7 +276,10 @@ session where the ceremony competed with the guidance.)
   phase, needs no diff audit or DoD checklist, and does not end with the
   handoff line.
 - The phase's report and handoff happen when the human's evidence lands and
-  the result is recorded in the tracked docs, not per instruction given.
+  the result is recorded in the tracked docs, not per instruction given. At
+  that close the definition-of-done checklist is filled in once, with any item
+  that cannot apply (such as a diff match when there is no diff) marked n/a
+  and the reason given.
 - Trivial-tier doc edits that support the assist (correcting an instruction,
   logging a decision) proceed under the trivial rules without opening a new
   phase.
@@ -368,15 +391,15 @@ Notes on the items:
 3. Handing back with broken tests requires Casey's explicit approval, named
    test by test. Enumerating the breakage is the request for that approval,
    not a substitute for it.
-4. `IMPLEMENT.md` checks off the current phase and logs deferred work as new
-   phases. `PLAN.md` is updated if architecture, core data structures, or
-   scope changed. `README.md` is updated if running instructions, env vars,
-   or developer-facing or user-facing APIs changed. The
-   `## Project-specific rules` section of `AGENTS.md` is updated if a
+4. `IMPLEMENT.md` checks off the current phase and logs deferred work in its
+   `## Deferred` list. `PLAN.md` is updated if architecture, core data
+   structures, or scope changed. `README.md` is updated if running
+   instructions, env vars, or developer-facing or user-facing APIs changed.
+   The `## Project-specific rules` section of `AGENTS.md` is updated if a
    convention, guardrail, or project rule changed. Code shipped without the
    relevant markdown updates fails the definition of done.
-5. Deferred items go into `IMPLEMENT.md` as follow-up phases, never as `TODO`
-   comments in code.
+5. Deferred items go into the `## Deferred` list in `IMPLEMENT.md`, never as
+   `TODO` comments in code.
 
 Then: Casey approves before the next phase begins, per the commit checkpoint.
 
@@ -406,7 +429,7 @@ forward when a meaningful fork exists. A mid-phase question is a sanctioned
 yield of control and does not use the handoff line.
 
 **A load-bearing decision blocks everything that depends on it.** Once a
-decision is identified as load-bearing, no step, phase, or instruction that
+decision is identified as load-bearing, no action, phase, or instruction that
 depends on it proceeds until the decision is made. Naming the risk and then
 letting execution cross the point where the decision takes effect is a
 violation, not diligence. If the decision is the human's, say plainly which
@@ -449,14 +472,17 @@ actions) are tier 0 above. In addition:
   files created for verification get stopped and removed in the same turn,
   before the handoff line. Do not leave a process running for Casey to
   discover.
-- **Do not remind Casey to back things up or to commit.** He handles both,
-  and the reminders are noise. The commit checkpoint between phases is a
-  gate, not a reminder: state it once in the handoff and move on.
 - **Repo-local and read-only commands are the agent's own job**, because
   verification has to be first-hand: the test runner, the linter, the type
   checker, read-only `git` (`status`, `diff`, `log`), local database queries,
   and the project's own CLI. Claiming a result without running it is worse
   than not claiming it.
+- **A live service is verified beside, never in place of.** When the project
+  runs as a service that other apps or people depend on, test changes against
+  a second instance on a spare port or path, and stop that instance before
+  handoff. Stopping, restarting, or redeploying the live one is a service
+  action and stays with Casey under tier 0. (Promoted 2026-09-15 from
+  Local-LLM.)
 
 ---
 
@@ -474,7 +500,7 @@ image-versus-volume split was mapped one loss at a time instead of up front.)
   precondition of the work, not a lesson extracted from its failures.
 - **Route every change to its durable home at the moment it is made.** A
   change landed in a disposable location gets codified into its durable form
-  in the same phase, never batched into a cleanup step at the end. Anything
+  in the same phase, never batched into a cleanup pass at the end. Anything
   awaiting codification when a rebuild runs is presumed lost.
 - **A config file that crosses more than one interpretation layer is a real
   file, copied into place.** Generating it from inline strings stacks
@@ -511,13 +537,34 @@ image-versus-volume split was mapped one loss at a time instead of up front.)
   Overflow at an in-between width is a regression, not a rounding artifact.
 - **Verify on the deployed or preview surface when the project has one.** A
   local render is not proof, because the host injects its own styles,
-  scripts, and wrappers.
+  scripts, and wrappers. Deploying to a preview that anyone but Casey can see
+  is an outward-facing action and stays Casey's under tier 0, so verify on a
+  preview Casey deployed, or ask.
 - **A project with an authoring surface has two surfaces to check.** Confirm
   the change in the editor, admin, or preview mode as well as in the
   published output. A fix that only holds in one of them is half a fix.
 - **A failed grep is not proof of absence.** Rendered or serialized output
   wraps and reorders. Normalize (flatten newlines, pretty-print JSON) before
   concluding something is missing.
+- **A recursive search can skip gitignored files.** `rg`, and a `grep` wrapped
+  around it, honour `.gitignore` by default, so a directory sweep silently
+  skips `IMPLEMENT.md` and every other ignored file, while the same pattern
+  pointed at the file itself finds the line. A sweep that must cover ignored
+  files uses a tool that reads them (`rg --no-ignore`, or `command grep -rn`
+  with `--exclude-dir=.git`). A sweep reported as covering the repo names the
+  files it read, or shows a control hit from an ignored file. (Promoted
+  2026-09-15 from everything4cats, where it was added 2026-08-10 after a
+  cleanup was reported clean without ever opening two pillar docs.)
+- **Verification runs never write where real results are read from.** When a
+  project publishes results, a leaderboard, or a report built from its newest
+  run, a run that only checks the code works writes to a scratch location.
+  Otherwise a smoke run on a half-finished change becomes the published
+  numbers. (Promoted 2026-09-15 from Local-LLM, 2026-09-14.)
+- **Prove something is dead before deleting it as dead.** A duplicate that
+  looks shadowed can be the copy that wins in another context. Confirm the
+  rule, function, or file can only be reached where its replacement also
+  applies, and show that evidence before removing it. (Promoted 2026-09-15
+  from AD-Theme-Shopify, 2026-08-27.)
 
 ### Tests earn their pass
 
@@ -584,6 +631,12 @@ the failures that mattered most.
   check that would also pass against a broken target verifies nothing.
   (Added 2026-07-29 after a version check matched a docblock line and
   reported success without reading any version.)
+- **Know a check's noise floor before reading a difference as a result.**
+  Repeat the comparison on unchanged input first. Renders, timings, and
+  sampled model output all vary between identical runs, and a difference the
+  size of that variation proves nothing. Re-run before believing an
+  unexplained difference. (Promoted 2026-09-15 from AD-Theme-Shopify, where
+  two captures of identical code differed by 3.3% of pixels.)
 
 ### Diagnostic loop
 
@@ -613,13 +666,11 @@ When debugging a live failure, especially on a system the human operates:
 
 ## Scope discipline: where code lives
 
-- **A shared or global file holds only genuinely shared things.** Tokens,
-  cross-cutting helpers, and true app-wide behavior. Anything scoped to one
-  feature, screen, or module lives in that feature's own file and loads only
-  there.
-- **The global file is not a scratchpad.** Never append a scoped rule "just
-  for now". That is how a shared file grows to thousands of lines nobody can
-  safely touch.
+- **A shared or global file holds only genuinely shared things, and is not a
+  scratchpad.** Tokens, cross-cutting helpers, and true app-wide behavior.
+  Anything scoped to one feature, screen, or module lives in that feature's
+  own file and loads only there, including rules added "just for now", which
+  is how a shared file grows to thousands of lines nobody can safely touch.
 - **Scoped identifiers do not belong in shared files.** A selector, key, or
   branch that names one screen or one instance is a signal the code is in the
   wrong file.
@@ -632,10 +683,14 @@ When debugging a live failure, especially on a system the human operates:
   ships a regression. Reconcile item by item instead of bulk-appending.
 - **Cross-cutting rules stay put.** Something that belongs to a context
   rather than to one module stays in the shared file.
-- **Render-diff every move.** A pure relocation is still a change that has to
-  be observed running (see *Verification and testing*).
+- **Observe every move running.** A pure relocation is still a change: check
+  it with a render diff for styles or the test suite for code (see
+  *Verification and testing*).
 
 ### Hygiene inside a shared file
+
+Applies to shared declaration files such as stylesheets and config. Selector
+and cascade wording applies to projects with a style cascade.
 
 - **Search for the target before you add a block.** If a rule, selector, key,
   or case for that same target already exists, extend it. A second block for
@@ -731,7 +786,8 @@ When debugging a live failure, especially on a system the human operates:
 ## Building a component
 
 Applies to any reusable unit the project ships: a component, module, block,
-widget, or plugin.
+widget, or plugin. The bullets on layout, assets, and scripts apply to units
+that render a UI.
 
 - **State the spec before writing the component.** Name, what designs or
   cases it covers, standalone or consolidated (and the variant strategy if
@@ -742,7 +798,9 @@ widget, or plugin.
 - **One design is one component, built responsively.** Wide and narrow
   versions of the same thing are one implementation with responsive rules,
   never two components. A style variation is an input on the existing
-  component, never a near-duplicate copy of it.
+  component, never a near-duplicate copy of it. When a family of
+  near-identical copies already exists, generalize one of them rather than
+  adding the next.
 - **Scripts are instance-safe.** Assume several instances render on one page.
   No fixed unique IDs, no singleton state, no `querySelector` reaching
   outside the instance's own root. Scope every lookup to the instance.
@@ -762,6 +820,8 @@ widget, or plugin.
 ---
 
 ## Accessibility and performance baseline
+
+Applies to projects with a user interface.
 
 - **Target WCAG 2.1 AA on any UI you add or change.** Contrast, semantic
   markup, visible focus, keyboard reachability, and meaningful alternative
@@ -798,14 +858,15 @@ widget, or plugin.
 - **Use the project's declared toolchain.** Whatever the repo declares as its
   package manager and runner is the only one that appears in code, scripts,
   or docs. Do not introduce a second one.
-- **Config has a single source of truth**, schema-validated, with env-var
-  overrides. Never hardcode paths, model names, endpoints, or keys.
-- **Raise specific exception types** from the project's own error module. No
+- **Application config has a single source of truth**, schema-validated,
+  with env-var overrides. Never hardcode paths, model names, endpoints, or keys.
+- **In application code, raise specific exception types** from the project's
+  own error module. No
   bare `Exception`. User-facing entry points catch their domain errors and
   exit with an informative message, never a traceback, unless a debug flag is
   set.
-- **Logging goes to stderr** through the project's logger. Never log full
-  prompts, full responses, or secrets at INFO. Use DEBUG with truncation.
+- **Application logging goes to stderr** through the project's logger. Never log
+  full prompts, full responses, or secrets at INFO. Use DEBUG with truncation.
 - **Keep the entry point to wiring only.** Command modules hold the logic.
 - **Do not add a dependency, a framework, or a persistence layer** the
   project has deliberately gone without. If a project rule says no ORM, no
@@ -822,8 +883,11 @@ widget, or plugin.
   only valid in one shape, and the wrong shape fails silently rather than
   erroring. Verify the resolved output rather than assuming the substitution
   worked.
-- **Every token reference carries a fallback** where the language allows one,
-  so a token that fails to resolve degrades instead of rendering nothing.
+- **A token reference that can fail to resolve carries a fallback** where the
+  language allows one, so it degrades instead of rendering nothing. A token
+  that always resolves (defined in a file that always loads first) needs no
+  fallback, per *One sufficient declaration beats a stack of redundant ones*.
+  (Reconciled 2026-09-15: the two rules had given opposite defaults.)
 - **Defaults and inherited values are part of the contract.** Changing or
   removing one changes what a fresh install and a reset-to-default produce.
   Document what changed, why, and the expected behavior after the change. A
@@ -843,9 +907,6 @@ widget, or plugin.
 - **Load each file once.** Duplicate imports or includes of the same file
   reorder the cascade or re-run the side effects, and the symptom never looks
   like the cause.
-- **Extend the existing variant before adding a new one.** When a family of
-  near-identical components already exists, adding the next near-duplicate is
-  the wrong move. Generalize one of them or use it as-is.
 
 ### Hygiene in shipped code
 
@@ -856,7 +917,8 @@ widget, or plugin.
   reference, or an external contract.
 - **No dead compatibility shims.** Prefixes, polyfills, and branches for
   platforms the project no longer supports get removed, not carried forward.
-- **No `TODO` comments.** Deferred work goes into `IMPLEMENT.md` as a phase.
+- **No `TODO` comments.** Deferred work goes into the `## Deferred` list in
+  `IMPLEMENT.md`.
 
 ---
 ## Docs and reality
@@ -887,8 +949,8 @@ widget, or plugin.
 - **Guards on generation are not obstacles.** When a generator refuses to
   write because it detected data loss or a regression, fix the input or the
   parser. Reaching for a `--force` flag to get past it is almost always
-  wrong. Force it only when the missing content is genuinely meant to be
-  gone.
+  wrong. When the missing content genuinely is meant to be gone, say so and
+  ask before forcing (see *Guardrails and ratchets*).
 - **A generated copy can never become its own source.** Locate inputs so
   output directories are excluded from the search.
 
@@ -905,10 +967,19 @@ These apply to any project that calls a model.
   model output.
 - **Prompts live in files**, not inline in source. Anything longer than a few
   lines belongs in the prompt directory, composed with data at call time.
-- **Sampling options and context length are app-owned.** Pin them in the
-  gateway and send them on every call so behavior is defined in-repo rather
-  than by a server env var or a model-side config. Silent prompt truncation
-  looks exactly like a parser bug.
+- **Sampling options are app-owned.** Pin every sampler the app relies on in
+  the gateway and send it on every call, so behavior is defined in-repo rather
+  than by a server preset or a model-side config. A key left out is not
+  neutral: the server's default for it applies instead, and that default can
+  differ per model and change on redeploy.
+- **Context length is checked, never assumed.** When the runtime accepts it
+  per request, send it. When the server fixes it at load time, read the served
+  value at startup, abort before any work if it is below what the app needs,
+  and confirm an oversized prompt fails loudly rather than being truncated.
+  Silent prompt truncation looks exactly like a parser bug. (Updated
+  2026-09-15 after the move from Ollama to llama.cpp, which cannot take a
+  context size per request. Jobhunt and Local-LLM both recorded the
+  workaround as a project rule.)
 - **Quality is held by deterministic post-processing**, not by trusting the
   model: validators, clamps, and audits. Prefer a deterministic check to a
   second model call.
@@ -933,10 +1004,16 @@ These apply to any project that calls a model.
 The hard boundaries (no outward-facing actions, no accounts, no stored
 credentials) are tier 0 above. In addition:
 
-- **Log the plan before executing it.** Write the intended actions to an
-  artifact file first, so the run is auditable after the fact.
-- **Default to the visible, interruptible mode.** Headless, silent, or
-  unattended execution is opt-in via an explicit flag, and only for dry runs.
+- **An automated run logs its plan before acting.** When code acts on the
+  user's behalf (form filling, bulk edits, outbound requests), it writes the
+  actions it intends to take to a run log first, so the run is auditable after
+  the fact. This is runtime behavior of the project, not a report for Casey
+  (see *Deliverables land in chat*).
+- **Actions on the user's behalf default to the visible, interruptible
+  mode.** Headless, silent, or unattended execution of those actions is opt-in
+  via an explicit flag, and only for dry runs. Headless tools that only
+  observe, such as screenshots for a render diff, are verification and are not
+  covered here.
 
 ### Commands handed to the human
 
@@ -969,8 +1046,8 @@ down the wrong diagnosis.)
 - **Explanation and commands travel together.** Every handed command carries
   what it does and why it matters, in the same message. Neither half
   substitutes for the other, and pressure about pace or complexity changes
-  the size of the step, never the presence of the explanation, the
-  verification, or the one-step boundary the project's rules set.
+  how much one handed block does, never the presence of the explanation, the
+  verification, or the per-block limit the project's rules set.
 - **A capture and its consumer travel in one block.** A variable checked in
   one pasted block and consumed in another expands empty when the blocks run
   in different sessions, and the file it writes looks complete. Merge the
@@ -978,6 +1055,11 @@ down the wrong diagnosis.)
   boundaries the way a shell variable does not. (Added 2026-07-29 after a
   salts variable expanded to nothing across a session boundary and wrote a
   config with blank secrets, caught only by a later count.)
+- **Commands before click-paths.** Where a CLI can do the job, the command is
+  the primary instruction and a console click-path is at most an addition. A
+  click-path alone is acceptable only when no CLI equivalent exists, such as
+  accepting terms or a browser-only setting. (Promoted 2026-09-15 from
+  everything4cats, 2026-08-01.)
 - **Handed blocks are safe to run twice wherever feasible.** Humans re-paste
   and scrollback gets replayed. Prefer idempotent forms, and when a block is
   not safe to repeat, say so directly above it.
@@ -1013,7 +1095,12 @@ In addition:
   artifacts.
 - Anything under the user's config directory, and any file matching a secret
   naming pattern.
-- The untracked working file (`IMPLEMENT.md`) and personal long-form notes.
+- `IMPLEMENT.md` (see *The documentation architecture*) and personal
+  long-form notes.
+- Identifiers of specific live resources: host addresses, account and resource
+  IDs, and tracking or payout IDs. Architecture may be recorded (region, size,
+  which services are used), but not anything that identifies one resource or
+  account. (Promoted 2026-09-15 from everything4cats.)
 
 ---
 
@@ -1041,8 +1128,8 @@ Some entries here deliberately restate rules from earlier sections. This list
 is the quick scan, kept short and memorable on purpose.
 
 - "While I was in there I also..." Scope creep. Defer or split.
-- "I'll add a TODO for that." Silent debt. Put it in `IMPLEMENT.md` as a
-  phase.
+- "I'll add a TODO for that." Silent debt. Put it in the `## Deferred` list in
+  `IMPLEMENT.md`.
 - "The tests probably still pass." Run them.
 - "I'll mock this for now." Say so loudly. Mocks default to phase-end
   removal.
@@ -1085,21 +1172,26 @@ line are the contract. Everything else is optional.
 ### No standing-workflow reminders
 
 Do not close a response with the workflow Casey already runs. Specifically, no
-reminders to bring staging up or down, to refresh staging to see a change, to
-commit, to push, or to pull on the server to deploy. Casey runs this loop daily.
-Restating it turns every answer into a footer of things he already knew, and it
-buries the part he asked for.
+reminders to back up, to bring a local environment up or down, to refresh to
+see a change, to commit, to push, or to deploy. Casey runs this loop daily.
+Restating it turns every answer into a footer of things Casey already knows,
+and it buries the part that was asked for.
 
 State what changed and what was verified, then stop.
 
+The one sanctioned commit mention is the uncommitted-phase check under *Commit
+checkpoint between phases*: one line, only when an approved phase is still
+uncommitted and the next phase is about to start.
+
 The exception is when the environment is itself the finding rather than a
-sign-off. A container in a state that would silently destroy work is worth a
-sentence: `up.sh` starts pristine and discards whatever is in the running
-container, while `docker start` on a stopped one keeps it. So is a fact that is
-only true in one environment, such as a stale stylesheet being served. The test
-is whether the reader learns something they could not have predicted. A generic
-"remember to deploy" fails that test. "The container is dead, and `up.sh` would
-wipe what you entered" passes it.
+sign-off. An environment in a state that would silently destroy work is worth a
+sentence, such as a start script that begins from a clean image and would
+discard what is in the running container. So is a fact that is only true in one
+environment, such as a stale file being served or an installed copy older than
+the repo. The test is whether the reader learns something they could not have
+predicted. A generic "remember to deploy" fails that test. "The container is
+stopped, and the start script would wipe what you entered" passes it.
+(Generalized 2026-09-15: the examples had named one project's scripts.)
 
 Instructed 2026-08-17: "you dont need to give me reminders on staging or pushing
 to github".
@@ -1125,9 +1217,12 @@ markdown reports. should be producing it formatted in chat unless I specify".
 
 ## When stuck
 
-If a request is ambiguous, prefer the smaller, testable interpretation.
-Surface the ambiguity in your output as a "Decisions made" section so Casey
-can correct it on the next pass. Never widen scope silently. A new
+When an ambiguity would change the diff, ask (see *Decision gates: when to stop
+and ask*). When it would not, such as wording, ordering, or which of two
+equivalent checks to run, prefer the smaller, testable interpretation and list
+the choice under a "Decisions made" heading in the response so Casey can correct
+it on the next pass. (Reconciled 2026-09-15: this section had said to proceed on
+any ambiguity, against the decision gates.) Never widen scope silently. A new
 integration, a new handler, or a new prompt is a discrete change with its own
 review.
 
@@ -1136,10 +1231,13 @@ review.
 ## Project-specific rules
 
 Rules in this section are tier 1: they win over the universal body above, for
-their topic only. Each repo fills this in for itself. When porting this file
-to a new repo, carry the universal body verbatim and replace everything below
-this paragraph with the repo's own rules. The header itself always stays, even
-when the section is empty.
+their topic only. Each repo fills this in for itself. To update a repo to a
+newer universal body, replace everything above this header and leave this
+section untouched. To port this file to a new repo, carry the universal body
+verbatim and keep only this paragraph and the comment below. The header, this
+paragraph, and the comment always stay, even when the section is empty.
+(Standardized 2026-09-15: three wordings of this preamble had drifted across
+repos, and one ended in a colon with no template after it.)
 
 <!-- One bullet per rule. Include the reason and the date for anything that
      records an approved divergence, a locked value, or a past regression.
