@@ -197,7 +197,7 @@ async def draft_prep_sections(
     temperature = 0.0 if revisions else prompt.temperature
 
     model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get(
-        "tailor", "qwen-custom:latest"
+        "tailor", "lite"
     )
     raw = await complete_json(
         base_url=cfg.gateway.base_url,

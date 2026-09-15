@@ -5,7 +5,7 @@ raw `httpx.HTTPStatusError` (a non-404 4xx like a 403 bot-wall) or a
 `JSONDecodeError` (non-JSON body) escaping the HTTP helpers killed the
 producer task. `closer()` then re-raised at `gather(return_exceptions=False)`
 before enqueuing the `None` sentinel, and the drain loop blocked on
-`queue.get()` forever. No network, no Ollama.
+`queue.get()` forever. No network, no model server.
 """
 
 from __future__ import annotations

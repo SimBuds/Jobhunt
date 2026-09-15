@@ -2,7 +2,7 @@
 gateway/Playwright/render and asserts that audit verdicts steer the right
 side effects.
 
-No network, no Ollama, no browser. Pure structure-of-flow check.
+No network, no model server, no browser. Pure structure-of-flow check.
 """
 
 from __future__ import annotations

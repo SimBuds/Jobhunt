@@ -577,26 +577,18 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
     import json as _json
     from collections import Counter
 
-    from jobhunt.gateway.warm import warm_model
-
     verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
     verified: dict[str, object] = {}
     if verified_path.is_file():
         verified = _json.loads(verified_path.read_text(encoding="utf-8"))
 
-    # Warm the model once before the per-job loop. All task slots (score,
-    # tailor, cover) share the same model on the candidate's setup, so warming any
-    # one of them keeps the others warm. Saves the cold-load cost on the
-    # first real call.
-    await warm_model(cfg, task="score")
-
     verdicts: list[str] = []
     violation_topics: Counter[str] = Counter()
 
     # Overlap the next job's LLM phase with the current job's IO phase
-    # (render + browser + user-confirms-submission). Single-VRAM-slot
-    # Ollama still serves LLM calls sequentially, but the user's review time
-    # between jobs is dead time we can use to pre-generate the next tailor +
+    # (render + browser + user-confirms-submission). A single-slot
+    # llama-server (--parallel 1) still serves LLM calls sequentially, but the
+    # user's review time between jobs is dead time we can use to pre-generate the next tailor +
     # cover. Worst case (user wants to skip the next job): we wasted one
     # tailor + cover. Best case (the usual path): the next job is already
     # drafted by the time the user moves on.

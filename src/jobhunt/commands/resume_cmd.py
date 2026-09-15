@@ -228,7 +228,7 @@ def run(
 
     async def _drive() -> list[Path]:
         # Sequential on purpose: one hot local model; parallel lanes would
-        # just contend for the same Ollama slot.
+        # just contend for the one llama-server slot.
         return [await _render_lane(cfg, b, verified, out_dir) for b in briefs]
 
     try:

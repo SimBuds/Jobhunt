@@ -24,6 +24,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline import score as score_mod
 from jobhunt.pipeline.score import (
     _all_matched_are_familiar,
+    _collapse_bridge_duplicates,
     _verify_tier,
     score_job,
 )
@@ -201,6 +202,50 @@ def test_seen_set_is_shared_across_tiers() -> None:
     assert t2.gaps == ["Kubernetes"]
 
 
+def test_bare_and_bridged_listing_of_one_requirement_counts_once() -> None:
+    """Live `lite` output (2026-09-15, .NET role): the model listed 'C#' AND
+    'C# (transferable: TypeScript)'. The bare copy can never verify, so counting
+    both put the same requirement in the denominator twice, once as a gap."""
+    blob = VERIFIED_BLOB.lower()
+    t1, t2 = _collapse_bridge_duplicates(
+        ["C#", ".NET Core", "C# (transferable: TypeScript)"], [], blob
+    )
+    # Position of first appearance, variant with the most credit.
+    assert t1 == ["C# (transferable: TypeScript)", ".NET Core"]
+    assert t2 == []
+    tier = _verify_tier(t1, blob, set())
+    assert tier.matched == ["C# (transferable: TypeScript)"]
+    assert tier.gaps == [".NET Core"]
+
+
+def test_bridge_collapse_keeps_first_tier() -> None:
+    """Bare in tier-1, bridged in tier-2: still one tier-1 requirement."""
+    blob = VERIFIED_BLOB.lower()
+    t1, t2 = _collapse_bridge_duplicates(
+        ["C#"], ["C# (transferable: TypeScript)", "Kubernetes"], blob
+    )
+    assert t1 == ["C# (transferable: TypeScript)"]
+    assert t2 == ["Kubernetes"]
+
+
+def test_bridge_collapse_cannot_launder_an_unverified_bridge() -> None:
+    """A bogus bridge earns no credit, so it never displaces the bare gap —
+    the requirement stays a single gap rather than becoming a match."""
+    blob = VERIFIED_BLOB.lower()
+    t1, _ = _collapse_bridge_duplicates(["C#", "C# (transferable: Haskell)"], [], blob)
+    assert t1 == ["C#"]
+    tier = _verify_tier(t1, blob, set())
+    assert tier.matched == []
+    assert tier.total == 1
+
+
+def test_bridge_collapse_leaves_narrowing_parentheticals_distinct() -> None:
+    """Only the transferable annotation is identity-neutral."""
+    blob = VERIFIED_BLOB.lower()
+    t1, _ = _collapse_bridge_duplicates(["Shopify", "Shopify (Plus)"], [], blob)
+    assert t1 == ["Shopify", "Shopify (Plus)"]
+
+
 def test_matched_in_familiar_only_triggers_cap() -> None:
     assert _all_matched_are_familiar(["Java"], VERIFIED_BLOB) is True
 
@@ -234,7 +279,7 @@ def test_empty_tier_coverage_is_zero_not_full() -> None:
     assert empty.coverage == 0.0
 
 
-# --- end-to-end test (mocks complete_json, no Ollama call) -----------------
+# --- end-to-end test (mocks complete_json, no model call) ------------------
 
 
 @pytest.fixture

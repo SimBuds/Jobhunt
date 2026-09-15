@@ -15,22 +15,23 @@ from jobhunt.pipeline._keywords import peer_match, phrase_present
 from jobhunt.pipeline._profile import candidate_name, render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
 
-# Cap inputs to keep prompts within the app-owned context window the gateway
-# pins on every call (num_ctx=32768 in gateway.client._DEFAULT_OPTIONS;
-# OLLAMA_CONTEXT_LENGTH is deliberately unset on this box). If you change the
-# gateway num_ctx, adjust these in step — see the sizing note there.
+# Cap inputs to keep prompts within the 32768-token context the llama-server
+# router fixes for every model. The window is server-side, not per request: if
+# the router preset changes it, adjust these in step.
 #
-# Do NOT size this by a chars/token rule of thumb. Measured `prompt_eval_count`
-# on the longest JD in the backlog runs ~23% above a chars/4 estimate, because
+# Do NOT size this by a chars/token rule of thumb. Measured prompt token counts
+# on the longest JD in the backlog run ~23% above a chars/4 estimate, because
 # dense JD text tokenizes worse than prose. At 16000 chars the tailor prompt
-# measures 11886 tokens; with num_predict=4096 that is 15982, which fits 32768
-# comfortably but left only 402 tokens at the 16384 window trialled on
-# 2026-07-28. Overflow is silent: Ollama truncates the prompt, the schema
-# instruction falls off the end, and the model emits prose instead of JSON.
+# measured 12367 tokens on `lite` (2026-09-15); with max_tokens=4096 that is
+# 16463, which fits 32768 with 16305 to spare. To re-measure, POST the rendered
+# prompt to /v1/chat/completions with max_tokens=1 and read
+# `usage.prompt_tokens`. Overflow is loud: the router returns HTTP 400
+# `exceed_context_size_error`, which surfaces as a GatewayError for that job.
 #
-# Held at 16000 rather than lowered: 16000 truncates 9% of the backlog, 10000
-# truncates 19%. A trailing "Preferred qualifications" block is real tier-2
-# scoring signal, so the shorter cap costs measurable fit accuracy.
+# Held at 16000 rather than lowered: on the 2026-07-28 backlog 16000 truncated 9%
+# of JDs and 10000 truncated 19% (4% at 16000 on 2026-09-15). A trailing
+# "Preferred qualifications" block is real tier-2 scoring signal, so the
+# shorter cap costs measurable fit accuracy.
 MAX_DESC_CHARS = 16000
 MAX_POLICY_CHARS = 6000
 
@@ -251,9 +252,13 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # hallucinated match becomes a gap and lowers the score instead of raising
     # it. `seen` is shared so a phrase repeated across tiers counts once.
     weights = ScoreWeights.from_config(cfg)
+    blob = verified.lower()
+    tier1_phrases, tier2_phrases = _collapse_bridge_duplicates(
+        tier1_phrases, tier2_phrases, blob, weights
+    )
     seen: set[str] = set()
-    tier1 = _verify_tier(tier1_phrases, verified.lower(), seen, weights)
-    tier2 = _verify_tier(tier2_phrases, verified.lower(), seen, weights)
+    tier1 = _verify_tier(tier1_phrases, blob, seen, weights)
+    tier2 = _verify_tier(tier2_phrases, blob, seen, weights)
 
     matched = tier1.matched + tier2.matched
     gaps = tier1.gaps + tier2.gaps
@@ -630,6 +635,55 @@ def _phrase_credit(
     return 0.0
 
 
+def _requirement_identity(phrase: str) -> str:
+    """The requirement a phrase names, with any transferable annotation removed.
+
+    'C# (transferable: TypeScript)' and 'C#' are one requirement. Only the
+    transferable annotation is stripped: other parentheticals ('Shopify
+    (Liquid)') can narrow what is being asked, so they stay part of the identity.
+    """
+    return " ".join(_TRANSFER_BRIDGE_RE.sub(" ", phrase).lower().split())
+
+
+def _collapse_bridge_duplicates(
+    tier1: list[str],
+    tier2: list[str],
+    blob: str,
+    weights: ScoreWeights = DEFAULT_WEIGHTS,
+) -> tuple[list[str], list[str]]:
+    """Count a requirement once when the model lists it both bare and bridged.
+
+    The score prompt asks for ONE entry per requirement, annotated when the
+    match is transferable. `lite` (Qwen3.5-9B-MTP, 2026-09-15) often emits both
+    'C#' and 'C# (transferable: TypeScript)'. The bare copy can never verify, so
+    without this it lands as a gap beside the bridged match and the same
+    requirement is counted twice — once against the candidate. Measured on a
+    60-job A/B it was a leading cause of lite's lower tier-1 coverage.
+
+    Each requirement keeps the position and tier of its first appearance (the
+    same tier-1-first posture as `_verify_tier`'s `seen`) and the variant that
+    earns the most credit. That cannot inflate a score: the bridged variant
+    only earns credit when its named bridge itself verifies against the profile.
+    """
+    slots: dict[str, tuple[int, int, float]] = {}  # identity -> (tier, index, credit)
+    tiers: tuple[list[str], list[str]] = ([], [])
+    for tier_idx, phrases in enumerate((tier1, tier2)):
+        for phrase in phrases:
+            identity = _requirement_identity(phrase)
+            if not identity:
+                continue
+            credit = _phrase_credit(phrase, blob, weights)
+            if identity not in slots:
+                slots[identity] = (tier_idx, len(tiers[tier_idx]), credit)
+                tiers[tier_idx].append(phrase)
+                continue
+            held_tier, held_idx, held_credit = slots[identity]
+            if credit > held_credit:
+                tiers[held_tier][held_idx] = phrase
+                slots[identity] = (held_tier, held_idx, credit)
+    return tiers[0], tiers[1]
+
+
 @dataclass(frozen=True)
 class _TierResult:
     """One tier's verification outcome. `credit` is the graded sum, so it can
@@ -720,8 +774,12 @@ def prompt_hash(cfg: Config) -> str:
     """Stable hash of the inputs that determine a score, for cache invalidation.
 
     Covers the score prompt, the candidate's verified facts, the tailoring
-    policy, and the score weights. If any of these change, `scan` re-scores
-    affected jobs.
+    policy, the score weights, and the model in the score slot. If any of these
+    change, `scan` re-scores affected jobs.
+
+    The model is in the hash because the extraction the score is computed from
+    is the model's output: scores from two different model files sit on
+    different scales, so a model swap must re-score rather than mix them.
 
     Takes the whole `Config` rather than a `kb_dir` so the weights cannot be
     left out at a call site: a weight change that did not move the hash would
@@ -744,4 +802,7 @@ def prompt_hash(cfg: Config) -> str:
         f"ai={w.ai_bonus};transfer={w.transferable_credit:.6f};"
         f"senior_cap={w.senior_cap};junior_bonus={w.junior_bonus}".encode()
     )
+    # Same resolution `score_job` uses, so the hash names the model that ran.
+    model = cfg.gateway.tasks.get("score", "")
+    h.update(f";model={model}".encode())
     return h.hexdigest()[:16]

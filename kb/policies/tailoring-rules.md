@@ -57,12 +57,12 @@ injected): `kb/policies/authoring.md`.
 ## Auto-decline triggers (§8)
 
 If any of the following hold, mark the job `decline_reason` and skip:
-- 3+ JD must-haves are gaps.
+- 4+ hard (tier-1) requirements are gaps by every path, transferable bridges
+  included. Wish-list misses never decline.
 - Required years exceed `years_experience + 3` with no transferable bridge.
-- Title is Senior / Sr. / Lead / Staff / Principal / Architect AND
-  `years_experience < 4`. Senior+ postings rarely waive YoE screens for
-  sub-4-YoE candidates. When `years_experience >= 4`, these titles are
-  valid IC roles — do not decline on the title alone.
+- Senior / Sr. / Lead / Staff / Principal / Architect titles are IC roles —
+  never decline on the title alone. Decline only when the JD body names
+  people-management duties (direct reports, headcount, performance reviews).
 - Title is people-management or non-IC (Manager, Senior Manager, Director,
   Head of, VP, including "Engineering Manager"). {candidate_name} is an IC engineer.
 - Title is a non-engineering function (Sales, Partnerships, Account

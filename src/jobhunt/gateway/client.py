@@ -1,4 +1,5 @@
-"""Ollama gateway. Uses /api/chat with `format` for JSON-schema-constrained output."""
+"""llama-server gateway. POSTs /v1/chat/completions with a `json_schema`
+response_format for schema-constrained output."""
 
 from __future__ import annotations
 
@@ -9,67 +10,69 @@ import httpx
 
 from jobhunt.errors import GatewayError
 
-# Options the app pins on every structured call so behavior is defined in-repo
-# and identical regardless of which model is configured. Three parts:
+# Sampler settings the app pins on every structured call, so behavior is defined
+# in-repo rather than by the router's per-model preset
+# (~/.config/llama.cpp/models.ini). Every key below was verified on 2026-09-15 to
+# take effect per request on /v1/chat/completions: the slot's reported params
+# (`GET /slots?model=lite`) matched the request values, and reverted to the
+# preset on the next request that omitted them. A key left out here is NOT
+# neutral — the preset value governs instead (lite ships top-k 40, min-p 0.05,
+# repeat-penalty 1.05), so anything that matters is sent explicitly.
 #
-#   num_ctx: the score/tailor prompts run ~6k+ tokens. Ollama's default context
-#   is 4096 and OLLAMA_CONTEXT_LENGTH is NOT reliably set on this box, so without
-#   an explicit num_ctx the prompt is silently truncated to 4096 — the schema
-#   instruction falls off the end and the model emits prose instead of JSON.
-#   (qwen-custom only worked because it baked num_ctx 16384.) Pinning it here is
-#   what lets jobhunt run bare qwen3.5:9b. The q8_0 build was rejected: it spills
-#   to CPU at both 16k and 32k on this card and the bench showed no quality gain
-#   over Q4_K_M.
+#   Context is NOT set here. The router fixes each model's window at 32768 and
+#   rejects an oversized prompt with HTTP 400 `exceed_context_size_error`, so
+#   overflow is loud rather than silently truncated. MAX_DESC_CHARS in
+#   `pipeline.score` is still sized to fit that window — see the note there.
 #
-#   Pinned at 32768. Briefly lowered to 16384 on 2026-07-28 and reverted the
-#   same day: 16k forced MAX_DESC_CHARS down to 10000, which truncated 19% of
-#   the backlog instead of 9%, and losing a trailing "Preferred qualifications"
-#   block costs real tier-2 scoring signal.
+#   presence_penalty / repeat_penalty: both pinned off. Structured output has to
+#   repeat tokens — JSON field names, and the verbatim JD keywords the tailor
+#   must echo — so a repetition penalty works directly against it. Qwen's 1.5
+#   presence penalty is a thinking/chat-mode recommendation, and the preset's
+#   repeat-penalty 1.05 would otherwise apply silently.
 #
-#   This window is paired with MAX_DESC_CHARS and the pairing must be MEASURED,
-#   never estimated: real `prompt_eval_count` runs ~23% above a chars/4 guess
-#   because dense JD text tokenizes worse than prose. Worst case over the
-#   longest JD in the backlog at MAX_DESC_CHARS=16000:
+#   top_p / top_k / min_p: Qwen's recommended nucleus set, unchanged from the
+#   Ollama-era pins so the qwen3.5:9b -> lite move changes the model file only,
+#   not the sampler. Any calibration shift is then attributable to the weights.
 #
-#       score 11633 tok | tailor 11886 tok | cover 10131 tok
-#
-#   Plus num_predict=4096 the tailor case uses 15982 — comfortable at 32768,
-#   but only 402 tokens of headroom at 16384, and the tailor RETRY appends a
-#   revisions block, so it grows exactly when things are already failing. That
-#   is why 16k is not viable at this description cap. To re-measure, POST the
-#   rendered prompts to /api/chat with num_predict:1 and read prompt_eval_count.
-#
-#   sampler params: qwen3.5:9b ships `presence_penalty 1.5` — Qwen's
-#   recommendation for *thinking/chat* mode, where it breaks reasoning-loop
-#   repetition. We run `think=false` emitting schema-constrained JSON, where that
-#   penalty is misapplied (it discourages the repeated tokens structured output
-#   needs: JSON field names, the verbatim JD keywords the tailor must echo), so
-#   we drop it to 0 and otherwise keep Qwen's recommended nucleus sampling.
-#
-#   num_predict: the generation ceiling and the safety net for the dropped
-#   presence_penalty above. With think=false the model is *supposed* to emit only
-#   schema-constrained JSON, but on some inputs qwen3.5:9b reasons IN-BAND — it
-#   opens a JSON string (e.g. a `reasons[]` item) and pours a stream-of-conscious
-#   monologue into it, never closing the string, generating until it exhausts
-#   num_ctx (~16k tokens ≈ 210s). That blows past the 240s ReadTimeout below and
-#   stalls the whole scan (measured 2026-05-31: a thin Adzuna junior-coop JD hit
-#   8000 tokens, done_reason=length, 28KB of unterminated JSON). 4096 sits well
-#   above the largest legitimate output (tailor at 700 words ≈ ~2.2k tokens) so it
-#   never truncates real work, while bounding each generation to ~50s. A
-#   pathological JD is then abandoned in ~100s end-to-end (the ~50s cap × the one
-#   invalid-JSON retry complete_json does below) — a fast, logged failure instead
-#   of the prior 240s-per-attempt ReadTimeout that stalled the whole scan.
+#   max_tokens: the generation ceiling. With thinking disabled the model is
+#   supposed to emit only schema-constrained JSON, but on some inputs Qwen3.5-9B
+#   reasons IN-BAND — it opens a JSON string (a `reasons[]` item) and pours a
+#   monologue into it without closing it (measured 2026-05-31: a thin Adzuna
+#   junior co-op JD ran to 8000 tokens of unterminated JSON). 4096 sits well
+#   above the largest legitimate output (tailor at 700 words ≈ 2.2k tokens), so
+#   it never truncates real work while bounding a runaway to ~50s.
 #
 # Override any of these per call via the `options` kwarg; the `temperature`
 # kwarg always wins.
 _DEFAULT_OPTIONS: dict[str, Any] = {
-    "num_ctx": 32768,
-    "num_predict": 4096,
+    "max_tokens": 4096,
     "top_p": 0.95,
     "top_k": 20,
     "min_p": 0.0,
     "presence_penalty": 0.0,
+    "repeat_penalty": 1.0,
 }
+
+
+def _chat_url(base_url: str) -> str:
+    """`base_url` may end with `/v1` (the configured form) or be a bare host."""
+    host = base_url.rstrip("/")
+    if host.endswith("/v1"):
+        host = host[: -len("/v1")]
+    return f"{host}/v1/chat/completions"
+
+
+def _error_detail(r: httpx.Response) -> str:
+    """llama-server errors are `{"error": {"type", "message"}}`; keep the type,
+    since `exceed_context_size_error` is the one worth recognising at a glance."""
+    try:
+        err = r.json().get("error") or {}
+    except ValueError:
+        return r.text[:300]
+    if isinstance(err, dict) and err.get("message"):
+        kind = err.get("type")
+        return f"{kind}: {err['message']}" if kind else str(err["message"])
+    return r.text[:300]
 
 
 async def complete_json(
@@ -81,65 +84,69 @@ async def complete_json(
     schema: dict[str, Any],
     temperature: float = 0.0,
     timeout_s: float = 240.0,
-    keep_alive: str | int | None = -1,
     options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Send a chat completion to Ollama and return the parsed JSON object.
+    """Send a chat completion to llama-server and return the parsed JSON object.
 
-    `base_url` may end with `/v1` (OpenAI-compatible) or be a bare host. We hit the
-    native /api/chat endpoint either way for the format-as-schema feature.
+    The schema goes INSIDE `response_format.json_schema.schema`. Placed at the
+    top level of `response_format` instead, the server ignores it without any
+    error and returns unconstrained JSON — verified live, and pinned by a test.
 
-    Options are app-owned: `_DEFAULT_OPTIONS` is sent on every call so
-    structured-task behavior is defined in-repo, not by the model's Modelfile or
-    by server env. This includes `num_ctx=32768` (the prompts exceed Ollama's
-    4096 default; without it they truncate and the model emits prose) and
-    `presence_penalty=0` (qwen's chat/thinking default fights structured JSON).
-    Keep `MAX_DESC_CHARS`/`MAX_POLICY_CHARS` in `pipeline.score` aligned with the
-    pinned `num_ctx`. Pass `options=` to override per call; the `temperature`
-    kwarg always wins.
+    Thinking is disabled through `chat_template_kwargs.enable_thinking`; the
+    structured tasks want the answer, not a reasoning trace.
 
-    `keep_alive` defaults to `-1` (load forever) so the hot model stays resident
-    across scan/apply runs without paying a 5-15 s reload. This matches the
-    server-side `OLLAMA_KEEP_ALIVE=-1`; the per-call value is what Ollama uses,
-    so making it explicit here keeps behavior consistent regardless of env.
-    Pass `keep_alive=None` to omit the key entirely and let the server-side
-    `OLLAMA_KEEP_ALIVE` govern residency (used by the manual bench script).
+    There is no warm-up or keep-alive: the router loads a model on its first
+    request and unloads it after 600s idle, and `timeout_s` covers a reload.
+
+    Options are app-owned — see `_DEFAULT_OPTIONS`. Pass `options=` to override
+    per call; the `temperature` kwarg always wins.
     """
-    host = base_url.rstrip("/")
-    if host.endswith("/v1"):
-        host = host[: -len("/v1")]
-    url = f"{host}/api/chat"
-    payload = {
+    url = _chat_url(base_url)
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "stream": False,
-        "format": schema,
-        "think": False,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": schema},
+        },
+        "chat_template_kwargs": {"enable_thinking": False},
         # Per-call `options` override the app defaults; the explicit
         # `temperature` kwarg always wins over either.
-        "options": {**_DEFAULT_OPTIONS, **(options or {}), "temperature": temperature},
+        **_DEFAULT_OPTIONS,
+        **(options or {}),
+        "temperature": temperature,
     }
-    # keep_alive=None omits the key so Ollama's server-side OLLAMA_KEEP_ALIVE
-    # governs residency. The default (-1) still pins the model for active runs.
-    if keep_alive is not None:
-        payload["keep_alive"] = keep_alive
+
     async def _post(p: dict[str, Any]) -> str:
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
                 r = await client.post(url, json=p)
         except httpx.HTTPError as e:
             raise GatewayError(
-                f"ollama request failed (model={model}, {type(e).__name__}): {e}"
+                f"llama-server request failed (model={model}, {type(e).__name__}): {e}"
             ) from e
         if r.status_code >= 400:
-            raise GatewayError(f"ollama {r.status_code} (model={model}): {r.text[:300]}")
+            raise GatewayError(
+                f"llama-server {r.status_code} (model={model}): {_error_detail(r)}"
+            )
         body = r.json()
-        content = (body.get("message") or {}).get("content")
+        choice = (body.get("choices") or [{}])[0]
+        content = (choice.get("message") or {}).get("content")
+        if choice.get("finish_reason") == "length":
+            # The grammar keeps output on-schema, so a cut-off generation is
+            # the in-band reasoning runaway described at `max_tokens`. The
+            # reinforcement retry below cannot fix that and would burn a second
+            # full-length generation, so fail fast instead.
+            raise GatewayError(
+                f"llama-server hit max_tokens (model={model}); "
+                f"output truncated: {str(content)[:200]}"
+            )
         if not isinstance(content, str) or not content:
-            raise GatewayError(f"ollama returned no content: {body!r}")
+            raise GatewayError(f"llama-server returned no content: {body!r}")
         return content
 
     content = await _post(payload)
@@ -148,8 +155,8 @@ async def complete_json(
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, dict):
-        # qwen3.5:9b occasionally ignores `format=schema` and emits markdown
-        # or a JSON array. Retry once with an explicit reinforcement.
+        # Qwen3.5-9B occasionally emits markdown or a JSON array despite the
+        # schema. Retry once with an explicit reinforcement.
         reinforcement = (
             "\n\nREMINDER: Respond with a single JSON object matching the "
             "provided schema. Do NOT output markdown, prose, or code fences. "
@@ -167,7 +174,7 @@ async def complete_json(
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
             raise GatewayError(
-                f"ollama returned invalid JSON: {e} — {content[:200]}"
+                f"llama-server returned invalid JSON: {e} — {content[:200]}"
             ) from e
         if not isinstance(parsed, dict):
             raise GatewayError(f"expected object, got {type(parsed).__name__}")

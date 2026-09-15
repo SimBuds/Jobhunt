@@ -11,8 +11,8 @@ Two modes (--mode):
   - production (default): runs the real retry-wrapped pipeline (mirrors
     apply_cmd) at the gateway's _DEFAULT_OPTIONS — measures EVENTUAL ship-rate
     and retry attempts consumed. This is the basis for choosing a default model.
-  - raw: single-shot first-pass calls (no retries) at per-model ~/ai PARAMS —
-    diagnostic only.
+  - raw: single-shot first-pass calls (no retries) at each model's router
+    preset sampler — diagnostic only.
 
 Every model runs three fixtures, each printed as its own table block:
   - happy_fit: a clean mid-level JD Casey fits — measures ship-rate.
@@ -27,11 +27,11 @@ Usage (from repo root):
     uv run python scripts/bench_models.py                 # production, 5 models
     uv run python scripts/bench_models.py --mode raw      # first-pass diagnostic
 
-Ensure all candidate models are already pulled with `ollama pull <model>`.
-Read-only with respect to the database — writes no rows. With
-`OLLAMA_MAX_LOADED_MODELS=1` (the project default), each model swap incurs
-a cold load; the script runs all tasks for one model before moving on so
-the load cost amortizes across score+tailor+cover+answer.
+Candidates are model names the llama-server router serves (`GET /v1/models`;
+presets in ~/.config/llama.cpp/models.ini). Read-only with respect to the
+database — writes no rows. The router runs with `--models-max 1`, so each model
+swap incurs a cold load; the script runs all tasks for one model before moving
+on so the load cost amortizes across score+tailor+cover+answer.
 """
 
 from __future__ import annotations
@@ -39,7 +39,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -78,59 +77,69 @@ REPO_ROOT = Path(__file__).parent.parent
 
 # --- candidate models ---------------------------------------------------------
 # All candidates run every task slot. The label is what gets printed; the
-# model_id is what Ollama sees. Default is the five bare base models from
-# ~/ai/README.md — jobhunt runs bare bases (the gateway owns SYSTEM + options),
-# so the *-custom Modelfiles add nothing here. Override with --models.
+# model_id is the router's model name. Default is every model the router serves
+# on this box — the gateway owns the system prompt and sampler, so the router
+# preset only matters in raw mode. Override with --models.
 DEFAULT_CANDIDATES: list[tuple[str, str]] = [
-    ("qwen", "qwen3.5:9b"),
-    ("granite", "granite4.1:8b"),
-    ("llama", "llama3.1:8b"),
-    ("ministral", "ministral-3:8b"),
-    ("gemma", "gemma4:e2b"),
+    ("lite", "lite"),    # unsloth Qwen3.5-9B-MTP Q4_K_M — the production default
+    ("gemma", "gemma"),  # Gemma 4 26B-A4B QAT
+    ("qwen", "qwen"),    # Qwen3.6-35B-A3B-MTP Q4_K_M
 ]
 DEFAULT_RUNS_PER_MODEL = 2  # score+tailor+cover × N × M models — 2 keeps wall time sane
 
-DEFAULT_AI_ROOT = Path.home() / "ai"  # where the ~/ai/build-* model builders live
-
-# Param keys we pull from a builder's PARAMS block into Ollama `options`.
-# `temperature` is deliberately excluded — jobhunt sets it per task slot
+# Router preset keys → /v1/chat/completions request keys. Only the sampler keys
+# verified to take effect per request (2026-09-15, via GET /slots) are mapped.
+# `temp` is deliberately excluded — jobhunt sets temperature per task slot
 # (score=0.0 / tailor=0.3 / cover=0.7) and that determinism is load-bearing.
-_PULLED_PARAM_KEYS = {
-    "num_ctx", "top_p", "top_k", "min_p",
-    "repeat_penalty", "repeat_last_n", "presence_penalty", "num_predict",
+# Context size is server-side and cannot be sent per request.
+_PRESET_SAMPLER_KEYS: dict[str, str] = {
+    "top-p": "top_p",
+    "top-k": "top_k",
+    "min-p": "min_p",
+    "presence-penalty": "presence_penalty",
+    "repeat-penalty": "repeat_penalty",
 }
-# Whole-number params cast to int; everything else to float.
-_INT_PARAM_KEYS = {"num_ctx", "top_k", "repeat_last_n", "num_predict"}
 
 
-def _params_from_ai(base_model: str, ai_root: Path) -> tuple[dict[str, Any], str] | None:
-    """Parse the `~/ai/build-*` PARAMS block for the builder whose BASE_MODEL
-    matches `base_model`.
-
-    Returns (options, builder_name) with `temperature` dropped, or None if no
-    matching builder is found (caller falls back to gateway _DEFAULT_OPTIONS).
-    """
-    if not ai_root.is_dir():
-        return None
-    for builder in sorted(ai_root.glob("build-*")):
-        text = builder.read_text(encoding="utf-8", errors="replace")
-        m = re.search(r'^BASE_MODEL="([^"]+)"', text, re.MULTILINE)
-        if not m or m.group(1) != base_model:
+def _parse_preset(preset: str) -> dict[str, Any]:
+    """Pull the mapped sampler keys out of one model's preset INI text."""
+    opts: dict[str, Any] = {}
+    for line in preset.splitlines():
+        key, sep, raw = line.partition("=")
+        req_key = _PRESET_SAMPLER_KEYS.get(key.strip())
+        if not sep or req_key is None:
             continue
-        block = re.search(r"PARAMS=\((.*?)\n\)", text, re.DOTALL)
-        if not block:
-            return None
-        opts: dict[str, Any] = {}
-        for line in block.group(1).splitlines():
-            entry = re.match(r"\s*'([a-z_]+)\s+([^']+)'", line)
-            if not entry:
-                continue
-            key, raw = entry.group(1), entry.group(2).strip()
-            if key == "temperature" or key not in _PULLED_PARAM_KEYS:
-                continue
-            opts[key] = int(raw) if key in _INT_PARAM_KEYS else float(raw)
-        return opts, builder.name
+        value = raw.strip()
+        opts[req_key] = int(value) if req_key == "top_k" else float(value)
+    return opts
+
+
+async def _params_from_router(base_url: str, model: str) -> dict[str, Any] | None:
+    """The router's preset sampler for `model`, as request options.
+
+    Read from `GET /v1/models`, which reports each model's resolved preset, so
+    the bench measures exactly what the running service is configured with.
+    Returns None when the router is unreachable or has no preset for `model`
+    (caller falls back to gateway _DEFAULT_OPTIONS).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            r = await client.get(f"{_router_host(base_url)}/v1/models")
+        r.raise_for_status()
+        entries = r.json().get("data") or []
+    except (httpx.HTTPError, ValueError):
+        return None
+    for entry in entries:
+        if entry.get("id") != model:
+            continue
+        preset = (entry.get("status") or {}).get("preset") or ""
+        return _parse_preset(preset) or None
     return None
+
+
+def _router_host(base_url: str) -> str:
+    host = base_url.rstrip("/")
+    return host[: -len("/v1")] if host.endswith("/v1") else host
 
 # --- fixture JD ---------------------------------------------------------------
 FIXTURE_JD = """
@@ -277,7 +286,7 @@ DEFAULT_FIXTURES: list[BenchFixture] = [
 @dataclass
 class ModelMetrics:
     label: str
-    param_src: str = "default"  # "~/ai:build-x" or "default" (_DEFAULT_OPTIONS)
+    param_src: str = "default"  # "router preset" or "default" (_DEFAULT_OPTIONS)
     score_latencies: list[float] = field(default_factory=list)
     score_schema_ok: int = 0
     tailor_latencies: list[float] = field(default_factory=list)
@@ -314,7 +323,6 @@ def _make_cfg(model: str) -> Config:
         "tailor": model,
         "cover": model,
         "answer": model,
-        "embed": "nomic-embed-text",
     }
     return Config(
         paths=PathsConfig(kb_dir=REPO_ROOT / "kb"),
@@ -329,7 +337,7 @@ async def _bench_one_run(
 ) -> None:
     """Run score → tailor → cover → answer → prep → audit once. Mutates `m`.
 
-    `options` (the per-model ~/ai PARAMS) is passed to every complete_json call.
+    `options` (the model's router preset sampler) is passed to every complete_json call.
     The cover slot is replicated inline rather than calling write_cover(), which
     doesn't accept options — so all three slots run at the same per-model params.
     `temperature` is NOT in `options`; the per-slot temperature kwarg wins.
@@ -359,7 +367,7 @@ async def _bench_one_run(
     try:
         score_raw = await complete_json(
             base_url=base_url, model=model, system=sp.system, user=score_user,
-            schema=sp.schema, temperature=0.0, options=options, keep_alive=None,
+            schema=sp.schema, temperature=0.0, options=options,
         )
         m.score_latencies.append(time.monotonic() - t0)
         if isinstance(score_raw.get("score"), int):
@@ -392,7 +400,7 @@ async def _bench_one_run(
     try:
         traw = await complete_json(
             base_url=base_url, model=model, system=tp.system, user=tailor_user,
-            schema=tp.schema, temperature=0.3, options=options, keep_alive=None,
+            schema=tp.schema, temperature=0.3, options=options,
         )
         m.tailor_latencies.append(time.monotonic() - t0)
         tailored = _parse(traw, model)
@@ -427,7 +435,6 @@ async def _bench_one_run(
         craw = await complete_json(
             base_url=base_url, model=model, system=cp.system, user=cover_user,
             schema=cp.schema, temperature=cp.temperature, options=options,
-            keep_alive=None,
         )
         body = craw.get("body") or craw.get("paragraphs") or craw.get("content")
         if body is None:
@@ -469,7 +476,6 @@ async def _bench_one_run(
         araw = await complete_json(
             base_url=base_url, model=model, system=ap.system, user=answer_user,
             schema=ap.schema, temperature=ap.temperature, options=options,
-            keep_alive=None,
         )
         text = araw.get("answer")
         if not isinstance(text, str) or not text.strip():
@@ -525,7 +531,6 @@ async def _bench_one_run(
         praw = await complete_json(
             base_url=base_url, model=model, system=pp.system, user=prep_user,
             schema=pp.schema, temperature=pp.temperature, options=options,
-            keep_alive=None,
         )
         sections = _decode_sections(praw, model=model)
         m.prep_latencies.append(time.monotonic() - t0)
@@ -793,21 +798,15 @@ def _print_table(
 
 
 async def _release_model(base_url: str, model: str) -> None:
-    """Unload a model from VRAM (keep_alive=0).
+    """Unload a model from VRAM via the router's `POST /models/unload`.
 
-    Needed because production mode calls the real pipeline functions
-    (score_job / *_with_retry), which hit complete_json at its default
-    keep_alive=-1 ("Forever") — a one-off bench shouldn't squat VRAM after
-    exit. We can't pass keep_alive through those functions without a runtime
-    src change, so we explicitly unload here instead. Best-effort: failures are
-    ignored (the systemd OLLAMA_KEEP_ALIVE still bounds residency).
+    The router would otherwise keep the last candidate loaded until its 600s
+    idle timeout — a one-off bench shouldn't squat VRAM after exit. Best-effort:
+    failures are ignored (the idle timeout still bounds residency).
     """
-    host = base_url.rstrip("/")
-    if host.endswith("/v1"):
-        host = host[: -len("/v1")]
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-            await client.post(f"{host}/api/generate", json={"model": model, "keep_alive": 0})
+            await client.post(f"{_router_host(base_url)}/models/unload", json={"model": model})
     except httpx.HTTPError:
         pass
 
@@ -815,8 +814,8 @@ async def _release_model(base_url: str, model: str) -> None:
 def _parse_models(specs: list[str]) -> list[tuple[str, str]]:
     """Turn `--models` specs into (label, model_id) pairs.
 
-    A spec is either a bare model id (`granite4.1:8b` → label `granite4.1`) or
-    an explicit `label=model_id` pair.
+    A spec is either a bare router model name (`lite` → label `lite`) or an
+    explicit `label=model_id` pair.
     """
     out: list[tuple[str, str]] = []
     for spec in specs:
@@ -835,8 +834,8 @@ async def main() -> None:
         "--models",
         nargs="+",
         metavar="MODEL",
-        help="Models to bench: bare ids (`granite4.1:8b`) or `label=id` pairs. "
-        "Default: the 5 base models from ~/ai/README.md.",
+        help="Models to bench: router model names (`lite`) or `label=id` pairs. "
+        "Default: lite, gemma, qwen.",
     )
     parser.add_argument(
         "--runs",
@@ -845,28 +844,19 @@ async def main() -> None:
         help=f"Runs per model (default {DEFAULT_RUNS_PER_MODEL}).",
     )
     parser.add_argument(
-        "--ai-root",
-        type=Path,
-        default=DEFAULT_AI_ROOT,
-        help="[raw mode only] Path to the ~/ai model builders, used to pull "
-        f"per-model PARAMS (default {DEFAULT_AI_ROOT}). Models with no matching "
-        "builder fall back to the gateway's _DEFAULT_OPTIONS.",
-    )
-    parser.add_argument(
         "--mode",
         choices=("production", "raw"),
         default="production",
         help="production (default): run the real retry-wrapped pipeline "
         "(score_job → tailor/cover/answer _with_retry → audit) at the gateway's "
         "_DEFAULT_OPTIONS — measures eventual ship-rate + attempts, the basis for "
-        "choosing a default model. raw: single-shot first-pass calls at per-model "
-        "~/ai params (no retries) — diagnostic only.",
+        "choosing a default model. raw: single-shot first-pass calls at each "
+        "model's router preset sampler (no retries) — diagnostic only.",
     )
     args = parser.parse_args()
 
     candidates = _parse_models(args.models) if args.models else DEFAULT_CANDIDATES
     runs = args.runs
-    ai_root = args.ai_root
     mode = args.mode
     fixtures = DEFAULT_FIXTURES
 
@@ -877,7 +867,7 @@ async def main() -> None:
 
     # Keyed by fixture so each fixture gets its own table block. One ModelMetrics
     # per (model, fixture). The model loop stays outer so a candidate pays a
-    # single cold load for all its fixtures (OLLAMA_MAX_LOADED_MODELS=1).
+    # single cold load for all its fixtures (router --models-max 1).
     results: dict[str, list[ModelMetrics]] = {f.key: [] for f in fixtures}
     for label, model in candidates:
         if mode == "production":
@@ -886,9 +876,8 @@ async def main() -> None:
             options = None
             param_src = "default (_DEFAULT_OPTIONS)"
         else:
-            pulled = _params_from_ai(model, ai_root)
-            options = pulled[0] if pulled else None
-            param_src = f"~/ai:{pulled[1]}" if pulled else "default"
+            options = await _params_from_router(_make_cfg(model).gateway.base_url, model)
+            param_src = "router preset" if options else "default"
         print(f"\n>>> {label} ({model})  [mode: {mode}, params: {param_src}]")
         cfg = _make_cfg(model)
         per_fixture = {
@@ -902,9 +891,7 @@ async def main() -> None:
                     await _bench_one_run_production(model, cfg, m, kb_dir, fixture)
                 else:
                     await _bench_one_run(model, cfg, m, kb_dir, fixture, options=options)
-        # Don't leave the model pinned in VRAM after the bench (production-mode
-        # calls pin it Forever via the gateway default; raw mode passes None but
-        # this is harmless there too).
+        # Don't leave the model in VRAM until the router's idle timeout.
         await _release_model(cfg.gateway.base_url, model)
         for f in fixtures:
             results[f.key].append(per_fixture[f.key])
@@ -929,21 +916,22 @@ async def main() -> None:
             "    'not-declined X/N'. The two adversarial fixtures are the\n"
             "    reliability signal — a fit-scored decline JD or a fabricated\n"
             "    skill is a product failure, not a formatting nit.\n"
-            "  - With OLLAMA_MAX_LOADED_MODELS=1, each candidate pays one cold load.\n"
+            "  - With router --models-max 1, each candidate pays one cold load.\n"
         )
     else:
         notes = (
             "\nNotes (raw mode):\n"
             "  - Single-shot first-pass calls; no retries (diagnostic only).\n"
-            "  - Per-model sampler params (incl. num_ctx) are pulled from\n"
-            "    ~/ai/build-* ('Params src' row); temperature is always jobhunt's\n"
-            "    per-slot value, not the builder's.\n"
+            "  - Per-model sampler params are pulled from the router preset\n"
+            "    via GET /v1/models ('Params src' row); temperature is always\n"
+            "    jobhunt's per-slot value, not the preset's. Context is fixed\n"
+            "    server-side (32K) for every model.\n"
             "  - 'clean' = passed validator on the first try.\n"
             "  - 'Guard' row reads the model's first-pass judgment (no score_job\n"
             "    clamp, no tailor retries): decline_senior → 'declined X/N',\n"
             "    fabrication_pressure → 'fab-safe X/N (clean / rej)', happy_fit →\n"
             "    'not-declined X/N'.\n"
-            "  - With OLLAMA_MAX_LOADED_MODELS=1, each candidate pays one cold load.\n"
+            "  - With router --models-max 1, each candidate pays one cold load.\n"
         )
     print(notes)
 
