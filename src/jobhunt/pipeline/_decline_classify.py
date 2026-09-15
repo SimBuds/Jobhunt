@@ -23,10 +23,18 @@ from collections.abc import Iterable
 # Order matters: more specific patterns come first so the wider ones don't
 # capture cases that have a sharper category.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # The title-function decline comes first: when a reason cites it alongside
+    # another ground, the title is the primary one (every live example leads
+    # with it, e.g. "Title is non-engineering function (Risk Analyst) and
+    # domain requires regulated ...").
+    (
+        "non_engineering",
+        re.compile(r"\bnon[- ]?engineering\b", re.IGNORECASE),
+    ),
     (
         "regulated_domain",
         re.compile(
-            r"\b(clinical|medical[- ]device|fda|hipaa|securities|trading|"
+            r"\b(regulated|clinical|medical[- ]device|fda|hipaa|securities|trading|"
             r"investment[- ]bank|defense|aerospace)\b",
             re.IGNORECASE,
         ),
@@ -45,6 +53,7 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(
             r"\b(on[- ]?site (?:in )?(?!toronto|gta|canada)|"
             r"located in (?!toronto|gta|canada|ontario)|"
+            r"outside (?:of )?(?:toronto|gta|canada)|"
             r"us[- ]?only|us residents only|must be (?:located )?in the (?:us|united states)|"
             r"based in (?!toronto|gta|canada|ontario))\b",
             re.IGNORECASE,
@@ -58,6 +67,7 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"requires? \d+\+? years?|"
             r"(?:5|6|7|8|9|10|seven|eight|nine|ten)\+? years?|"
             r"years? gap|"
+            r"years? (?:required )?(?:exceed\w*|threshold|limit)|"
             r"insufficient (?:years|experience)"
             r")\b",
             re.IGNORECASE,
@@ -70,6 +80,10 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"academic[/ ]light use only|coursework[- ]only)\b",
             re.IGNORECASE,
         ),
+    ),
+    (
+        "tier1_gaps",
+        re.compile(r"\b\d+\+? (?:hard )?tier[- ]?1 requirements?\b", re.IGNORECASE),
     ),
     (
         "wrong_stack",
@@ -94,8 +108,10 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 VALID_CATEGORIES = (
+    "non_engineering",
     "years_gap",
     "people_management",
+    "tier1_gaps",
     "wrong_domain",
     "wrong_stack",
     "familiar_only",
@@ -111,10 +127,34 @@ def classify_decline_reason(reason: str | None) -> str | None:
     """
     if not reason:
         return None
+    # The model also emits snake_case codes (`years_required_exceeds_limit`,
+    # `location_outside_toronto`). `_` is a word character, so `\b` never fires
+    # inside them; match against the spaced form instead.
+    text = reason.replace("_", " ")
     for category, pattern in _PATTERNS:
-        if pattern.search(reason):
+        if pattern.search(text):
             return category
     return "other"
+
+
+def reclassify_all(conn: sqlite3.Connection) -> int:
+    """Re-derive `jobs.decline_category` for every declined row. Run after a
+    pattern change; `backfill_existing` only fills NULLs. Returns rows changed.
+    """
+    rows = conn.execute(
+        "SELECT id, decline_reason, decline_category FROM jobs "
+        "WHERE decline_reason IS NOT NULL"
+    ).fetchall()
+    changed = 0
+    with conn:
+        for job_id, reason, old in rows:
+            new = classify_decline_reason(reason)
+            if new != old:
+                conn.execute(
+                    "UPDATE jobs SET decline_category = ? WHERE id = ?", (new, job_id)
+                )
+                changed += 1
+    return changed
 
 
 def backfill_existing(conn: sqlite3.Connection) -> int:
