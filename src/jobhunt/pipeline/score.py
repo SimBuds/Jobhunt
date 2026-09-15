@@ -11,6 +11,10 @@ from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.ingest._filter import is_explicit_junior_title, is_senior_title
 from jobhunt.models import Job
+from jobhunt.pipeline._decline_guards import (
+    DECLINE_GUARDS_VERSION,
+    decline_is_unsupported,
+)
 from jobhunt.pipeline._keywords import peer_match, phrase_present
 from jobhunt.pipeline._profile import candidate_name, render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
@@ -370,10 +374,26 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         if not (_v.get("skills_familiar") or []):
             decline_reason = None
 
+    # 2026-09-15: a senior title alone no longer preserves the model's
+    # Familiar decline — the matched phrases must actually all be Familiar.
+    # With the bucket repopulated, lite declined "Senior AI Engineer" and
+    # "Lead AI Engineer" this way although AI tooling is Core (skills_ai).
+    # A genuine case is re-derived by the deterministic block below.
     if (
         decline_reason
         and "familiar" in decline_reason.lower()
-        and not is_senior_title(job.title)
+        and (
+            not is_senior_title(job.title)
+            or not matched
+            or not _all_matched_are_familiar(matched, verified)
+        )
+    ):
+        decline_reason = None
+
+    # Years and people-management declines are checkable against the JD text
+    # — see `_decline_guards`. Each check only ever clears a decline.
+    if decline_reason and decline_is_unsupported(
+        decline_reason, job.title or "", job.description, cfg.applicant.years_experience
     ):
         decline_reason = None
 
@@ -805,4 +825,6 @@ def prompt_hash(cfg: Config) -> str:
     # Same resolution `score_job` uses, so the hash names the model that ran.
     model = cfg.gateway.tasks.get("score", "")
     h.update(f";model={model}".encode())
+    # Decline guards change which scores stand without touching any file above.
+    h.update(f";guards={DECLINE_GUARDS_VERSION}".encode())
     return h.hexdigest()[:16]
