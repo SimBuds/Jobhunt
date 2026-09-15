@@ -103,25 +103,25 @@ class IngestConfig(BaseModel):
 
 
 class GatewayConfig(BaseModel):
-    base_url: str = "http://localhost:11434/v1"
-    api_key: str = "ollama"
+    # The local llama-server router (systemd user service). It serves the
+    # OpenAI-compatible /v1/chat/completions and picks the model by name.
+    base_url: str = "http://localhost:8080/v1"
+    api_key: str = ""
     tasks: dict[str, str] = Field(
         default_factory=lambda: {
-            # Base qwen3.5:9b. The gateway sends its own task prompt (overriding
-            # any Modelfile SYSTEM) and its own options (gateway _DEFAULT_OPTIONS),
-            # so behavior is fully defined in-repo — no custom Modelfile needed.
-            # The critical app-owned option is num_ctx=16384: these prompts
-            # measure 7.7k-9.4k tokens and Ollama's 4096 default would truncate
-            # them into prose (qwen-custom only worked by baking num_ctx).
-            # Single hot model across all slots; no intra-scan reload churn.
-            # Quality backed by deterministic post-processing (tiered score
-            # computation, cover validator + retry, audit). (qwen-custom
-            # remains the candidate's general chat model in ~/ai.)
-            "score": "qwen3.5:9b",
-            "tailor": "qwen3.5:9b",
-            "cover": "qwen3.5:9b",
-            "answer": "qwen3.5:9b",
-            "embed": "nomic-embed-text",
+            # `lite` is the router's alias for unsloth Qwen3.5-9B-MTP Q4_K_M. The
+            # gateway sends its own task prompt and its own sampler settings
+            # (gateway _DEFAULT_OPTIONS), so behavior is defined in-repo, not by
+            # the router preset. The router fixes context at 32K and holds one
+            # model at a time, so every slot points at the same model — no
+            # reload churn mid-scan. Quality is backed by deterministic
+            # post-processing (tiered score computation, cover validator +
+            # retry, audit). The score slot's model feeds
+            # `pipeline.score.prompt_hash`: changing it re-scores the backlog.
+            "score": "lite",
+            "tailor": "lite",
+            "cover": "lite",
+            "answer": "lite",
         }
     )
 

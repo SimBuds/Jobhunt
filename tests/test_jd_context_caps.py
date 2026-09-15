@@ -18,8 +18,8 @@ from jobhunt.pipeline.score import MAX_DESC_CHARS
 def test_prep_jd_cap_matches_score_budget() -> None:
     # The contract is that prep tracks the scoring budget, whatever that budget
     # currently is — asserting a literal only pinned one revision of it. The
-    # value moves with num_ctx (16000 at num_ctx=32768, 10000 at 16384), so pin
-    # the binding plus the floor this initiative existed to clear.
+    # value moves with the server's context window (16000 at 32K, 10000 at
+    # 16K), so pin the binding plus the floor this initiative existed to clear.
     assert _JD_MAX_CHARS == MAX_DESC_CHARS
     assert MAX_DESC_CHARS > 6000  # the old cap that truncated 63% of real JDs
 

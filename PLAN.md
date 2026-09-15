@@ -1,7 +1,7 @@
 # Jobhunt design notes
 
 A CLI tool that ingests Toronto-area jobs from public ATS APIs, scores them
-against Casey's parsed baseline resume using local Ollama models, tailors
+against Casey's parsed baseline resume using a local llama-server model, tailors
 resumes and cover letters per role, and assists with form autofill in a
 headed browser. Casey clicks Submit.
 
@@ -13,7 +13,7 @@ guardrails, project structure). `README.md` is for end-users.
 ## Goals
 
 1. **Replace cloud per-job AI spend with local inference.** Scoring,
-   tailoring, and cover letters all run on Ollama. Token cost at runtime is
+   tailoring, and cover letters all run on a local llama-server. Token cost at runtime is
    zero.
 2. **Future-proof the knowledge layer.** Profile facts live in
    `kb/profile/verified.json` (regenerated from the baseline resume).
@@ -36,19 +36,21 @@ guardrails, project structure). `README.md` is for end-users.
 ## Design principles
 
 **Local-first at runtime.** Every per-job AI call routes through
-`jobhunt.gateway` to Ollama at `http://localhost:11434`. No cloud calls in
-the hot path.
+`jobhunt.gateway` to the llama-server router at `http://localhost:8080`
+(`POST /v1/chat/completions`). No cloud calls in the hot path.
 
-**Constrained output.** Every structured LLM call uses Ollama's `format`
-parameter with a JSON schema from the prompt's frontmatter.
+**Constrained output.** Every structured LLM call sends a `json_schema`
+`response_format` built from the prompt's frontmatter schema, nested at
+`response_format.json_schema.schema` — at the top level the server ignores it
+silently.
 
 **Single hot model.** All four task slots (score, tailor, cover, answer) run on one
-model, bare **`qwen3.5:9b`** by default (since 2026-05-28). The gateway pins
-its own options on every call (`num_ctx=32768` + samplers, see
-`gateway.client._DEFAULT_OPTIONS`) and always sends its own system message (the
-task prompt), so structured-task behavior is fully defined in-repo and no custom
-Modelfile is needed. No
-reload churn between tasks. Quality is held by deterministic post-processing
+model, **`lite`** by default (since 2026-09-15; unsloth Qwen3.5-9B-MTP Q4_K_M,
+replacing Ollama's `qwen3.5:9b`). The gateway pins its own sampler on every call
+(see `gateway.client._DEFAULT_OPTIONS`; an omitted key would fall back to the
+router preset) and always sends its own system message (the task prompt), so
+structured-task behavior is fully defined in-repo. No reload churn between
+tasks. Quality is held by deterministic post-processing
 (score clamp, cover validator + retry, audit) together with the model's tool-use + reasoning
 capability. The cascade-by-difficulty design (8B for scoring, 14B for
 generation) was abandoned in May 2026 once the guardrail layers made
@@ -61,16 +63,15 @@ between every call. Set in config (`gateway.tasks`).
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total, all available to Ollama) | Arch idles around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally unset. On the new Ollama engine (0.30.3) bare `qwen3.5:9b` Q4_K_M lands around ~5.6 GB resident at `num_ctx=32768`, 100% GPU, with a `q4_0` quantized KV cache (`OLLAMA_KV_CACHE_TYPE=q4_0` + `OLLAMA_FLASH_ATTENTION=1`, set 2026-07-27, briefly reverted to q8_0 and back to q4_0 on 2026-07-28 — q8_0's extra ~288 MiB pushes the model into a CPU spill; see AGENTS.md Hardware context for the CUDA-fault caveat that comes with q4_0). **Context length is app-owned**: the gateway pins `num_ctx=32768` in `_DEFAULT_OPTIONS` on every call (without it Ollama's 4096 default truncates the ~6k-token prompts and the model emits prose instead of schema JSON), and `OLLAMA_CONTEXT_LENGTH` is deliberately unset so each project sharing the box picks its own window. The q8_0 weight build was rejected: it spills to CPU at 16k and 32k here. Single hot model pinned during active work via per-call `keep_alive=-1`, which takes precedence over the systemd `OLLAMA_KEEP_ALIVE=10m` idle fallback, plus a warm-up call at scan start. Reasoning (`think`) is disabled at the gateway so structured calls don't blow past the timeout. |
+| GPU VRAM (10 GB total) | Arch idles around 1.5 GB on the GPU. `lite` (Qwen3.5-9B-MTP Q4_K_M) resides at about 6.2 GB with a `q4_0` KV cache and flash attention, 100% GPU, one slot (`parallel = 1`). **Context is server-owned**: the router preset fixes `ctx-size = 32768` and rejects an oversized prompt with HTTP 400 `exceed_context_size_error` instead of truncating it. The router holds one model (`--models-max 1`), loads it on the first request, and unloads it after 600 s idle (`sleep-idle-seconds`); there is no warm-up or keep-alive. Thinking is disabled per request (`chat_template_kwargs.enable_thinking = false`) so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU, SQLite cache, and Playwright when active. |
-| Disk | Models in `~/.ollama/models`, project DB in `data/jobhunt.db`. |
+| Disk | GGUF models in `~/models/gguf` (router presets in `~/.config/llama.cpp/models.ini`), project DB in `data/jobhunt.db`. |
 
 ## Models (default)
 
 | Task | Model | Why |
 |---|---|---|
-| Fit-score / tailor / cover / answer | bare `qwen3.5:9b` (default since 2026-05-28) | Single hot model, no reload churn. Strong open tool-use model. Reasoning is disabled (`think: false`) at the gateway since structured-output latency under thinking blew past the timeout. The gateway pins app-owned options (`num_ctx=32768` + samplers) and sends its own system message, so behavior is defined in-repo with no custom Modelfile. Post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. |
-| Embeddings | `nomic-embed-text` | CPU. Reserved for future kb retrieval. |
+| Fit-score / tailor / cover / answer | `lite` — unsloth Qwen3.5-9B-MTP Q4_K_M (default since 2026-09-15) | Single hot model, no reload churn. Same Qwen3.5-9B family as the previous Ollama `qwen3.5:9b`, with multi-token-prediction speculative decoding. Thinking is disabled at the gateway since structured-output latency under thinking blew past the timeout. The gateway pins app-owned sampler settings and sends its own system message, so behavior is defined in-repo, not by the router preset. Post-processing guardrails (score clamp, cover validator + retry, audit) carry quality alongside it. The score model is part of `pipeline.score.prompt_hash`, so a model swap re-scores the backlog. |
 
 All overridable in `~/.config/jobhunt/config.toml`. Per-call override via
 `JOBHUNT_GATEWAY__TASKS__<SLOT>=<model>` env var.
@@ -209,7 +210,8 @@ in eight places, not just the prompt:
    blocks: a first run has nothing to regress against, and a corrupt snapshot is
    not evidence the resume lost anything.
 2. **Schema-constrained output.** `kb/prompts/tailor.md` declares a JSON
-   schema. Ollama's `format=<schema>` enforces shape at decode time.
+   schema. llama-server's `json_schema` `response_format` enforces shape at
+   decode time (grammar-constrained sampling).
 3. **Post-decode invariants.** `pipeline.tailor._enforce_no_fabrication`:
    - rejects any role whose `(employer, dates)` is missing from
      `verified.json`.
@@ -382,7 +384,7 @@ pipeline aborts for that job rather than producing a misleading resume.
 
 `jobhunt analyze` is a deterministic, LLM-free aggregation surface over the
 existing `jobs` table. It mirrors the audit philosophy: regex + counters, no
-Ollama calls. Adding an LLM call to any `analyze` subcommand requires explicit
+LLM calls. Adding an LLM call to any `analyze` subcommand requires explicit
 discussion.
 
 ### `analyze certs`
@@ -403,7 +405,7 @@ Three modes, all deterministic, with no LLM call at any step:
   `analyze_cmd._classify`. The current window also feeds a *"Potential new
   certs"* review list pulled from `extract_certs_split`'s generic-regex tier,
   giving the same outcome Gemini-style LLM-discovery would, without an
-  Ollama call.
+  LLM call.
 - **`--min-score N`**: joins `scores`, adds a `Fit` column (count restricted
   to jobs you scored ≥ N) and a `Verdict` column derived from
   `analyze_cmd._classify_verdict`. The rubric weighs fit-demand against market

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Golden-JD tailor eval harness. Manual use only — not in CI (live Ollama).
+"""Golden-JD tailor eval harness. Manual use only — not in CI (live llama-server).
 
 Runs the production score -> tailor -> cover -> audit pipeline over the fixed
 golden JD set in tests/fixtures/golden/ and prints one row per JD: score,
@@ -12,7 +12,7 @@ Fixture format: line 1 is the title, line 2 the company, then a blank line,
 then the JD body. The off-lane control fixture SHOULD decline at the score
 step — a run where it ships is itself a red flag.
 
-Usage (from repo root, Ollama running, kb/profile/verified.json present):
+Usage (from repo root, llama-server running, kb/profile/verified.json present):
     uv run python scripts/eval_tailor.py
     uv run python scripts/eval_tailor.py --only shopify-developer
 """

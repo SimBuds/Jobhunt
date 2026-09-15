@@ -48,12 +48,8 @@ async def test_next_llm_phase_starts_before_current_io_completes(
         rec.note(f"io-end:{job.id}")
         return ("ship", [])
 
-    async def fake_warm(cfg: Any, *, task: str = "score") -> None:
-        return None
-
     monkeypatch.setattr(apply_cmd, "_apply_llm_phase", fake_llm_phase)
     monkeypatch.setattr(apply_cmd, "_apply_io_phase", fake_io_phase)
-    monkeypatch.setattr("jobhunt.gateway.warm.warm_model", fake_warm)
     # Stub _row_to_job to just unwrap a fake row.
     monkeypatch.setattr(apply_cmd, "_row_to_job", lambda r: r)
 
@@ -134,16 +130,12 @@ async def test_continue_prompt_no_stops_loop(
         await asyncio.sleep(0.05)
         return ("ship", [])
 
-    async def fake_warm(cfg: Any, *, task: str = "score") -> None:
-        return None
-
     async def fake_prompt(next_job: Any) -> bool:
         rec.note(f"prompt:{next_job.id}")
         return False  # user says "no, stop"
 
     monkeypatch.setattr(apply_cmd, "_apply_llm_phase", fake_llm_phase)
     monkeypatch.setattr(apply_cmd, "_apply_io_phase", fake_io_phase)
-    monkeypatch.setattr("jobhunt.gateway.warm.warm_model", fake_warm)
     monkeypatch.setattr(apply_cmd, "_row_to_job", lambda r: r)
     monkeypatch.setattr(apply_cmd, "_prompt_continue", fake_prompt)
     # Force TTY check to pass so the prompt actually fires.

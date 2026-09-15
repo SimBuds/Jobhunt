@@ -1,4 +1,4 @@
-"""Parser tests for new ingest adapters — no network, no Ollama."""
+"""Parser tests for new ingest adapters — no network, no model server."""
 
 from __future__ import annotations
 

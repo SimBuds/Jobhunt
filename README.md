@@ -8,8 +8,8 @@ scoped by default to GTA + 100 km and Remote-Canada postings — both
 configurable. After each scan, the tool probes public
 ATS APIs for slugs of newly-seen companies and auto-appends hits to
 `config.toml`, so the next scan pulls deep JDs natively and slug curation is
-mostly automatic. Fit-scores them against the parsed baseline resume using local
-Ollama models, drafts a tailored resume and cover letter per role, answers
+mostly automatic. Fit-scores them against the parsed baseline resume using a local
+model served by llama-server, drafts a tailored resume and cover letter per role, answers
 free-form application form questions, and assists with form autofill in the
 browser. **You submit every application yourself.** The tool fills the
 form. It never clicks Submit.
@@ -69,19 +69,24 @@ ingest ──▶ discover ──▶ score ──▶ tailor ──▶ audit ─�
 
 Cutting across all of them: **`gateway/` is the only place the model is
 reached.** Every LLM call goes through one `complete_json` entry point
-(`POST /api/chat` with `format=<schema>`), and every call is schema-bounded —
-there is no free-text completion path in the runtime.
+(`POST /v1/chat/completions` against a local llama-server router, with a
+`json_schema` `response_format`), and every call is schema-bounded — there is no
+free-text completion path in the runtime.
 
-**The load-bearing setting is `num_ctx=32768`,** pinned app-side in
-`gateway.client._DEFAULT_OPTIONS` rather than in the Ollama server environment.
-Ollama's default context is 4096, so without an
-explicit `num_ctx` the prompt silently truncates, the JSON-schema instruction
-falls off the end, and the model returns prose instead of JSON. The failure mode
-looks like a parser bug and isn't one. This window is paired with
-`pipeline.score.MAX_DESC_CHARS` (16000): measured worst case is 11886 prompt
-tokens plus a 4096 generation ceiling, so change one and you must re-measure the
-other (a 16384 window was trialled and reverted — it left 402 tokens spare). Context is owned at the app level so
-several projects can share one Ollama box, each picking its own window.
+**The load-bearing detail is where the schema sits.** It must be nested at
+`response_format.json_schema.schema`. Placed at the top level of
+`response_format`, llama-server ignores it without an error and returns
+unconstrained JSON — the failure mode looks like a model-quality problem and
+isn't one. A test pins the shape.
+
+Context is owned by the server, not the app: the router fixes every model's
+window at 32K and rejects an oversized prompt with HTTP 400
+(`exceed_context_size_error`), so overflow is loud rather than a silent
+truncation. `pipeline.score.MAX_DESC_CHARS` (16000) is still sized to fit it —
+measured worst case is about 12k prompt tokens plus a 4096 generation ceiling —
+so re-measure if either number moves. The app does own the sampler: every call
+sends `gateway.client._DEFAULT_OPTIONS`, because any key it omits falls back to
+the router preset.
 
 ## Honesty enforcement
 
@@ -128,7 +133,8 @@ confident output for it is a regression, not a success.
 - Linux or macOS (developed on Arch Linux)
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) for dependency management
-- [Ollama](https://ollama.com) at `http://localhost:11434`
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` in router
+  mode at `http://localhost:8080`, serving a model named `lite`
 - ~10 GB VRAM for the default model
 - Free Adzuna CA API key: <https://developer.adzuna.com/>
 
@@ -141,39 +147,46 @@ cd Jobhunt
 uv sync
 source .venv/bin/activate        # puts `jobhunt` on PATH; or prefix commands with `uv run`
 playwright install chromium
-
-ollama pull qwen3.5:9b           # base model: all LLM tasks
 ```
 
-Default model in config is base `qwen3.5:9b` (Q4_K_M). The gateway supplies its
-own task prompt and its own options, so behavior is defined in-repo and no
-custom Modelfile is needed. Q4_K_M stays 100% GPU-resident at ~5.6 GB on a 10 GB
-card; the `q8_0` build was evaluated and rejected because it spills to CPU with
-no quality gain. The `num_ctx=32768` pin is load-bearing — see
-[Architecture](#architecture) above for why, and [AGENTS.md](AGENTS.md)
-Hardware context for the full rationale.
+Default model in config is `lite` — the router's name for unsloth
+Qwen3.5-9B-MTP Q4_K_M. The gateway supplies its own task prompt and its own
+sampler settings, so behavior is defined in-repo rather than by the router
+preset. Then point the gateway at the router in `~/.config/jobhunt/config.toml`
+(see [Configuration](#configuration) below for the full file):
 
-### Ollama systemd settings
+```toml
+[gateway]
+base_url = "http://localhost:8080/v1"
 
-The gateway is tuned to a specific server config. Mirror these
-(`sudo systemctl edit ollama.service`):
+[gateway.tasks]
+score = "lite"
+```
+
+### llama-server router settings
+
+The gateway is tuned to a specific server config: the router runs as a systemd
+user service (`llama-server --models-preset ~/.config/llama.cpp/models.ini
+--models-max 1 --port 8080`). The settings that matter to jobhunt:
 
 ```ini
-[Service]
-Environment="OLLAMA_KV_CACHE_TYPE=q4_0"      # smallest quantized KV cache — the ~288 MiB it saves over q8_0 is what keeps the model 100% GPU-resident on a 10 GB card
-Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
-Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches the sequential pipeline
-Environment="OLLAMA_KEEP_ALIVE=10m"          # idle unload after 10m; the gateway's per-call keep_alive=-1 overrides it during a run
-Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model — jobhunt runs a single hot model per scan
+[*]
+parallel = 1                ; one slot per model — matches the sequential pipeline
+flash-attn = on
+cache-type-k = q4_0         ; quantized KV cache keeps the model 100% GPU-resident on a 10 GB card
+cache-type-v = q4_0
+sleep-idle-seconds = 600    ; unload after 10 idle minutes; the next request reloads it
+
+[lite]
+model = /path/to/qwen3.5-9b-mtp-q4_K_M.gguf
+ctx-size = 32768            ; the window MAX_DESC_CHARS is sized against
+spec-type = draft-mtp       ; multi-token-prediction speculative decoding
 ```
 
-Confirm residency after any change with `ollama ps`: it must report `100% GPU`,
-not a CPU/GPU split. A split means the model spilled to CPU and both throughput
-and stability degrade.
-
-`OLLAMA_CONTEXT_LENGTH` is intentionally NOT set — context is owned at the app
-level (the gateway's `num_ctx`) so each project sharing this box picks its own
-window.
+`--models-max 1` keeps one resident model. There is no warm-up step and no
+keep-alive: a cold model loads on its first request, well inside the gateway's
+240 s timeout. Sampler values in the preset do not reach jobhunt's calls — the
+gateway sends its own on every request.
 
 ## Workflows
 
@@ -425,15 +438,14 @@ pages            = 3
 results_per_page = 50
 
 [gateway]
-base_url = "http://localhost:11434/v1"
-api_key  = "ollama"
+base_url = "http://localhost:8080/v1"
+api_key  = ""
 
 [gateway.tasks]
-score  = "qwen3.5:9b"
-tailor = "qwen3.5:9b"
-cover  = "qwen3.5:9b"
-answer = "qwen3.5:9b"
-embed  = "nomic-embed-text"
+score  = "lite"   # changing the score model re-scores the backlog on the next scan
+tailor = "lite"
+cover  = "lite"
+answer = "lite"
 
 [pipeline]
 tailor_max_words      = 700
@@ -542,7 +554,7 @@ uv run mypy src
 
 ### Quality harnesses
 
-Two manual, live-Ollama scripts live in `scripts/` and stay out of CI.
+Two manual, live-model scripts live in `scripts/` and stay out of CI.
 `scripts/bench_models.py` compares candidate models head-to-head across the
 LLM task slots. `scripts/eval_tailor.py` runs the production score, tailor,
 cover, and audit pipeline over the fixed golden JD set in

@@ -17,7 +17,7 @@ applications outright and Greenhouse flags the formatting to recruiters, which
 is why an outbound hit is a `block`, not a warning.
 
 Both tiers are deterministic regex + counters, matching `pipeline.audit`. No
-Ollama call belongs in this module.
+LLM call belongs in this module.
 """
 
 from __future__ import annotations

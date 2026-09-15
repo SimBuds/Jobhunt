@@ -90,7 +90,7 @@ async def write_answer(
     temperature = 0.0 if revisions else prompt.temperature
 
     model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get(
-        "cover", "qwen-custom:latest"
+        "cover", "lite"
     )
     raw = await complete_json(
         base_url=cfg.gateway.base_url,

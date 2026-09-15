@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from jobhunt.config import Config, PathsConfig, PipelineConfig
+from jobhunt.config import Config, GatewayConfig, PathsConfig, PipelineConfig
 from jobhunt.pipeline.score import (
     SCORE_AI_BONUS,
     SCORE_BASE,
@@ -229,3 +229,27 @@ class TestPromptHashCoversWeights:
         """Only inputs that change the SCORE belong in the hash. Bumping an
         unrelated knob must not force a pointless full re-score."""
         assert prompt_hash(_cfg(cover_max_words=300)) == prompt_hash(_cfg())
+
+
+class TestPromptHashCoversScoreModel:
+    """A model swap must re-score the backlog, for the same reason a weight
+    change must: the score is computed from the model's extraction, so scores
+    from two model files are on different scales and must not be mixed."""
+
+    @staticmethod
+    def _with_tasks(tasks: dict[str, str]) -> Config:
+        return Config(
+            paths=PathsConfig(kb_dir=Path("/nonexistent-kb")),
+            gateway=GatewayConfig(tasks=tasks),
+        )
+
+    def test_score_model_moves_the_hash(self) -> None:
+        assert prompt_hash(self._with_tasks({"score": "lite"})) != prompt_hash(
+            self._with_tasks({"score": "gemma"})
+        )
+
+    def test_non_score_slot_does_not_move_the_hash(self) -> None:
+        """Swapping only the cover model changes no score."""
+        assert prompt_hash(self._with_tasks({"score": "lite", "cover": "lite"})) == prompt_hash(
+            self._with_tasks({"score": "lite", "cover": "gemma"})
+        )

@@ -33,7 +33,6 @@ from jobhunt.db import (
     write_score,
 )
 from jobhunt.errors import IngestError, JobHuntError
-from jobhunt.gateway.warm import warm_model
 from jobhunt.http import RateLimiter
 from jobhunt.ingest import (
     adzuna_ca,
@@ -184,9 +183,8 @@ async def _run(
         typer.echo(
             f"score: {len(rows)} job(s) to score "
             f"({new_n} new, {stale_n} stale — profile/prompt/policy changed) "
-            "(this can take a while on Ollama)"
+            "(this can take a while on the local model)"
         )
-        await warm_model(cfg, task="score")
         ok = 0
         total = len(rows)
         for i, row in enumerate(rows, start=1):

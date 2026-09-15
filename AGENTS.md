@@ -1151,7 +1151,7 @@ when the section is empty.
 
 A local-first CLI tool for personal job search automation. Pulls jobs from
 public ATS APIs, runs fit-scoring and document tailoring against the user's
-profile using local Ollama models, and assists with form autofill via
+profile using a local llama-server model, and assists with form autofill via
 Playwright (the human submits, never the bot).
 
 ### Documentation map
@@ -1178,57 +1178,86 @@ Beyond the four pillars, these project docs are load-bearing:
   `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never
   hand-add unverified entries.
 
-### Hardware and Ollama context
+### Hardware and model server context
 
 - Arch Linux, Ryzen 9 5900, 32GB DDR4, RTX 3080 (10 GB VRAM total). Arch idles
-  around 1.5 GB on the GPU, so `OLLAMA_GPU_OVERHEAD` is intentionally **not**
-  set. On Ollama 0.30.3 (new engine) bare `qwen3.5:9b` Q4_K_M lands at ~5.6 GB
-  resident at `num_ctx=32768`, 100% GPU (measured 2026-06-04, was ~9.1 GB on
-  the old engine). Disk size is not a footprint proxy: confirm residency with
-  `ollama ps` (look for `100% GPU`, not a CPU/GPU split). `qwen3.5:9b-q8_0` was
-  evaluated and rejected — its ~10 GB weights spill to CPU at both 16k and 32k
-  on this card, with no quality gain over Q4_K_M.
-- Ollama at `http://localhost:11434`. Default model: base **`qwen3.5:9b`**
-  (2026-05-28). The gateway always sends its own system message (the task
-  prompt from `kb/prompts/`), which overrides any Modelfile SYSTEM at runtime,
-  *and* its own options (`gateway.client._DEFAULT_OPTIONS`), which override the
-  Modelfile PARAMS — so behavior is fully defined in-repo and no custom
-  Modelfile is needed. All task slots (score, tailor, cover, answer) run the
-  same hot model — single-model-per-scan, no intra-scan reload churn — with
-  `keep_alive=-1` and reasoning (`think`) disabled at the gateway.
-  `nomic-embed-text` is reserved for future embeddings. QA is deliberately
+  around 1.5 GB on the GPU. `lite` resides at about 6.2 GB, 100% GPU.
+- Model server: the llama.cpp `llama-server` **router**, a systemd user service
+  at `http://localhost:8080` (`llama-server --models-preset
+  ~/.config/llama.cpp/models.ini --models-max 1 --port 8080`). It serves the
+  models `gemma`, `qwen` and `lite` by name over the OpenAI-compatible
+  `/v1/chat/completions`. Default model for every task slot: **`lite`**
+  (2026-09-15) — unsloth Qwen3.5-9B-MTP Q4_K_M, with MTP speculative decoding.
+  It replaced Ollama's `qwen3.5:9b`, which is a different file, so the score
+  calibration was redone (below). The gateway always sends its own system
+  message (the task prompt from `kb/prompts/`) *and* its own sampler
+  (`gateway.client._DEFAULT_OPTIONS`), which override the preset per request —
+  so behavior is fully defined in-repo. All task slots run the same model:
+  single-model-per-scan, no intra-scan reload churn. QA is deliberately
   deterministic (see `pipeline.audit`), so there is no LLM QA slot.
-- Ollama systemd env (Arch, `sudo systemctl edit ollama.service` — **the human
-  runs this, never the agent**):
+- Router preset (`~/.config/llama.cpp/models.ini` — **the human edits this and
+  restarts the service, never the agent**). The settings jobhunt depends on:
   ```
-  Environment="OLLAMA_KV_CACHE_TYPE=q8_0"      # q8_0 since 2026-08-29. q4_0 is cheaper (~288 MiB at num_ctx=32768 vs ~576 MiB) and keeps the model 100% GPU-resident, but it is the less-exercised path and its `CUDA error: an illegal memory access was encountered` faults (HTTP 500 from /api/chat) escalated from "twice on 2026-07-28" to **2 of 5 score calls**, which stalls a backlog scan outright. q8_0 measured 12/12 clean on the same jobs at ~13.7 s/job vs ~8 s, accepting the 14%/86% CPU/GPU split. Do NOT switch back to q4_0 to reclaim the speed
-  Environment="OLLAMA_FLASH_ATTENTION=1"       # required to use a quantized KV cache
-  Environment="OLLAMA_NUM_PARALLEL=1"          # single concurrent request — matches the sequential pipeline
-  Environment="OLLAMA_KEEP_ALIVE=0"            # unload as soon as the box goes idle (2026-08-29, was 10m). The gateway's per-call keep_alive=-1 takes precedence while requests are in flight, and `gateway.warm` sends it too, so a scan still holds the model for its whole run. This only governs callers that omit the key (e.g. the bench script)
-  Environment="OLLAMA_MAX_LOADED_MODELS=1"     # one resident model — on a 10 GB card a second would force a CPU spill
+  [*]
+  parallel = 1                ; one slot — matches the sequential pipeline; 4 would split the KV cache
+  flash-attn = on
+  cache-type-k = q4_0         ; quantized KV cache
+  cache-type-v = q4_0
+  fit = off                   ; offload pinned per model, so runs are repeatable
+  sleep-idle-seconds = 600    ; unload after 10 idle minutes; next request reloads (~1 s for lite)
+  [lite]
+  ctx-size = 32768            ; the window MAX_DESC_CHARS is sized against
+  spec-type = draft-mtp
   ```
-  `OLLAMA_CONTEXT_LENGTH` is intentionally NOT set. Context is owned only at
-  the app level (the gateway's `num_ctx`) so each project sharing this box
-  picks its own window. A context change is a one-knob gateway edit, not a
-  paired systemd edit.
-- **`num_ctx` is NOT a one-knob edit (2026-07-28).** It is paired with
-  `pipeline.score.MAX_DESC_CHARS`, and the pairing must be re-measured, never
-  estimated. Real `prompt_eval_count` on the longest JD in the backlog runs
-  **~23% above a chars/4 estimate**, because dense JD text tokenizes worse than
-  prose. Measured worst cases:
+  `--models-max 1` holds one resident model; a second on a 10 GB card would
+  force a CPU spill. The preset's sampler lines (`temp`, `top-k 40`, `min-p
+  0.05`, `repeat-penalty 1.05`) do NOT reach jobhunt's calls, because the
+  gateway sends every sampler key explicitly — but they govern any key the
+  gateway stops sending.
+- **Context is paired with `MAX_DESC_CHARS`, and the pairing is measured, never
+  estimated.** Real prompt tokens on the longest JD in the backlog run **~23%
+  above a chars/4 estimate**, because dense JD text tokenizes worse than prose.
+  Measured on `lite` (2026-09-15, 74k-char JD truncated to 16000):
 
-  | num_ctx | MAX_DESC_CHARS | score | tailor | cover | tailor + num_predict | headroom | backlog truncated |
+  | ctx-size | MAX_DESC_CHARS | score | tailor | cover | tailor + max_tokens | headroom | backlog truncated |
   |---|---|---|---|---|---|---|---|
-  | 32768 | 16000 | 11633 | 11886 | 10131 | 15982 | 16786 | 9% |
-  | 16384 | 16000 | 11633 | 11886 | 10131 | 15982 | **402** | 9% |
-  | 16384 | 10000 | 9164 | 9417 | 7662 | 13513 | 2871 | 19% |
+  | 32768 | 16000 | 12090 | 12367 | 10618 | 16463 | 16305 | 4% (45/1156) |
 
-  The middle row is why a 16k revert was reverted again on 2026-07-28: 402
-  tokens is not headroom, and the tailor RETRY appends a revisions block, so it
-  grows exactly when things are already failing. The third row buys headroom by
-  truncating twice as much of the backlog. To re-measure after any change, POST
-  the rendered prompts to `/api/chat` with `num_predict: 1` and read
-  `prompt_eval_count`. Overflow is silent and looks like a parser bug.
+  The 2026-07-28 Ollama measurement on the same tokenizer family was about 4%
+  lower (tailor 11886); the gap is profile growth, not the server. A 16384
+  window was trialled then and reverted: it left ~400 tokens of headroom, and
+  the tailor RETRY appends a revisions block, so it grows exactly when things
+  are already failing. To re-measure, POST the rendered prompts to
+  `/v1/chat/completions` with `max_tokens: 1` and read `usage.prompt_tokens`.
+  Overflow is now loud — HTTP 400 `exceed_context_size_error` — rather than
+  a silent truncation that looks like a parser bug.
+- **Score calibration for `lite` (2026-09-15).** A 60-job A/B (15 per stored
+  band: declined / <55 / 55-69 / 70+) scored the same jobs with `qwen3.5:9b` and
+  `lite` under identical prompt, profile, policy and weights. Findings, and what
+  was done about each:
+  - `lite` declined 28/60 against qwen's 18. Cause: `tailoring-rules.md` §8
+    still said "3+ JD must-haves are gaps" and declined Senior titles under 4
+    YoE, contradicting `score.md` (4+ tier-1 gaps; senior titles are IC roles)
+    and the July 2026 decision. qwen followed `score.md`; `lite` quoted the
+    policy verbatim. §8 was aligned to `score.md` → agreement rose to 56/60.
+  - `lite` often lists one requirement both bare and bridged (`C#` and
+    `C# (transferable: TypeScript)`), counting it twice, once as a gap.
+    `score._collapse_bridge_duplicates` now counts it once, at its best
+    verified credit.
+  - The remaining gap is thin snippets (<800 chars), where `lite` computes ~9
+    points lower pre-cap. The raw extractions show that is mostly qwen
+    **inflation**: on 500-char snippets qwen padded must-haves with skills
+    copied from `verified.json` (one intern snippet: 31 "requirements", 88
+    computed) and the thin-JD cap was hiding it (it bound 17× for qwen, 8× for
+    `lite`). On full JDs the two agreed on computed score (49.2 vs 49.2, n=5). The weights,
+    `min_score` and the thin-JD cap were therefore left unchanged: retuning them
+    to reproduce qwen's scale would reward the padding. With a single recorded
+    application there is no outcome data to tune against yet — revisit with
+    `jobhunt config calibrate` once interviews accumulate.
+  - `lite` is deterministic for a fixed scoring order, but llama-server's
+    prompt-prefix cache means one job's extraction can differ depending on
+    which job was scored before it. Expect small run-to-run movement on a
+    re-scan; it is not a regression.
 
 ### Stack
 
@@ -1259,7 +1288,7 @@ paths, model names, or API keys.
 `migrations/`, run by `jobhunt db migrate`. Plain parameterized SQL only.
 
 **LLM calls.** Always go through `jobhunt.gateway`. Never instantiate an
-Ollama or OpenAI client directly elsewhere. The gateway owns model selection,
+llama-server, Ollama, or OpenAI client directly elsewhere. The gateway owns model selection,
 prompt composition, retries, and JSON-schema enforcement.
 
 **Prompts live in `kb/prompts/`** as markdown. Never inline a prompt string
@@ -1324,9 +1353,8 @@ src/jobhunt/
 │   ├── rss_generic.py
 │   └── manual.py              # --url synth, parse_linkedin_paste, build_stub_job
 ├── gateway/
-│   ├── client.py              # complete_json (POST /api/chat with format=schema)
-│   ├── prompts.py             # frontmatter-aware markdown prompt loader
-│   └── warm.py                # pre-loop model warm-up
+│   ├── client.py              # complete_json (POST /v1/chat/completions, json_schema)
+│   └── prompts.py             # frontmatter-aware markdown prompt loader
 ├── analyze/certs.py           # cert keyword extractor + per-job tally
 ├── discover/
 │   ├── slug_candidates.py     # pure name->slug normalizer (agency filter)
@@ -1405,7 +1433,7 @@ a job reference must call the shared resolver, never re-implement the LIKE
 query.
 
 **`analyze` is a deterministic, LLM-free aggregation surface.** Do not add an
-Ollama call to any `analyze` subcommand without explicit discussion. It mirrors
+LLM call to any `analyze` subcommand without explicit discussion. It mirrors
 the audit philosophy: regex plus counters over existing DB rows, no network
 I/O. `analyze certs --min-score N` adds a per-cert `Verdict` from
 `analyze_cmd._classify_verdict`, a rubric frozen in code — tuning it is a code
@@ -1568,51 +1596,55 @@ missing. Fix the resume or the parser first.
 ### LLM call rules
 
 1. **Every structured call uses a JSON schema.**
-   `gateway.client.complete_json(schema=...)` posts to `/api/chat` with
-   `format: <schema>`. No free-form JSON parsing.
+   `gateway.client.complete_json(schema=...)` posts to `/v1/chat/completions`
+   with `response_format: {"type": "json_schema", "json_schema": {"name": ...,
+   "schema": <schema>}}`. No free-form JSON parsing. **The schema must be
+   nested inside `json_schema`.** At the top level of `response_format`,
+   llama-server ignores it with no error and returns unconstrained JSON
+   (verified live 2026-09-15); `tests/test_gateway_errors.py` pins the shape.
    **There is no HTTP-error retry.** `client._post` raises `GatewayError` on
-   any status >= 400, and `complete_json`'s single retry covers invalid JSON
-   only. A server-side fault (a CUDA OOM, a 500) is therefore a hard per-job
-   skip: `scan` logs it and moves on, and the job stays stale. Verified
-   2026-08-29 after an earlier version of this file wrongly claimed such
-   faults "recovered by the gateway's immediate retry" — they do not. If a
-   fault class ever becomes routine, fix the server setting (see the KV-cache
-   note above) or add an explicit 5xx retry; do not assume one exists.
-2. **Reasoning disabled.** The gateway sends `"think": false`. Quality is held
-   by the deterministic post-processing layers (score arithmetic, cover
-   validator plus retry, audit), not by reasoning tokens. If a future task slot
-   needs thinking, plumb it through as a per-call kwarg rather than flipping
-   the default.
-3. **Keep-alive and warm-up.** `keep_alive=-1` in the payload pins the model in
-   VRAM for the duration of a run, and the per-call value is what Ollama uses
-   while a request is in flight. The systemd `OLLAMA_KEEP_ALIVE=0` is the
-   idle fallback once the pipeline stops calling. `gateway.warm` fires a tiny
-   chat before the scoring loop so the first real call does not pay cold-load
-   on top of the 240 s gateway timeout.
-4. **Context length is app-owned.** The gateway pins `num_ctx=32768` in
-   `_DEFAULT_OPTIONS` and sends it on every call. `OLLAMA_CONTEXT_LENGTH` is
-   deliberately unset on this box, Ollama's default is 4096, and the
-   score/tailor prompts run ~6k+ tokens — relying on the server env silently
-   truncated prompts and the model emitted prose instead of schema JSON. The
-   pipelines truncate description to `MAX_DESC_CHARS=16000` and policy to
-   `MAX_POLICY_CHARS=6000`. Those caps were NOT raised with the context bump:
-   32k is headroom, not a reason to feed longer inputs. See the `num_ctx`
-   pairing note under **Hardware and Ollama context** before touching either.
-5. **Options are app-owned.** `_DEFAULT_OPTIONS` pins `num_ctx=32768,
-   num_predict=4096, top_p=0.95, top_k=20, min_p=0, presence_penalty=0` on
-   every call. `presence_penalty=0` drops qwen3.5:9b's `1.5` chat default,
-   which fights the repeated tokens structured JSON needs (field names, the
-   verbatim JD keywords the tailor must echo). `num_predict=4096` is the
-   generation ceiling **and** the safety net for that dropped penalty: on some
-   thin JDs qwen ignores `think=false` and reasons **in-band**, opening a
-   `reasons[]` string and pouring a monologue into it that, uncapped, runs
-   until it exhausts `num_ctx` (measured 2026-05-31 at 16k: ~16k tokens, ~210 s,
-   past the 240 s timeout, hanging the whole scan). The cap bounds this
-   regardless of `num_ctx`, sits above the largest legitimate output (tailor at
-   700 words is ~2.2k tokens), and turns a pathological JD into a fast logged
-   failure instead of a hang. It stops the hang, not the in-band reasoning, so
-   the pathological JD still fails to score. Override per call via
-   `complete_json(options=...)`; the `temperature` kwarg always wins.
+   any status >= 400, and `complete_json`'s single retry covers non-object JSON
+   only. A server-side fault (a CUDA OOM, a 500, a context overflow) is
+   therefore a hard per-job skip: `scan` logs it and moves on, and the job stays
+   stale. If a fault class ever becomes routine, fix the server setting or add
+   an explicit 5xx retry; do not assume one exists. A generation that stops on
+   `finish_reason: "length"` also fails fast without the retry, since a
+   reinforcement cannot shorten a runaway.
+2. **Thinking disabled.** The gateway sends `"chat_template_kwargs":
+   {"enable_thinking": false}`. Quality is held by the deterministic
+   post-processing layers (score arithmetic, cover validator plus retry,
+   audit), not by reasoning tokens. If a future task slot needs thinking, plumb
+   it through as a per-call kwarg rather than flipping the default.
+3. **No keep-alive, no warm-up.** Residency is the router's job: it loads a
+   model on the first request and unloads it after 600 s idle
+   (`sleep-idle-seconds`). A reload takes about a second for `lite`, well
+   inside the 240 s gateway timeout, so there is nothing to pre-warm. Do not
+   reintroduce `keep_alive` or a warm-up call.
+4. **Context length is server-owned.** The router preset fixes `ctx-size =
+   32768` per model; it cannot be set per request, and the gateway sends no
+   context key. An oversized prompt returns HTTP 400
+   `exceed_context_size_error`, which surfaces as a `GatewayError` naming that
+   type — loud, not a silent truncation. The pipelines still truncate
+   description to `MAX_DESC_CHARS=16000` and policy to
+   `MAX_POLICY_CHARS=6000` so real prompts fit. See the context pairing note
+   under **Hardware and model server context** before touching either.
+5. **Sampler settings are app-owned.** `_DEFAULT_OPTIONS` pins
+   `max_tokens=4096, top_p=0.95, top_k=20, min_p=0, presence_penalty=0,
+   repeat_penalty=1.0` on every call. All of these were verified on 2026-09-15
+   to take effect per request (`GET /slots?model=lite` reports the values a
+   slot actually used) and to revert to the preset when omitted — so **a key
+   left out is not neutral**: the router preset (`top-k 40`, `min-p 0.05`,
+   `repeat-penalty 1.05`) governs instead. Both penalties are off because they
+   fight the repeated tokens structured JSON needs (field names, the verbatim
+   JD keywords the tailor must echo). `max_tokens=4096` is the generation
+   ceiling: on some thin JDs Qwen3.5-9B ignores the no-thinking instruction and
+   reasons **in-band**, opening a `reasons[]` string and pouring a monologue
+   into it (measured 2026-05-31: ~16k tokens, ~210 s, hanging the scan). The
+   cap sits above the largest legitimate output (tailor at 700 words is ~2.2k
+   tokens) and turns a pathological JD into a fast logged failure. It stops the
+   hang, not the in-band reasoning, so that JD still fails to score. Override
+   per call via `complete_json(options=...)`; the `temperature` kwarg always
+   wins.
 6. **Default temperatures** live in prompt frontmatter: scoring 0.0, tailoring
    0.3, cover letters 0.7. The cover prompt is tuned around that wider
    latitude — do not drop it to 0.5 without re-tuning the anti-pattern rules.
@@ -1787,7 +1819,7 @@ must NOT migrate: it selects `NULL AS breakdown` when the column is absent.
 ### Post-generation audit rules
 
 After `tailor_resume` and `write_cover`, `pipeline.audit.audit()` runs before
-the .docx render. It is **deterministic and LLM-free** — do not add an Ollama
+the .docx render. It is **deterministic and LLM-free** — do not add an LLM
 call to it without explicit discussion.
 
 1. **Keyword coverage.** JD must-haves (from the score result) must appear in
@@ -1987,10 +2019,10 @@ call to it without explicit discussion.
 
 ### Testing
 
-- `pytest -q` is the gate. **No live HTTP or Ollama calls in the test suite.**
+- `pytest -q` is the gate. **No live HTTP or model calls in the test suite.**
 - Pure helpers (`_filter`, `parse_docx`, `render_docx` page-fit, db upserts,
   tailor invariants, keyword matching) are unit-tested directly.
-- Pipeline integration against real Ollama is manual and not in CI. Run it by
+- Pipeline integration against the real llama-server is manual and not in CI. Run it by
   hand after prompt changes.
 - Browser autofill is manual. Run `apply --no-browser` first to verify the
   documents, then re-run with the browser.
@@ -2019,5 +2051,5 @@ Beyond the tier 0 absolutes above, these are project-level hard stops:
 Repo-local read-only and verification commands remain the agent's own job,
 because verification has to be first-hand: `pytest`, `ruff`, `mypy`, read-only
 `git`, queries against `data/jobhunt.db`, and `jobhunt` CLI runs including ones
-that hit Ollama or regenerate `kb/profile/`. Claiming a result without running
+that hit the local model or regenerate `kb/profile/`. Claiming a result without running
 it is worse than not claiming it.

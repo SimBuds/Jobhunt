@@ -14,7 +14,7 @@ violates no rule.
 
 This module measures retention: of the figures the verified profile makes
 available for a role, how many survived into the tailored bullets. Deterministic
-regex + counters, matching `pipeline.audit`. No Ollama call belongs here.
+regex + counters, matching `pipeline.audit`. No LLM call belongs here.
 """
 
 from __future__ import annotations
