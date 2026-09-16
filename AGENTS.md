@@ -1491,7 +1491,7 @@ jobhunt setup                # first-run wizard: db init + convert-resume +
 jobhunt convert-resume       # parse baseline .docx -> kb/profile/
 jobhunt scan                 # ingest jobs + score
 jobhunt apply <job-id>       # tailor + cover + autofill (the human submits)
-jobhunt apply --top N        # auto-pick N best-fit unapplied (1..10)
+jobhunt apply --top N        # auto-pick N best-fit unapplied (1..20)
 jobhunt apply --best         # interactive picker over top 10
 jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt add <URL>            # parse URL -> write ATS slug to config.toml
