@@ -1272,6 +1272,8 @@ Beyond the four pillars, these project docs are load-bearing:
   drive `jobhunt resume`.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is
   maintained.
+- `Instructions.md`: an end-to-end walkthrough of the app in the order the
+  code runs, from first run to a tracked application.
 - `kb/seeds/gta-employers.toml` — curated verified ATS slugs imported by
   `jobhunt config seed --apply`. Edit via `scripts/verify_seeds.py`, never
   hand-add unverified entries.
@@ -1660,8 +1662,7 @@ missing. Fix the resume or the parser first.
    - **Senior titles** (`is_senior_title`), gated by
      `cfg.applicant.include_senior_roles` (default True). Independent of
      `applicant.years_experience`, which feeds the score prompt, not the
-     filter. (Note: the docstring near `_MANAGEMENT_TITLE_RE` still describes
-     an older YoE gate — `scan_cmd` reads `include_senior_roles`.)
+     filter.
    - **Freshness window** (`is_within_age_window`) — `cfg.ingest.max_age_days`
      (default 7), CLI override `--max-age-days`, 0 disables. The Workday
      adapter parses `postedOn` prose into a timestamp so its rows respect the
@@ -1780,7 +1781,8 @@ the list with soft asks deflates the score.
 
 The coefficients are `[pipeline] score_base` (30), `score_tier1_weight` (50),
 `score_tier2_weight` (10), `score_ai_bonus` (5), `score_transferable_credit`
-(0.7), `senior_score_cap` (45), and `junior_score_bonus` (5). They resolve once
+(0.7), `senior_score_cap` (60 in code, 45 in the live config), and
+`junior_score_bonus` (5). They resolve once
 per call into `score.ScoreWeights` and are threaded explicitly through
 `_phrase_credit` / `_verify_tier` / `_compute_score` — never read from module
 globals, so a score is reproducible from its inputs alone. The module-level
@@ -1799,12 +1801,14 @@ Every cap only lowers.
   Applied **before** every ceiling, so it lifts ranking within the band without
   letting a thin JD or a Familiar-only fit escape its cap. These roles were
   ranking below senior postings because nothing rewarded the band.
-- **Senior cap (45, below `min_score`)**, unconditional on senior titles. It
+- **Senior cap (code default 60, live config 45, below `min_score`)**,
+  unconditional on senior titles. It
   started as a conditional ceiling that was unreachable (across the 650-score
   backlog it fired 0 times on 62 undeclined senior-titled roles, and senior
   titles carried a higher median, 60, than explicit junior/mid ones, 50 — the
   opposite of the intent), then became an unconditional 60. **Lowered to 45 on
-  2026-08-29**: at 3 YoE the candidate is junior/intermediate and does not want
+  2026-08-29** in `config.toml` (the code default in `config.py` and
+  `SCORE_SENIOR_CAP` is still 60): at 3 YoE the candidate is junior/intermediate and does not want
   senior roles surfaced at all, and 60 sat *above* `min_score` so they stayed
   in the queue. 51% of the backlog is senior-titled, so this is the difference
   between half the queue being off-target and none of it. Verified on a 100-job
@@ -1845,22 +1849,26 @@ Every cap only lowers.
   prose goes stale silently. Word-boundary matching is used so "Java" does not
   match the "JavaScript" substring.
 
-  **`skills_familiar` is empty as of 2026-08-24, by choice.** The tier was
-  removed from the baseline resume because Familiar entries (Java, Spring Boot,
-  Angular) were matching lower-priority roles and diluting focus onto skills
-  the candidate does not have in production. Two consequences. First, this cap
-  is currently **inert** — `_all_matched_are_familiar` cannot return True
-  against an empty bucket — so do not rely on it as protection today; it
-  reactivates automatically if a Familiar tier ever returns. Second,
-  qwen3.5:9b still emits the prompt's Familiar decline string from memory even
-  though the premise is now impossible, and the title-gated nullification
+  **`skills_familiar` was emptied on 2026-08-24 and has since been
+  repopulated** (5 items in `verified.json` on 2026-09-16), so this cap is
+  active again. The tier had been removed from the baseline resume because
+  Familiar entries (Java, Spring Boot, Angular) were matching lower-priority
+  roles and diluting focus onto skills the candidate does not have in
+  production. While the bucket was empty the cap was inert, because
+  `_all_matched_are_familiar` cannot return True against an empty bucket. Also
+  during that period, qwen3.5:9b kept emitting the prompt's Familiar decline
+  string from memory although the premise was impossible, and the title-gated
+  nullification
   exempted senior titles, so real targets were being declined on a phantom
   rationale (measured: 4 of 12 on a probe, including "Senior Generative AI
   Software Engineer"). `score.py` now nullifies **any** Familiar decline when
   the bucket is empty, regardless of title, and `kb/prompts/score.md` states
   that an empty list means the rule cannot apply. Both are keyed on the bucket
   being empty rather than on the tier being gone, so nothing needs re-editing
-  if it comes back.
+  if it comes back. With the bucket populated, a Familiar decline on a senior
+  title is also nullified unless every matched phrase really is Familiar
+  (`lite` had declined "Senior AI Engineer" this way although AI tooling is
+  Core). A genuine case is re-derived by the deterministic cap.
 
 - **Pure-tenure asks never enter the denominator** (2026-08-29).
   `score._is_pure_tenure_ask` drops extracted requirements that ask only for

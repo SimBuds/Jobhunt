@@ -154,10 +154,11 @@ For each job, `pipeline/score.py:score_job`:
    junior title adds 5.
 6. Applies caps. Caps can only lower the score:
    - **Thin JD** (under 800 chars): capped at 70.
-   - **Senior title:** capped at 45, below `min_score`, so senior roles stay
-     in the DB but never reach the queue.
+   - **Senior title:** capped at `senior_score_cap` (default 60). The live
+     config sets 45, below `min_score`, so senior roles stay in the DB but
+     never reach the queue.
    - **Familiar-only fit:** 54 plus a decline for senior titles, 58 for others.
-     This cap does nothing while `skills_familiar` is empty.
+     This cap applies only when `skills_familiar` has items.
 7. Clears declines the evidence does not support (`_decline_guards`): a
    Senior-band decline on a junior title, a Familiar decline against an empty
    bucket, and years or management declines that the JD text does not

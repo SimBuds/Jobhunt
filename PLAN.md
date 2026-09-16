@@ -28,8 +28,10 @@ guardrails, project structure). `README.md` is for end-users.
    auto-declines roles whose required years exceed the candidate's by more
    than three (absent a transferable bridge) and people-management titles
    (Manager / Director / Head of / VP). Senior-band titles are scored, not
-   declined (July 2026): IC-coding-heavy senior JDs land in the 55–70 band
-   under 4 YoE, 60–85 at 4+. Honesty applies to the *artifacts* — the resume
+   declined (July 2026). Their final score is capped at
+   `pipeline.senior_score_cap` (default 60). The live config sets 45, below
+   `min_score`, so senior postings stay searchable but never reach the ranked
+   queue (August 2026). Honesty applies to the *artifacts* — the resume
    and cover can never claim beyond verified facts — while scoring
    visibility is deliberately wider than it was.
 
@@ -162,6 +164,8 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
   `analyze funnel` and `analyze response-rate --by channel`. Channel is an
   application property, not a job property — a scanned Greenhouse job can
   still be applied to via LinkedIn Easy Apply.
+- `0010_score_breakdown.sql`: adds the nullable `scores.breakdown` JSON
+  column. See "Score breakdowns" under honesty enforcement item 4.
 
 ## Honesty enforcement (the structural part)
 
@@ -236,7 +240,8 @@ in eight places, not just the prompt:
    output followed by a single error line, which reads as a hang rather than
    as work in progress. This is what made the July 2026 empty-`skills_familiar`
    failure look like a freeze. Per-attempt progress output in `apply_cmd` is
-   the fix and is not yet implemented.
+   the fix and is not yet implemented. `apply` does now print the attempt
+   count (`tailor: N attempts`), but only after the loop has finished.
 4. **Deterministic score (rewritten July 2026).** The LLM does not pick the
    number. It extracts the posting's requirements into two tiers
    (`must_haves` = hard requirements, `nice_to_haves` = wish list),
@@ -274,7 +279,8 @@ in eight places, not just the prompt:
 
    The five coefficients live in `[pipeline]` as `score_base`,
    `score_tier1_weight`, `score_tier2_weight`, `score_ai_bonus` and
-   `score_transferable_credit`, and all five feed `prompt_hash`, so tuning any
+   `score_transferable_credit`. All five, plus `senior_score_cap`,
+   `junior_score_bonus` and the score model, feed `prompt_hash`, so tuning any
    of them re-scores the backlog on the next `scan`. That is the point: scores
    computed under different weights are not comparable, and a queue sorted on
    two scales at once is worse than one that costs a re-scan to correct.
