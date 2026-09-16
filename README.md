@@ -25,28 +25,27 @@ without scraping — paste the posting, tag the channel — and
 ## What it looks like
 
 ```
-$ jobhunt list
-ready to apply: 19  |  drafted, not submitted: 0  |  no reply >14d: 0
+$ jobhunt list --limit 3
+ready to apply: 48  |  drafted, not submitted: 1  |  no reply >14d: 0
+  → `list --drafted`
 
-showing 10 job(s)
-  [ 82] [—            ] Software Developer, AI Platform Foundations @ wealthsimple
-           ashby | Remote (Canada) | ashby:wealthsimple:a04d491e-d747-4ad8-ab7f-82e9cd39089e
-           https://jobs.ashbyhq.com/wealthsimple/a04d491e-d747-4ad8-ab7f-82e9cd39089e
-  [ 82] [—            ] Product Engineer - Retailer Experience & Growth @ faire
-           greenhouse | Kitchener-Waterloo, ON; Toronto, ON | greenhouse:faire:8603123002
-           https://boards.greenhouse.io/faire/jobs/8603123002?gh_jid=8603123002
-  [ 64] [—            ] Senior Software Developer, Brokerage @ wealthsimple
-           ashby | Toronto Headquarters | ashby:wealthsimple:fec01150-fed6-4158-9e94-e59328d79533
-           https://jobs.ashbyhq.com/wealthsimple/fec01150-fed6-4158-9e94-e59328d79533
-  [ 58] [—            ] Observability Architect @ geotab
-           greenhouse | Remote - Canada | greenhouse:geotab:5281780008
-           https://job-boards.greenhouse.io/geotab/jobs/5281780008
+showing 3 job(s)
+  [ 70] [drafted      ] CRM specialist program/website developer @ VDI Networks  revise  cov=60%
+           adzuna_ca | Stoney Creek, Hamilton region | adzuna_ca:5884554418
+           https://www.adzuna.ca/details/5884554418
+  [ 76] [—            ] Software Developer  @ geotab
+           greenhouse | Oakville, Ontario - Canada | greenhouse:geotab:5386820008
+           https://job-boards.greenhouse.io/geotab/jobs/5386820008
+  [ 70] [—            ] JavaScript Developer @ Turing
+           adzuna_ca | North York, Toronto | adzuna_ca:5885854056
+           https://www.adzuna.ca/details/5885854056
 
-2026-W31: | scanned=72 | declined=41 | drafted=0 | applied=0 | interviewing=0 | offer=0 | rejected=0 | withdrawn=0
+2026-W38: | scanned=342 | declined=158 | drafted=1 | applied=0 | interviewing=0 | offer=0 | rejected=0 | withdrawn=1
 ```
 
-The bracketed number is the fit score; the second bracket is application
-status. The weekly funnel line is the same data `jobhunt analyze funnel`
+The bracketed number is the fit score and the second bracket is the
+application status. A drafted row also shows its audit verdict and keyword
+coverage. Adzuna tracking parameters are trimmed from the URLs above. The weekly funnel line is the same data `jobhunt analyze funnel`
 breaks down by channel.
 
 ## Architecture
@@ -91,7 +90,7 @@ the router preset.
 ## Honesty enforcement
 
 The hard problem in a resume generator isn't fluency — it's stopping the model
-from inventing experience. Six mechanisms, all structural rather than
+from inventing experience. Eight mechanisms, all structural rather than
 prompt-based, so none of them depend on the model choosing to comply:
 
 1. **Verified-snapshot constraint.** Generation reads from a verified profile
@@ -116,6 +115,13 @@ prompt-based, so none of them depend on the model choosing to comply:
 6. **Resume↔cover alignment.** `pipeline.audit._alignment_flags` cross-checks
    the two generated documents against each other, catching claims that are
    individually valid but mutually inconsistent.
+7. **Untrusted-JD scrub and hidden-text guard.** `pipeline._untrusted` deletes
+   invisible characters from every job description and redacts text aimed at
+   the model before it reaches a prompt. The audit runs the same check on the
+   finished resume and cover, and a hit there blocks the job.
+8. **Specificity retention.** `pipeline._specificity` checks how many of the
+   profile's quantified figures survived tailoring. Below 40%, or when a role
+   with figures kept none, the verdict is `revise`.
 
 The eval harness carries an off-lane control fixture that is *supposed* to
 decline at the score stage (`scripts/eval_tailor.py`). A run that produces
@@ -175,6 +181,7 @@ parallel = 1                ; one slot per model — matches the sequential pipe
 flash-attn = on
 cache-type-k = q4_0         ; quantized KV cache keeps the model 100% GPU-resident on a 10 GB card
 cache-type-v = q4_0
+fit = off                   ; offload pinned per model, so runs are repeatable
 sleep-idle-seconds = 600    ; unload after 10 idle minutes; the next request reloads it
 
 [lite]
@@ -312,7 +319,7 @@ the full option list. The commands below are the ones you usually need.
 | `convert-resume` | Rebuild `kb/profile/` from the baseline resume | `jobhunt convert-resume` |
 | `discover slugs` | Legacy slug discovery over past scan rows | `jobhunt discover slugs` |
 
-Hidden maintenance groups are still callable:
+The `config` and `db` maintenance groups:
 
 ```bash
 jobhunt config show
@@ -456,6 +463,9 @@ answer_max_words      = 200  # `answer` default word cap
 min_score             = 55   # apply / list default floor
 thin_jd_score_cap     = 70   # confidence ceiling for signal-poor (short) JDs
 thin_jd_chars         = 800  # a JD shorter than this is treated as signal-poor
+senior_score_cap      = 60   # ceiling for senior titles. Set below min_score
+                             # (e.g. 45) to keep them out of the ranked queue
+junior_score_bonus    = 5    # added for explicit junior/mid/intern titles
 
 # Score weights. The model extracts the posting's requirements into two tiers
 # (hard requirements vs wish list) and the score is computed from how many
@@ -470,7 +480,8 @@ thin_jd_chars         = 800  # a JD shorter than this is treated as signal-poor
 # its weight into tier-1, so a posting can't score higher for omitting one.
 # Defaults: perfect fit + AI bonus = 95, full core stack with wish-list gaps
 # = 80, half the hard requirements = 60, nothing matched = 30.
-# All five feed the score prompt hash, so changing one re-scores the backlog
+# These five, plus senior_score_cap and junior_score_bonus, feed the score
+# prompt hash, so changing one re-scores the backlog
 # on the next `scan` — deliberate, since old scores are otherwise incomparable.
 score_base                = 30
 score_tier1_weight        = 50
@@ -582,6 +593,8 @@ convention.
   checkboxes, current state. **Untracked** (`.gitignore`) — it is a working
   file for whoever is mid-task, not part of a clone. A fresh checkout has no
   `IMPLEMENT.md`; the next agent to plan work creates one.
+- [Instructions.md](Instructions.md): end-to-end walkthrough of the app in
+  the order the code runs.
 - [kb/policies/authoring.md](kb/policies/authoring.md): agent-facing resume
   authoring policy — inputs to demand, the tailoring workflow, what may be
   adjusted, the pre-delivery pitfall audit. Not prompt-injected.
@@ -589,7 +602,7 @@ convention.
 - [kb/policies/tailoring-rules.md](kb/policies/tailoring-rules.md):
   prompt-injectable mirror of the tailoring rules.
 
-The six honesty-enforcement mechanisms are summarized under
+The eight honesty-enforcement mechanisms are summarized under
 [Honesty enforcement](#honesty-enforcement) above. See [AGENTS.md](AGENTS.md)
 LLM call rules and Post-generation audit rules for the full mechanism, and
 [PLAN.md](PLAN.md) for the rationale behind each layer.
