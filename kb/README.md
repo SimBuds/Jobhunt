@@ -27,9 +27,11 @@ humans edit `policies/`.
     data; facts come from `profile/verified.json`.
 - `prompts/`: task prompts loaded by the gateway. Frontmatter declares model,
   temperature, and JSON schema.
-- `lanes/`: hand-edited pseudo-JD briefs (`ai-automation.md`,
-  `cms-ecommerce.md`) that `jobhunt resume --focus
-  ai|cms|all` tailors the base resumes against. Same fabrication checks as
+- `lanes/`: one hand-edited pseudo-JD brief per lane, currently
+  `ai-automation.md`, `cms-ecommerce.md` and `seo-technical.md`. Lanes are
+  discovered from this directory by `resume_cmd.discover_lanes`, so adding a
+  brief adds a `--focus` key (the slug's first segment) with no code change.
+  `jobhunt resume --focus <key>|all` tailors the base resumes against them. Same fabrication checks as
   real applications; output lands in `data/resumes/`.
 - `seeds/`: curated cold-start data.
   - `gta-employers.toml`: verified ATS slugs imported by

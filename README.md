@@ -200,7 +200,8 @@ gateway sends its own on every request.
 The day-to-day is **scan → list → apply**. Everything else is occasional. Drop
 your baseline resume in the repo root before the first run — any root-level
 `.docx` with "resume" in the filename is picked up, so `Baseline_Resume.docx`
-and `Jane_Dev_Resume.docx` both work. The search is non-recursive on purpose,
+and `Jane_Dev_Resume.docx` both work. Put "baseline" in the name when the root
+also holds tailored copies, because that is what wins the tie. The search is non-recursive on purpose,
 so a generated copy under `data/` can never become its own source. Pass
 `--docx <path>` to override. This README covers the common path. Use
 `jobhunt --help` and `jobhunt <command> --help` for the full flag reference.
@@ -530,14 +531,14 @@ adzuna_app_key = "..."
 
 | Path | What lives there |
 |---|---|
-| `*Resume*.docx` | Source-of-truth resume. Hand-edited. Any root-level `.docx` with "resume" in the name is found automatically; a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
+| `Casey_Hsu_Baseline_Resume.docx` | Source-of-truth resume. Hand-edited, and the two-page fact store everything else is generated from. Any root-level `.docx` with "resume" in the name is found automatically, a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
 | `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |
 | `kb/policies/authoring.md` | Agent-facing resume-authoring policy. Not injected. |
 | `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
 | `kb/profile/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
-| `kb/lanes/{ai-automation,cms-ecommerce}.md` | Pseudo-JD briefs for `jobhunt resume` lane base resumes. |
+| `kb/lanes/*.md` | One pseudo-JD brief per lane, discovered at runtime. Currently AI automation, CMS and e-commerce, technical SEO. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
 | `~/.config/jobhunt/config.toml` | Sources, models, applicant profile, paths. |
 | `~/.config/jobhunt/secrets.toml` | API keys (Adzuna), mode 0600. |
