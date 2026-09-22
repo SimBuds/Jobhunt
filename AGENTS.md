@@ -1268,8 +1268,11 @@ Beyond the four pillars, these project docs are load-bearing:
   `education.md`, `projects.md`). Hand-authored `verified-notes.md` and
   `work-long-form.md` are gitignored agent-reference only and are never fed
   to the tailor.
-- `kb/lanes/*.md` — lane briefs (`ai-automation.md`, `cms-ecommerce.md`) that
-  drive `jobhunt resume`.
+- `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
+  `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
+  on disk (currently AI automation, CMS and e-commerce, technical SEO) and is
+  never hardcoded. Adding a brief adds its `--focus` key and brings it under
+  `scripts/audit_lane_resumes.py`.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is
   maintained.
 - `Instructions.md`: an end-to-end walkthrough of the app in the order the
