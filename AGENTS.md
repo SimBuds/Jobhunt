@@ -2077,6 +2077,14 @@ call to it without explicit discussion.
    to `revise`. It exits 0/1/2 for ship/revise/block, so it works as a
    pre-commit or CI gate. Coverage of 100% there means the lane profile is
    satisfied, not that an arbitrary posting in that lane would be.
+   **Lane coverage saturates, so do not read it as a resume grade.**
+   `_extract_must_haves_from_jd` can only extract a must-have that is already
+   in `verified.json`, so an ask the brief makes and the profile cannot meet
+   is invisible rather than scored. All three lanes measured 100% on
+   2026-09-22 while their briefs named FastAPI, Redis and MongoDB, none of
+   which the profile claims. The number also cannot see evidence depth: a
+   render with one bullet per role scores the same as one with three, because
+   the must-haves it matches live in the skills rows.
 
 5. **Fabrication re-check.** `_enforce_no_fabrication` runs again on the
    tailored resume post-decode. Verdict `block` on any failure.
@@ -2100,6 +2108,20 @@ call to it without explicit discussion.
    4. Drop the coursework block.
    Still overflowing after step 4 raises `PipelineError`, and the human is
    expected to tighten the bullets at the .docx source.
+   **What this costs a lane render, measured on all three lanes 2026-09-22.**
+   Step 3 runs until every role holds one bullet and only one project
+   survives. Which bullet survives is decided by the model, not by the ladder:
+   `_try_drop_weakest_bullet` pops the LAST bullet of the highest-line-cost
+   role, so each role keeps whatever bullet `_tailor_once` emitted first. On
+   the AI lane that was a Shopify storefront bullet rather than the LLM
+   pipeline bullet, so the lane's own evidence was the thing that got cut.
+   Two of the three renders also carried no education line, because the model
+   returned `education: []` against rule 5 of `kb/prompts/tailor.md` and
+   folded the diploma into the summary instead. A hand pass fit
+   two bullets per role, two projects and the education line inside the same
+   46-line budget, so the content exists and what spends it is bullet length
+   plus the order the model chose. Judge any change here against that
+   comparison, not against whether the render still fits.
 9. **JD surface-form discipline** (`kb/prompts/tailor.md` rule 9). Tailored
    bullets and skill items MUST use the JD's exact substring form for tech
    keywords when that form maps to a verified fact (JD "Postgres" stays

@@ -125,9 +125,11 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     tailored = _parse(raw, model)
     _enforce_no_fabrication(tailored, verified)
     _dedupe_education(tailored)
+    _ensure_education(tailored, verified)
     _complete_familiar_bucket(tailored, verified)
     _ensure_jd_required_skills(tailored, verified, job)
     _cap_lead_category_size(tailored)
+    _order_bullets_by_jd(tailored, job, verified)
     _shrink_to_one_page(tailored)
     return tailored
 
@@ -477,6 +479,86 @@ def _dedupe_education(tailored: TailoredResume) -> None:
             continue
         cleaned.append(line)
     tailored.education = cleaned
+
+
+def _significant_tokens(text: str) -> set[str]:
+    """Content-bearing tokens for JD-overlap ranking.
+
+    Reuses `_keywords`' tokenizer and stopword list so ranking splits words the
+    same way `phrase_present` does. The length floor drops short connectives
+    the stopword list does not carry.
+    """
+    from jobhunt.pipeline._keywords import _STOPWORDS, _TOKEN_RE
+
+    return {
+        t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS and len(t) >= 4
+    }
+
+
+def _order_bullets_by_jd(
+    tailored: TailoredResume, job: Job, verified: dict[str, Any]
+) -> None:
+    """Lead each role with the bullet carrying the most JD-named verified skills.
+
+    `_shrink_to_one_page` keeps each role's lead bullet and pops from the end,
+    so on a squeezed page the model's emission order decides what survives. On
+    the 2026-09-22 AI-automation lane it emitted a Shopify storefront bullet
+    ahead of the LLM content pipeline bullet, and the ladder cut the pipeline
+    bullet: the one thing that lane exists to show.
+
+    Ranking is by distinct JD token overlap, reusing `_keywords`' tokenizer and
+    stopword list. Ranking by verified skills named in the bullet was built
+    first and failed the live check (2026-09-23): the pipeline bullet describes
+    its work in prose and names no verified skill, scoring 0, while an SEO
+    bullet spelling out `JSON-LD structured data` won the AI lane on a
+    nice-to-have. Token overlap picks the intended bullet on all three lanes
+    (AI the pipeline bullet, CMS the storefront, SEO the migration), and a
+    blended 3*skills+tokens score ties the AI lane and loses it to the stable
+    sort, so the skill weighting is not blended back in. Known bias: a longer
+    bullet has more chances to intersect the JD.
+
+    The sort is stable, so bullets the JD does not distinguish keep the order
+    the model chose, and it only permutes: no bullet is added, dropped or
+    rewritten.
+    """
+    jd_tokens = _significant_tokens(f"{job.title or ''} {job.description or ''}")
+    if not jd_tokens:
+        return
+    for role in tailored.roles:
+        if len(role.bullets) < 2:
+            continue
+        role.bullets.sort(key=lambda b: -len(_significant_tokens(b) & jd_tokens))
+
+
+def _ensure_education(tailored: TailoredResume, verified: dict[str, Any]) -> None:
+    """Re-insert the credential when the model returned no education entry.
+
+    `kb/prompts/tailor.md` rule 5 requires exactly one entry, but the model can
+    skip the field and fold the credential into the summary instead: the
+    2026-09-22 AI-automation lane shipped `education: []`, and two of three
+    lane renders reached the .docx with no degree line. Mirrors
+    `_ensure_jd_required_skills` — deterministic, and honest by construction
+    because the line is copied from `verified.json`, never composed.
+
+    Only a degree-bearing entry is eligible. `verified.education` also holds the
+    'Coursework: …' and 'Capstone: …' lines, which `render_docx` renders from
+    their own fields. The honours clause is dropped from the copy, since
+    `_dedupe_education` strips any education line naming Dean's List (the
+    rendered coursework paragraph already carries it).
+    """
+    if tailored.education:
+        return
+    for entry in verified.get("education", []) or []:
+        if not isinstance(entry, str) or not entry.strip():
+            continue
+        low = entry.strip().lower()
+        if low.startswith("coursework") or low.startswith("capstone"):
+            continue
+        parts = [p.strip() for p in entry.split("|") if "dean" not in p.lower()]
+        line = " | ".join(p for p in parts if p)
+        if line:
+            tailored.education = [line]
+        return
 
 
 def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
