@@ -842,3 +842,235 @@ class TestTwoLineLayout:
             ("Frontend Developer", "Acme Inc", ["Built the thing."]),
             ("", "Freelance — Web Projects", ["Shipped sites."]),
         ]
+
+
+def test_tools_row_lands_in_data_devops(tmp_path: Path):
+    """Q-F (2026-11-01): a "Tools:" row is infrastructure (Git, Docker,
+    Linux), not AI tooling. The old alias filed it under AI & Tooling, which
+    left Data & DevOps empty and tripped convert-resume's bucket guard."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    doc.add_paragraph("Toronto, ON  |  jane@example.com")
+    doc.add_paragraph("Skills")
+    doc.add_paragraph("Tools: Git, Docker, Linux")
+    path = tmp_path / "r.docx"
+    doc.save(path)
+
+    facts, warnings = parse_baseline(path)
+    assert facts.skills_data_devops == ["Git", "Docker", "Linux"]
+    assert facts.skills_ai == []
+    assert warnings == []
+
+
+class TestSupplement:
+    """`supplement.toml` adds what the resume cannot carry, under Casey's
+    rules (2026-10-24 and 2026-11-01): projects with a traceable `source`,
+    employment type keyed by the employer as the resume writes it, and moves
+    of skills already on the resume into Core. It may never add a skill the
+    resume does not list, and the resume wins any conflict."""
+
+    @staticmethod
+    def _facts():
+        from jobhunt.resume.parse_docx import Role, VerifiedFacts
+
+        return VerifiedFacts(
+            name="Jane Dev",
+            contact_line="",
+            summary="",
+            skills_core=[],
+            skills_cms=["Shopify (Liquid)", "JavaScript", "React"],
+            skills_data_devops=["Git", "Docker"],
+            skills_ai=["llama.cpp", "Python"],
+            skills_projects=[],
+            skills_familiar=["Java"],
+            work_history=[
+                Role(
+                    "Web Developer", "Acme Corp, Toronto, ON", "Apr 2023 – Present", ["Built it."]
+                ),
+                Role("Line Cook", "Example Bistro", "Feb 2012 – Nov 2018", []),
+            ],
+            certifications=[],
+            education=[],
+            coursework_baseline=[],
+            projects=[],
+        )
+
+    @staticmethod
+    def _write(tmp_path: Path, text: str) -> Path:
+        path = tmp_path / "supplement.toml"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def _apply(self, tmp_path: Path, text: str):
+        from jobhunt.resume.parse_docx import apply_supplement
+
+        facts = self._facts()
+        apply_supplement(facts, self._write(tmp_path, text))
+        return facts
+
+    def _rejects(self, tmp_path: Path, text: str, *needles: str) -> None:
+        from jobhunt.errors import ConfigError
+        from jobhunt.resume.parse_docx import apply_supplement
+
+        with pytest.raises(ConfigError) as exc:
+            apply_supplement(self._facts(), self._write(tmp_path, text))
+        for needle in needles:
+            assert needle in str(exc.value)
+
+    def test_missing_file_changes_nothing(self, tmp_path: Path):
+        from dataclasses import asdict
+
+        from jobhunt.resume.parse_docx import apply_supplement
+
+        facts = self._facts()
+        apply_supplement(facts, tmp_path / "supplement.toml")
+        assert asdict(facts) == asdict(self._facts())
+
+    def test_core_move_takes_the_skill_out_of_its_resume_row(self, tmp_path: Path):
+        facts = self._apply(
+            tmp_path,
+            '[[core]]\nskill = "JavaScript"\nsource = "Web/CMS"\n'
+            '[[core]]\nskill = "Python"\nsource = "AI Automation"\n',
+        )
+        assert facts.skills_core == ["JavaScript", "Python"]
+        assert facts.skills_cms == ["Shopify (Liquid)", "React"]
+        assert facts.skills_ai == ["llama.cpp"]
+
+    def test_core_move_of_an_unlisted_skill_is_refused(self, tmp_path: Path):
+        self._rejects(
+            tmp_path,
+            '[[core]]\nskill = "Next.js"\nsource = "stack.ts"\n',
+            "Next.js",
+            "not on the resume",
+        )
+
+    def test_core_move_needs_a_source(self, tmp_path: Path):
+        self._rejects(tmp_path, '[[core]]\nskill = "React"\n', "source")
+
+    def test_core_move_cannot_promote_a_familiar_skill(self, tmp_path: Path):
+        self._rejects(
+            tmp_path, '[[core]]\nskill = "Java"\nsource = "Familiar"\n', "Java", "Familiar"
+        )
+
+    def test_employment_type_matches_the_employer_as_the_resume_writes_it(
+        self, tmp_path: Path
+    ):
+        facts = self._apply(tmp_path, '[employment_type]\n"Acme Corp" = "part-time"\n')
+        assert facts.work_history[0].employment_type == "part-time"
+        assert facts.work_history[1].employment_type is None
+
+    def test_employment_type_for_an_unknown_employer_lists_the_names(
+        self, tmp_path: Path
+    ):
+        self._rejects(
+            tmp_path,
+            '[employment_type]\n"Acme" = "part-time"\n',
+            "'Acme'",
+            "Acme Corp",
+            "Example Bistro",
+        )
+
+    def test_employment_type_value_is_validated(self, tmp_path: Path):
+        self._rejects(
+            tmp_path, '[employment_type]\n"Acme Corp" = "parttime"\n', "parttime", "part-time"
+        )
+
+    def test_project_needs_a_source(self, tmp_path: Path):
+        self._rejects(
+            tmp_path,
+            '[[projects]]\nname = "Alpha"\nurl = "example.com"\n'
+            'stack = ["Python"]\nbullets = ["Built a CLI."]\n',
+            "Alpha",
+            "source",
+        )
+
+    def test_project_lands_with_its_source_and_stack(self, tmp_path: Path):
+        facts = self._apply(
+            tmp_path,
+            '[[projects]]\nname = "Alpha"\nurl = "example.com"\n'
+            'stack = ["Python", "Docker"]\nbullets = ["Built a CLI."]\n'
+            'source = "alpha/README.md"\n',
+        )
+        [project] = facts.projects
+        assert (project.name, project.source, project.bullets) == (
+            "Alpha",
+            "alpha/README.md",
+            ["Built a CLI."],
+        )
+        assert facts.skills_projects == ["Python", "Docker"]
+
+    def test_project_stack_item_not_on_the_resume_is_refused(self, tmp_path: Path):
+        """Q-L (2026-11-01): a project stack feeds `skills_projects`, which the
+        tailor may claim, so it is held to the same rule as Core moves."""
+        self._rejects(
+            tmp_path,
+            '[[projects]]\nname = "Alpha"\nstack = ["Python", "Astro"]\n'
+            'bullets = ["Built a site."]\nsource = "now.ts"\n',
+            "Astro",
+            "not on the resume",
+        )
+
+    def test_project_stack_cannot_promote_a_familiar_skill(self, tmp_path: Path):
+        self._rejects(
+            tmp_path,
+            '[[projects]]\nname = "Alpha"\nstack = ["Java"]\n'
+            'bullets = ["Built a thing."]\nsource = "now.ts"\n',
+            "Java",
+            "Familiar",
+        )
+
+    def test_same_project_on_resume_and_supplement_is_kept_once(self, tmp_path: Path):
+        from jobhunt.resume.parse_docx import Project, apply_supplement
+
+        facts = self._facts()
+        facts.projects = [Project("Alpha", "example.com", ["Python"], ["Built a CLI."])]
+        apply_supplement(
+            facts,
+            self._write(
+                tmp_path,
+                '[[projects]]\nname = "Alpha"\nurl = "example.com"\n'
+                'stack = ["Python"]\nbullets = ["Built a CLI."]\nsource = "now.ts"\n',
+            ),
+        )
+        assert [p.name for p in facts.projects] == ["Alpha"]
+
+    def test_resume_wins_a_conflicting_project(self, tmp_path: Path):
+        from jobhunt.errors import ConfigError
+        from jobhunt.resume.parse_docx import Project, apply_supplement
+
+        facts = self._facts()
+        facts.projects = [Project("Alpha", "example.com", ["Python"], ["Built a CLI."])]
+        with pytest.raises(ConfigError) as exc:
+            apply_supplement(
+                facts,
+                self._write(
+                    tmp_path,
+                    '[[projects]]\nname = "Alpha"\nurl = "example.com"\n'
+                    'stack = ["Python"]\nbullets = ["Built a faster CLI."]\n'
+                    'source = "now.ts"\n',
+                ),
+            )
+        assert "Alpha" in str(exc.value)
+        assert "resume" in str(exc.value)
+
+    def test_malformed_toml_names_the_file(self, tmp_path: Path):
+        self._rejects(tmp_path, "[[core]\nskill = ", "supplement.toml")
+
+    def test_unknown_section_is_refused(self, tmp_path: Path):
+        self._rejects(tmp_path, '[skills]\nextra = ["Rust"]\n', "skills")
+
+    def test_sidecars_show_employment_type_and_source(self, tmp_path: Path):
+        facts = self._apply(
+            tmp_path,
+            '[employment_type]\n"Acme Corp" = "part-time"\n'
+            '[[projects]]\nname = "Alpha"\nstack = ["Python"]\n'
+            'bullets = ["Built a CLI."]\nsource = "alpha/README.md"\n',
+        )
+        write_kb_markdown(facts, tmp_path / "kb")
+        profile = tmp_path / "kb" / "profile"
+        assert "part-time" in (profile / "work-history.md").read_text(encoding="utf-8")
+        assert "Source: alpha/README.md" in (profile / "projects.md").read_text(
+            encoding="utf-8"
+        )

@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from docx import Document
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
-from jobhunt.errors import PipelineError
+from jobhunt.errors import ConfigError, PipelineError
 
 SECTION_HEADERS = {
     "SUMMARY",
@@ -92,6 +94,9 @@ class Role:
     employer: str
     dates: str
     bullets: list[str] = field(default_factory=list)
+    # From `supplement.toml`, never from the resume, and never rendered on a
+    # resume: it answers application-form questions, it is not a claim.
+    employment_type: str | None = None
 
 
 @dataclass
@@ -106,6 +111,9 @@ class Project:
     url: str
     stack: list[str] = field(default_factory=list)
     bullets: list[str] = field(default_factory=list)
+    # Where the claim can be checked: "resume" for a parsed project, or the
+    # work.ts / now.ts entry or README a supplement project cites.
+    source: str = ""
 
 
 @dataclass
@@ -268,7 +276,10 @@ _SKILL_LABEL_ALIASES: dict[str, str] = {
     "ai and automation": "AI & Tooling",
     "automation": "AI & Tooling",
     "tooling": "AI & Tooling",
-    "tools": "AI & Tooling",
+    # Infrastructure, not AI tooling: the 2026-10 resume's "Tools:" row is Git,
+    # Docker, Linux and Bash. Filed under AI it left Data & DevOps empty, which
+    # tripped convert-resume's bucket guard (Casey's call, 2026-11-01).
+    "tools": "Data & DevOps",
     "projects": "Project Stack",
     "exposure": "Familiar",
     "currently developing": "Familiar",
@@ -702,7 +713,9 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
                 if url.lower().startswith(scheme):
                     url = url[len(scheme) :]
                     break
-            current_project = Project(name=_project_display_name(name_part), url=url)
+            current_project = Project(
+                name=_project_display_name(name_part), url=url, source="resume"
+            )
             projects.append(current_project)
             continue
         # Otherwise a bullet. Orphan bullets before any header are skipped rather
@@ -729,13 +742,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     # bucket are deliberately NOT filtered out: appearing in both is accurate
     # (the skill is both generally held and project-demonstrated), and the
     # honesty checks concatenate the buckets anyway.
-    project_skills: list[str] = []
-    seen_project_skills: set[str] = set()
-    for item in skill_buckets["Project Stack"] + [s for p in projects for s in p.stack]:
-        key = item.strip().lower()
-        if key and key not in seen_project_skills:
-            seen_project_skills.add(key)
-            project_skills.append(item.strip())
+    project_skills = _derive_project_skills(skill_buckets["Project Stack"], projects)
 
     facts = VerifiedFacts(
         name=name,
@@ -754,6 +761,161 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
         projects=projects,
     )
     return facts, warnings
+
+
+def _derive_project_skills(base: list[str], projects: list[Project]) -> list[str]:
+    """`base` unioned with every project's stack, de-duplicated
+    case-insensitively with the first spelling winning."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in base + [s for p in projects for s in p.stack]:
+        key = item.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(item.strip())
+    return out
+
+
+EMPLOYMENT_TYPES = ("full-time", "part-time", "contract")
+_SUPPLEMENT_SECTIONS = frozenset({"employment_type", "core", "projects"})
+
+
+def _supplement_tables(data: dict[str, Any], key: str, path: Path) -> list[dict[str, Any]]:
+    value = data.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise ConfigError(f"{path}: [[{key}]] must be an array of tables")
+    return value
+
+
+def _supplement_str(entry: dict[str, Any], key: str, where: str, path: Path) -> str:
+    value = entry.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"{path}: {where} needs a non-empty `{key}`")
+    return value.strip()
+
+
+def _supplement_list(entry: dict[str, Any], key: str, where: str, path: Path) -> list[str]:
+    value = entry.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"{path}: {where} `{key}` must be a list of strings")
+    return [v.strip() for v in value if v.strip()]
+
+
+def _on_the_resume(facts: VerifiedFacts, skill: str, where: str, path: Path) -> None:
+    """Refuse a skill the supplement would introduce or promote.
+
+    The resume is the source of truth for skills (Casey, 2026-11-01): the
+    supplement may rearrange what the resume lists, never extend it. A Familiar
+    skill is listed, but moving it into Core or a project stack would promote
+    academic exposure into a production claim, which the honesty rules treat
+    as fabrication.
+    """
+    if skill in facts.skills_familiar:
+        raise ConfigError(
+            f"{path}: {where} names {skill!r}, which the resume lists as Familiar. "
+            "A Familiar skill cannot be promoted into Core or a project stack."
+        )
+    listed = (
+        facts.skills_core + facts.skills_cms + facts.skills_data_devops
+        + facts.skills_ai + facts.skills_projects
+    )
+    if skill not in listed:
+        raise ConfigError(
+            f"{path}: {where} names {skill!r}, which is not on the resume. "
+            "Add it to the resume first: the supplement may only use skills the "
+            "resume lists, spelled exactly as it lists them."
+        )
+
+
+def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
+    """Merge the user-owned `supplement.toml` into freshly parsed facts.
+
+    It carries what the resume cannot: projects (the 2026-10 resume has no
+    Projects section), each with the `source` that backs it; employment type
+    per employer; and moves of resume-listed skills into Core. It never adds a
+    skill, and the resume wins any conflict, so the parsed resume stays the
+    source of truth. A missing file is not an error. Every validation failure
+    raises `ConfigError` naming the file and the entry, and nothing is merged
+    piecemeal on top of a bad file, because the caller refuses the write.
+    """
+    if not path.is_file():
+        return
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"{path}: not valid TOML: {e}") from e
+    unknown = sorted(set(data) - _SUPPLEMENT_SECTIONS)
+    if unknown:
+        raise ConfigError(
+            f"{path}: unknown section(s) {unknown}. "
+            f"Expected only {sorted(_SUPPLEMENT_SECTIONS)}."
+        )
+
+    for i, entry in enumerate(_supplement_tables(data, "core", path), start=1):
+        where = f"[[core]] #{i}"
+        skill = _supplement_str(entry, "skill", where, path)
+        _supplement_str(entry, "source", where, path)
+        _on_the_resume(facts, skill, where, path)
+        if skill in facts.skills_core:
+            continue
+        for bucket in (facts.skills_cms, facts.skills_data_devops, facts.skills_ai):
+            if skill in bucket:
+                bucket.remove(skill)
+                break
+        facts.skills_core.append(skill)
+
+    types = data.get("employment_type", {})
+    if not isinstance(types, dict):
+        raise ConfigError(f"{path}: [employment_type] must be a table of employer = type")
+    names = [r.employer for r in facts.work_history]
+    for employer, kind in types.items():
+        if kind not in EMPLOYMENT_TYPES:
+            raise ConfigError(
+                f"{path}: [employment_type] {employer!r} = {kind!r}. "
+                f"Expected one of {', '.join(EMPLOYMENT_TYPES)}."
+            )
+        # Exact on the employer cell as the resume writes it ("Harbour Loom"),
+        # which is stored joined with its location ("Harbour Loom, Toronto,
+        # ON"). Nothing looser: a near-miss must fail, not attach to a role.
+        matched = [
+            r for r in facts.work_history
+            if r.employer == employer or r.employer.startswith(f"{employer}, ")
+        ]
+        if not matched:
+            raise ConfigError(
+                f"{path}: [employment_type] {employer!r} matches no employer on "
+                f"the resume. Employers: {', '.join(names) or 'none'}."
+            )
+        for role in matched:
+            role.employment_type = kind
+
+    for i, entry in enumerate(_supplement_tables(data, "projects", path), start=1):
+        where = f"[[projects]] #{i}"
+        name = _supplement_str(entry, "name", where, path)
+        where = f"{where} ({name})"
+        project = Project(
+            name=name,
+            url=str(entry.get("url", "")).strip(),
+            stack=_supplement_list(entry, "stack", where, path),
+            bullets=_supplement_list(entry, "bullets", where, path),
+            source=_supplement_str(entry, "source", where, path),
+        )
+        for skill in project.stack:
+            _on_the_resume(facts, skill, f"{where} stack", path)
+        on_resume = next((p for p in facts.projects if p.name == name), None)
+        if on_resume is None:
+            facts.projects.append(project)
+            continue
+        same = (on_resume.url, on_resume.stack, on_resume.bullets) == (
+            project.url, project.stack, project.bullets,
+        )
+        if not same:
+            raise ConfigError(
+                f"{path}: {where} is also on the resume with different content. "
+                "The resume wins: delete the supplement entry or make it match."
+            )
+
+    facts.skills_projects = _derive_project_skills(facts.skills_projects, facts.projects)
 
 
 def write_verified_json(facts: VerifiedFacts, out_path: Path) -> None:
@@ -803,6 +965,8 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
     history_lines = ["# Work History\n"]
     for role in facts.work_history:
         history_lines.append(f"## {role.title} — {role.employer}")
+        if role.employment_type:
+            history_lines.append(f"Employment type: {role.employment_type}")
         history_lines.append(f"{role.dates}\n")
         history_lines.extend(f"- {b}" for b in role.bullets)
         history_lines.append("")
@@ -835,6 +999,8 @@ def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
                 proj_lines.append(p.url)
             if p.stack:
                 proj_lines.append(f"Stack: {', '.join(p.stack)}")
+            if p.source:
+                proj_lines.append(f"Source: {p.source}")
             proj_lines.append("")
             proj_lines.extend(f"- {b}" for b in p.bullets)
             proj_lines.append("")

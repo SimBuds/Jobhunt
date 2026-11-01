@@ -18,10 +18,11 @@ import tomli_w
 import typer
 
 from jobhunt.config import config_path, load_config
-from jobhunt.errors import PipelineError
+from jobhunt.errors import ConfigError, PipelineError
 from jobhunt.resume.locate import describe_choice, find_baseline_resume
 from jobhunt.resume.parse_docx import (
     VerifiedFacts,
+    apply_supplement,
     parse_baseline,
     write_kb_markdown,
     write_verified_json,
@@ -347,6 +348,18 @@ def run(
         raise typer.Exit(code=2)
 
     facts, warnings = parse_baseline(docx)
+
+    # Merged before the bucket guard: the supplement is what fills `projects`
+    # and the Core moves, so the guard must judge the combined profile. A bad
+    # supplement refuses the write outright, like a lossy parse.
+    supplement = cfg.paths.kb_dir / "profile" / "supplement.toml"
+    try:
+        apply_supplement(facts, supplement)
+    except ConfigError as e:
+        typer.echo(f"error: {e}\nkb/profile/ NOT written.", err=True)
+        raise typer.Exit(code=1) from e
+    if supplement.is_file():
+        typer.echo(f"supplement: {supplement}")
 
     verified = cfg.paths.kb_dir / "profile" / "verified.json"
     # Appended BEFORE classification so a vanished row inherits the same

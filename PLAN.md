@@ -137,6 +137,42 @@ channel actually converts to interviews.
 - Web UI / mobile (CLI-first, no current need).
 - Recruiter outreach automation (different problem, do not bolt on).
 
+## Automated caller (decided 2026-11-01, not yet built)
+
+A hub service in its own repository (an API, Postgres and n8n in one compose
+stack, bound to 127.0.0.1 on this workstation) will run the `jobhunt` CLI as a
+subprocess on a schedule, record each result, and put it in Casey's review
+queue. Job data stays on this machine. Nothing outward-facing is automated:
+the hub can draft documents, and Casey reviews them and submits every
+application by hand.
+
+This replaces the design planned on 2026-10-24, in which Hermes in the
+Auto-Agent VM would drive Jobhunt through an SSH gate script that a host timer
+polled. Hermes no longer touches Jobhunt, and the gate script is not built.
+Running locally removes the VM boundary, so no personal data has to cross into
+the VM at all.
+
+What the hub needs from Jobhunt, and why it belongs here rather than in the
+hub:
+
+- **A stable, non-interactive contract.** `--json` on `scan`, `list` and
+  `apply --top N --no-browser` prints one JSON object on stdout carrying ids,
+  titles, companies, scores, statuses, counts and document paths. It never
+  carries resume, profile or cover letter text.
+- **Exit codes by failure class**, so the hub can tell a router outage (retry
+  later) from bad config or input (fix it) from a failed stage (read the log)
+  from a decision that needs a person.
+- **No command waits on input without a terminal.** A prompt becomes a
+  "needs a person" exit instead of a hang.
+- **A guard against any automated caller changing what Casey recorded.** An
+  automated `apply` may only create a `drafted` row, records who drafted it,
+  and never touches a row already past `drafted`.
+
+The hub enforces its own allowlist of commands. Jobhunt's refusals back it up,
+so a bug in the hub still cannot submit an application, change a status, or
+edit config. The README "Automation" section will document the contract once
+it is built.
+
 ## Database
 
 SQLite, plain SQL, no ORM. Schema in `migrations/`:
@@ -198,6 +234,18 @@ in eight places, not just the prompt:
    GPU optimization (cache, flash attention), ..." parses into atomic items with
    no hand-editing. `tests/test_parse_docx.py::test_parse_baseline_positioning_and_atomic_skills`
    locks this behavior.
+
+   **Profile supplement (November 2026).** The 2026-10 resume has no Projects
+   section and does not state employment type, so `convert-resume` merges a
+   hand-authored `kb/profile/supplement.toml` into the parse before the guard
+   below. It adds projects (each with a required `source`, the portfolio entry
+   or README backing it), employment type per employer (stored, never rendered
+   on a resume), and moves of resume-listed skills into Core. Two guards keep
+   the resume the source of truth for skills: every Core move and every project
+   stack item must already be on the resume, spelled the same way, and a
+   Familiar skill can never be moved into Core or a project stack, since that
+   would promote academic exposure into a production claim. The resume wins any
+   conflict, and an invalid supplement refuses the whole write.
 
    **Bucket-regression guard (July 2026).** `convert-resume` refuses to write
    `kb/profile/` when a bucket that carried items in the previous

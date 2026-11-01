@@ -238,12 +238,54 @@ browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
 
 > **`db reset` removes all of `kb/profile/`, not only the generated files.**
 > `convert-resume` regenerates `verified.json` and the five markdown sidecars,
-> but any hand-authored file kept in that directory — `verified-notes.md` and
-> `work-long-form.md` in this checkout — is gitignored, so a reset destroys it
-> with nothing to restore from. Back the directory up before resetting.
+> but any hand-authored file kept in that directory (`supplement.toml`,
+> `verified-notes.md`, `work-long-form.md`) is gitignored, so a reset destroys
+> it with nothing to restore from. Back the directory up before resetting.
 > `db reset` also leaves `data/resumes/` in place, so lane resumes generated
 > from the previous profile survive; re-run `jobhunt resume --focus <lane>`
 > after re-parsing, or the stale copies stay on disk.
+
+### The profile supplement
+
+The resume is the source of truth, but some facts have no place on it. Put
+those in `kb/profile/supplement.toml` (mode 0600, gitignored, personal). On
+every run `convert-resume` merges it into the parsed resume before its write
+guard, and a file that fails validation refuses the whole write. A missing
+file changes nothing.
+
+```toml
+# Employment type, keyed by the employer exactly as the resume writes it.
+# One of full-time, part-time, contract. Stored in verified.json, never
+# printed on a resume.
+[employment_type]
+"Example Corp" = "part-time"
+
+# Move a skill the resume already lists into Core. It is moved, not copied.
+# `source` names the resume row it came from.
+[[core]]
+skill = "TypeScript"
+source = "Web/CMS"
+
+# A project the resume does not carry. `source` is required: the portfolio
+# entry or README that backs every bullet.
+[[projects]]
+name = "Example CLI"
+url = "github.com/example/cli"
+stack = ["Python", "SQLite"]
+bullets = ["Built a command-line tool."]
+source = "example-cli/README.md"
+```
+
+The rules, each enforced with an error that names the entry:
+
+- **It never adds a skill.** Every `[[core]]` skill and every project
+  `stack` item must already be on the resume, spelled the same way. A new
+  skill goes on the resume first.
+- **It never promotes a Familiar skill** into Core or a project stack.
+- **The resume wins.** A project with the same name on both is kept once
+  when the content matches, and is an error when it does not.
+- An employer key that matches no resume role, an unknown type, a missing
+  `source`, an unknown section, or malformed TOML is an error.
 
 ### Daily
 
@@ -533,6 +575,7 @@ adzuna_app_key = "..."
 |---|---|
 | `Casey_Hsu_Baseline_Resume.docx` | Source-of-truth resume. Hand-edited, and the two-page fact store everything else is generated from. Any root-level `.docx` with "resume" in the name is found automatically, a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
 | `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
+| `kb/profile/supplement.toml` | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement". |
 | `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |
 | `kb/policies/authoring.md` | Agent-facing resume-authoring policy. Not injected. |
 | `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |

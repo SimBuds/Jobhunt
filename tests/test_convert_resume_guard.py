@@ -508,3 +508,49 @@ class TestBucketRegressions:
 
         got = json.loads((profile / "verified.json").read_text())
         assert got["skills_data_devops"] == []
+
+
+class TestSupplementWiring:
+    """convert-resume merges `kb/profile/supplement.toml` before its guards."""
+
+    def test_bad_supplement_refuses_the_write(self, env: Path) -> None:
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "supplement.toml").write_text(
+            '[[core]]\nskill = "Rust"\nsource = "nowhere"\n'
+        )
+        docx = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        result = runner.invoke(convert_resume_cmd.app, ["--docx", str(docx)])
+
+        assert result.exit_code == 1
+        assert "Rust" in result.output
+        assert "NOT written" in result.output
+        assert not (profile / "verified.json").exists()
+
+    def test_supplement_reaches_verified_json(self, env: Path) -> None:
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "supplement.toml").write_text(
+            '[employment_type]\n"Acme" = "part-time"\n'
+            '[[projects]]\nname = "Alpha"\nstack = ["React"]\n'
+            'bullets = ["Built a UI."]\nsource = "alpha/README.md"\n'
+        )
+        docx = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        runner.invoke(convert_resume_cmd.app, ["--docx", str(docx)])
+
+        got = json.loads((profile / "verified.json").read_text())
+        assert got["work_history"][0]["employment_type"] == "part-time"
+        assert got["projects"][0]["source"] == "alpha/README.md"
+        assert got["skills_projects"] == ["React"]
