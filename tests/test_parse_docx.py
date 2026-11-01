@@ -668,3 +668,177 @@ class TestProjectStackFeedsSkillsProjects:
         facts, _ = parse_baseline(path)
 
         assert facts.skills_projects == []
+
+
+class TestTwoLineLayout:
+    """2026-10 resume layout: each role and the degree span two lines.
+
+    ``Title | dates`` on the first line, ``Employer | City | note`` on the
+    second, then real Word list items. The one-line parser read the first line
+    as a title-less role named after the title, and warned the employer line
+    away, so every employer vanished from `verified.json`. Fixtures are
+    fictional and mirror the real document's structure: bullets carry
+    `<w:numPr>` and the phone is a `tel:` hyperlink.
+    """
+
+    @staticmethod
+    def _bullet(doc, text: str) -> None:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        p = doc.add_paragraph(text)
+        num_pr = OxmlElement("w:numPr")
+        for tag, val in (("w:ilvl", "0"), ("w:numId", "1")):
+            el = OxmlElement(tag)
+            el.set(qn("w:val"), val)
+            num_pr.append(el)
+        p._p.get_or_add_pPr().append(num_pr)
+
+    @staticmethod
+    def _link(paragraph, target: str, visible: str) -> None:
+        from docx.opc.constants import RELATIONSHIP_TYPE as RT
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        rid = paragraph.part.relate_to(target, RT.HYPERLINK, is_external=True)
+        link = OxmlElement("w:hyperlink")
+        link.set(qn("r:id"), rid)
+        run = OxmlElement("w:r")
+        t = OxmlElement("w:t")
+        t.text = visible
+        run.append(t)
+        link.append(run)
+        paragraph._p.append(link)
+
+    def _doc(self, tmp_path: Path, *, experience=None, education=None) -> Path:
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("Jane Dev")
+        contact = doc.add_paragraph("Toronto, ON | ")
+        self._link(contact, "tel:+15550100000", "555-010-0000")
+        contact.add_run(" | jane@example.com")
+        doc.add_paragraph("Summary")
+        doc.add_paragraph("A developer.")
+        doc.add_paragraph("Experience")
+        for kind, text in experience if experience is not None else (
+            ("p", "Web Developer  |  Apr 2023 – Present"),
+            ("p", "Acme Corp  |  Toronto, ON  |  Sole developer for a small brand"),
+            ("b", "Launched the store."),
+            ("b", "Wrote the theme."),
+            ("p", "CMS Developer (Contract)  |  Jan 2026 – Apr 2026"),
+            ("p", "Beta Labs  |  Toronto, ON"),
+            ("b", "Built the modules."),
+        ):
+            if kind == "b":
+                self._bullet(doc, text)
+            else:
+                doc.add_paragraph(text)
+        doc.add_paragraph("Education and Certification")
+        for text in education if education is not None else (
+            "Advanced Diploma, Software Engineering  |  Sep 2019 – Apr 2022",
+            "Example Polytechnic  |  Dean's List, all terms  |  Capstone: React front ends",
+            "Example Cloud Certified Practitioner  |  Oct 2024",
+        ):
+            doc.add_paragraph(text)
+        doc.add_paragraph("Additional Experience")
+        doc.add_paragraph("Line Cook  |  Example Bistro  |  Feb 2012 – Nov 2018")
+        self._bullet(doc, "Ran the grill station.")
+        path = tmp_path / "r.docx"
+        doc.save(path)
+        return path
+
+    def test_role_with_note_keeps_title_employer_and_note(self, tmp_path: Path):
+        facts, warnings = parse_baseline(self._doc(tmp_path))
+        role = facts.work_history[0]
+        assert (role.title, role.employer, role.dates) == (
+            "Web Developer",
+            "Acme Corp, Toronto, ON",
+            "Apr 2023 – Present",
+        )
+        assert role.bullets == [
+            "Sole developer for a small brand",
+            "Launched the store.",
+            "Wrote the theme.",
+        ]
+        assert warnings == []
+
+    def test_role_without_note(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        role = facts.work_history[1]
+        assert (role.employer, role.dates) == ("Beta Labs, Toronto, ON", "Jan 2026 – Apr 2026")
+        assert role.bullets == ["Built the modules."]
+
+    def test_contract_suffix_stays_in_title(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        assert facts.work_history[1].title == "CMS Developer (Contract)"
+
+    def test_additional_experience_one_line_role(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        role = facts.work_history[-1]
+        assert (role.title, role.employer, role.dates) == (
+            "Line Cook",
+            "Example Bistro",
+            "Feb 2012 – Nov 2018",
+        )
+        assert role.bullets == ["Ran the grill station."]
+        assert len(facts.work_history) == 3
+
+    def test_combined_section_yields_one_degree_and_one_cert(self, tmp_path: Path):
+        facts, warnings = parse_baseline(self._doc(tmp_path))
+        assert facts.education == [
+            "Advanced Diploma, Software Engineering | Sep 2019 – Apr 2022 | "
+            "Example Polytechnic | Dean's List, all terms | Capstone: React front ends"
+        ]
+        assert facts.certifications == ["Example Cloud Certified Practitioner  |  Oct 2024"]
+        assert warnings == []
+
+    def test_split_header_without_employer_line_warns(self, tmp_path: Path):
+        """A `Title | dates` line followed straight by bullets has no employer.
+        That is data loss, so it must warn (and the warning must not be one
+        `convert-resume` treats as benign) rather than ship an empty employer
+        silently."""
+        from jobhunt.commands.convert_resume_cmd import _dropped_content_warnings
+
+        path = self._doc(
+            tmp_path,
+            experience=(
+                ("p", "Web Developer  |  Apr 2023 – Present"),
+                ("b", "Launched the store."),
+            ),
+        )
+        facts, warnings = parse_baseline(path)
+        assert facts.work_history[0].title == "Web Developer"
+        assert facts.work_history[0].bullets == ["Launched the store."]
+        assert any("no employer line" in w for w in warnings)
+        assert _dropped_content_warnings(warnings)
+
+    def test_empty_combined_section(self, tmp_path: Path):
+        facts, warnings = parse_baseline(self._doc(tmp_path, education=()))
+        assert facts.education == []
+        assert facts.certifications == []
+        assert warnings == []
+
+    def test_tel_link_keeps_the_printed_number(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        assert "555-010-0000" in facts.contact_line
+        assert "tel:" not in facts.contact_line
+
+    def test_one_line_layout_unchanged(self, tmp_path: Path):
+        """The previous layout (one header line per role) must parse as before,
+        including the title-less form, which must not wait for an employer
+        line and swallow the next paragraph."""
+        path = self._doc(
+            tmp_path,
+            experience=(
+                ("p", "Frontend Developer | Acme Inc  2022 – 2024"),
+                ("p", "Built the thing."),
+                ("p", "Freelance — Web Projects  2020 – 2022"),
+                ("p", "Shipped sites."),
+            ),
+        )
+        facts, _ = parse_baseline(path)
+        assert [(r.title, r.employer, r.bullets) for r in facts.work_history[:2]] == [
+            ("Frontend Developer", "Acme Inc", ["Built the thing."]),
+            ("", "Freelance — Web Projects", ["Shipped sites."]),
+        ]

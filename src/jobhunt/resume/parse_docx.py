@@ -57,6 +57,9 @@ _SECTION_ALIASES: dict[str, str] = {
     "other experience": "PROFESSIONAL EXPERIENCE",
     "education": "CERTIFICATIONS & EDUCATION",
     "education & certifications": "CERTIFICATIONS & EDUCATION",
+    "education & certification": "CERTIFICATIONS & EDUCATION",
+    "education and certification": "CERTIFICATIONS & EDUCATION",
+    "education and certifications": "CERTIFICATIONS & EDUCATION",
     "certifications": "CERTIFICATIONS & EDUCATION",
     "certs": "CERTIFICATIONS & EDUCATION",
     "licenses": "CERTIFICATIONS & EDUCATION",
@@ -318,10 +321,16 @@ def _parse_role_header(text: str) -> tuple[str, str, str] | None:
         Title | Employer, Location  Dates
         Title | Employer<TAB>Dates
         Employer — Descriptor  Dates          (title-less; title comes back "")
+        Title | Dates                         (split; employer comes back "")
 
     A title-less header is preserved rather than rejected: dropping it discards
     the whole role and every bullet under it. The caller can see the empty title
     and decide; losing the employer and dates is strictly worse.
+
+    The split form is the first line of a two-line header (2026-10 layout):
+    the employer sits on the next line. The trailing pipe before the dates is
+    what tells it apart from the title-less form, so an empty employer means
+    "read it from the next line", never "there is none".
     """
     m = _DATES_TAIL_RE.search(text)
     if m is None:
@@ -334,11 +343,23 @@ def _parse_role_header(text: str) -> tuple[str, str, str] | None:
     if not parts:
         return None
     if len(parts) == 1:
+        if head.endswith("|"):
+            return parts[0], "", dates
         return "", parts[0], dates
     # 3+ cells: everything after the title is employer/location detail. Rejoin
     # with commas so a stray separator never survives into `employer`, which is
     # half the identity key the fabrication guard compares on.
     return parts[0], ", ".join(parts[1:]), dates
+
+
+def _no_employer_warning(role: Role) -> str:
+    # Worded as loss, not as a fallback, so `convert-resume`'s write guard
+    # blocks on it: an empty employer fails the fabrication guard on every
+    # tailored resume.
+    return (
+        f"PROFESSIONAL EXPERIENCE: role header {role.title!r} ({role.dates}) has "
+        "no employer line after it; employer dropped"
+    )
 
 
 def _is_project_header(text: str) -> bool:
@@ -469,6 +490,10 @@ def _paragraph_text_with_links(p: Paragraph) -> str:
                 parts.append(visible)
             elif target.lower().startswith("mailto:"):
                 parts.append(target[len("mailto:") :])
+            elif target.lower().startswith("tel:"):
+                # The printed number is the one the candidate chose to show;
+                # the target is a dialler URI that would print as "tel:+1…".
+                parts.append(visible)
             else:
                 # Normalize http:// hyperlinks to https://.
                 if target.lower().startswith("http://"):
@@ -581,8 +606,23 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
 
     work_history: list[Role] = []
     current_role: Role | None = None
+    awaiting_employer = False
     for style, text in sections["PROFESSIONAL EXPERIENCE"]:
         parsed = _parse_role_header(text)
+        if current_role is not None and awaiting_employer:
+            awaiting_employer = False
+            if style != _LIST_STYLE and parsed is None:
+                # Second line of a split header: "Employer | City | note". The
+                # first two cells keep the "Employer, City" shape the one-line
+                # layout produced, since employer is half the identity key the
+                # fabrication guard compares on. Anything after them is a role
+                # note, kept verbatim as the lead bullet rather than dropped.
+                cells = [c.strip() for c in text.split("|") if c.strip()]
+                current_role.employer = ", ".join(cells[:2])
+                if cells[2:]:
+                    current_role.bullets.append(" | ".join(cells[2:]))
+                continue
+            warnings.append(_no_employer_warning(current_role))
         if style == "List Paragraph" or (parsed is None and "|" not in text):
             # Treat as a bullet: either explicitly styled as one, or doesn't
             # match a role header (some resumes use 'normal' style throughout).
@@ -602,13 +642,27 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             work_history.append(current_role)
         title, employer, dates = parsed
         current_role = Role(title=title, employer=employer, dates=dates)
+        awaiting_employer = employer == ""
     if current_role is not None:
+        if awaiting_employer:
+            warnings.append(_no_employer_warning(current_role))
         work_history.append(current_role)
 
     certifications: list[str] = []
     education: list[str] = []
     coursework: list[str] = []
+    awaiting_school = False
     for _, text in sections["CERTIFICATIONS & EDUCATION"]:
+        # A split degree header ("Degree | dates", school on the next line) is
+        # joined into one entry. Kept apart, the tailor's education backfill
+        # copies only the first entry, and the resume would print a degree
+        # with no school.
+        if awaiting_school:
+            awaiting_school = False
+            if _parse_role_header(text) is None and _classify_credential(text) != "cert":
+                cells = [c.strip() for c in f"{education[-1]}|{text}".split("|")]
+                education[-1] = " | ".join(c for c in cells if c)
+                continue
         # The coursework line is education and also seeds the baseline coursework
         # list; handle it before the generic classifier (it carries no degree or
         # cert keyword of its own).
@@ -622,6 +676,8 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             certifications.append(text)
         elif kind == "education":
             education.append(text)
+            split = _parse_role_header(text)
+            awaiting_school = split is not None and split[0] != "" and split[1] == ""
         else:
             warnings.append(
                 "CERTIFICATIONS & EDUCATION: could not classify as cert or "
