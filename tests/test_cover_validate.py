@@ -566,3 +566,30 @@ def test_project_tech_still_flagged_when_not_in_any_project() -> None:
         cover, verified=verified_no_fastapi, company="Acme Corp", max_words=280
     )
     assert any("fastapi" in v.lower() for v in violations), violations
+
+
+def test_unverified_tech_claims_helper_matches_the_cover_check(verified: dict) -> None:
+    """Phase 15b: the watchlist loop is one helper shared by the cover
+    validator and the tailored-summary check."""
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    assert unverified_tech_claims("I built agents on the Claude API.", verified) == [
+        "claude api"
+    ]
+    assert unverified_tech_claims("I chose Docker rather than Kubernetes.", verified) == []
+    assert unverified_tech_claims("Nothing technical here.", verified) == []
+
+
+def test_removed_profile_skills_are_watchlisted(verified: dict) -> None:
+    """Skills taken off the profile on 2026-11-01 that postings still ask for
+    must not creep back through prose. The fixture lacks these, so each one
+    flags."""
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    text = "Shipped Next.js apps on MySQL with Google Tag Manager, tuning the KV cache."
+    assert set(unverified_tech_claims(text, verified)) == {
+        "next.js",
+        "mysql",
+        "google tag manager",
+        "kv cache",
+    }

@@ -250,6 +250,14 @@ def _word_count(text: str) -> int:
 #   chroma, bedrock, vertex ai) and 2026 JS/TS stack (bun, hono, trpc, prisma,
 #   drizzle, astro, sveltekit, qwik). These show up in JDs the model is
 #   tempted to claim.
+#
+# November 2026: the profile was regenerated from the 2026-10 resume, which
+# dropped Next.js, Node.js, Express, PostgreSQL, MySQL, Azure, GTM and the
+# Claude API. Postings still ask for them, so they are listed here, along with
+# the inference-tuning terms the AI lane brief names (KV cache, flash
+# attention, quantized). A term the profile does hold is suppressed by the
+# verified blob below, so listing it never blocks a true claim. The tailored
+# summary is checked against this list too (`tailor._check_summary`).
 _FABRICATION_WATCHLIST: tuple[str, ...] = (
     # Data / infra
     "elasticsearch",
@@ -265,6 +273,10 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "spark",
     "hadoop",
     # Backend langs / frameworks not in verified
+    "node.js",
+    "express",
+    "postgresql",
+    "mysql",
     "rust",
     "golang",
     "scala",
@@ -277,7 +289,8 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "laravel",
     "c#",
     "dotnet",
-    # Frontend frameworks not in verified (React + Next are; nothing else is)
+    # Frontend frameworks not in verified (React is)
+    "next.js",
     "vue",
     "angular",
     "svelte",
@@ -289,7 +302,7 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "qwik",
     "ember",
     "tailwind",
-    # 2026 Node/TS server stack — the candidate has Express, not these
+    # 2026 Node/TS server stack
     "bun",
     "hono",
     "trpc",
@@ -300,12 +313,15 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "swift",
     "flutter",
     "react native",
-    # Cloud beyond AWS + Azure
+    # Cloud. AWS is not listed: project bullets name AWS Lightsail.
+    "azure",
     "gcp",
     "google cloud",
     "vertex ai",
     "bedrock",
-    # LLM orchestration / vector DBs — the candidate has Ollama + prompt eng only
+    # LLM APIs, orchestration and vector DBs. The profile has local llama.cpp,
+    # local LLMs and Claude Code, not these.
+    "claude api",
     "langchain",
     "llamaindex",
     "haystack",
@@ -314,6 +330,13 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "qdrant",
     "chroma",
     "milvus",
+    # Inference tuning named by the AI lane brief, not on the resume
+    "kv cache",
+    "kv-cache",
+    "flash attention",
+    "quantized",
+    # Analytics and tag management
+    "google tag manager",
     # Enterprise platforms
     "salesforce",
     "servicenow",
@@ -383,6 +406,39 @@ def _verified_numbers(verified: dict[str, Any]) -> set[str]:
             blob_parts.append(b)
     blob = " ".join(blob_parts)
     return set(_DIGIT_CLUSTER_RE.findall(blob))
+
+
+def unverified_tech_claims(text: str, verified: dict[str, Any]) -> list[str]:
+    """Watchlisted tech named in `text` that the profile does not hold.
+
+    Word-boundary match avoids false positives like 'scala' matching
+    'scalable'. Negation context (e.g. "rather than Scala", "not Scala") is
+    exempt: the model is correctly avoiding the claim, not making it. Shared by
+    the cover validator and the tailored-summary check, in watchlist order.
+    """
+    text_lower = _normalize(text)
+    found: list[str] = []
+    verified_blob = _verified_skill_blob(verified)
+    for tech in _FABRICATION_WATCHLIST:
+        token = tech.strip(", ")
+        if not token:
+            continue
+        token_pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
+        if not token_pattern.search(text):
+            continue
+        if token_pattern.search(verified_blob):
+            continue
+        # Check whether every occurrence is in a negation context.
+        all_negated = True
+        for m in token_pattern.finditer(text_lower):
+            window = text_lower[max(0, m.start() - 40) : m.start()]
+            if not _NEGATION_PRECEDES_RE.search(window):
+                all_negated = False
+                break
+        if all_negated:
+            continue
+        found.append(token)
+    return found
 
 
 def validate_cover(
@@ -503,29 +559,9 @@ def validate_cover(
 
     # Fabrication: check the watchlist of frequently-invented techs. If the
     # body claims one and verified.json doesn't, that's a hard violation.
-    # Word-boundary match avoids false positives like 'scala' matching
-    # 'scalable'. Negation context (e.g. "rather than Scala", "not Scala")
-    # is exempt — the model is correctly avoiding the claim, not making it.
-    verified_blob = _verified_skill_blob(verified)
-    for tech in _FABRICATION_WATCHLIST:
-        token = tech.strip(", ")
-        if not token:
-            continue
-        token_pattern = re.compile(r"\b" + re.escape(token) + r"\b", re.IGNORECASE)
-        if not token_pattern.search(body):
-            continue
-        if token_pattern.search(verified_blob):
-            continue
-        # Check whether every occurrence is in a negation context.
-        all_negated = True
-        for m in token_pattern.finditer(body_lower):
-            window = body_lower[max(0, m.start() - 40) : m.start()]
-            if not _NEGATION_PRECEDES_RE.search(window):
-                all_negated = False
-                break
-        if all_negated:
-            continue
+    for token in unverified_tech_claims(body, verified):
         violations.append(f"unverified tech claim: {token!r}")
+    verified_blob = _verified_skill_blob(verified)
 
     # Overreach: framing-level capability claims (live data streams, real-time
     # streaming, websockets, etc.) absent from verified.json. Mirrors the

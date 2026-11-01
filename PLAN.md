@@ -271,6 +271,10 @@ in eight places, not just the prompt:
      for parenthetical variants like `Shopify (Liquid)` vs
      `Shopify (Liquid, Custom Themes)`).
    - rejects "Familiar" skills appearing in any non-Familiar category.
+   - treats "API" as part of a skill's identity, so "Claude API" cannot pass
+     against a verified "Claude Code" (November 2026).
+   - rejects a watchlisted technology named anywhere in the summary that the
+     profile does not hold, using the same watchlist as the cover validator.
 
    **Retry layer (May 2026).** `_enforce_no_fabrication` raises a
    `FabricationError` carrying structured violations.

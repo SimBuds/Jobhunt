@@ -1614,8 +1614,12 @@ missing. Fix the resume or the parser first.
 7. **Honesty enforcement is structural.** `tailor._enforce_no_fabrication`
    rejects any role, employer, or dates that diverge from `verified.json`, any
    skill not in `verified.json` (paren-substring tolerated), and any "Familiar"
-   skill in a non-Familiar category. Any new tailoring capability MUST keep
-   these checks green.
+   skill in a non-Familiar category. "API" is part of a skill's identity, not
+   a wrapper: as a wrapper it let "Claude API" pass against verified "Claude
+   Code" (2026-11-01). The summary is checked against the cover validator's
+   fabrication watchlist, not only its opening label, because a JD-echoed
+   "Claude API" later in the summary shipped unchecked. Any new tailoring
+   capability MUST keep these checks green.
    - **Deterministic retry on violation.** `_enforce_no_fabrication` raises
      `FabricationError` carrying structured `FabricationViolation(kind,
      detail)` records. `tailor_resume_with_retry` catches it, builds a
@@ -1855,7 +1859,11 @@ call to it without explicit discussion.
    alphanumeric tokens like ES6 are exempt), and no closing diploma re-recap.
    Verdict `revise` on violations. Notable tuning:
    - `_FABRICATION_WATCHLIST` tracks the current JS/TS and LLM stack. Anything
-     that moves into `verified.json` must come off it.
+     that moves into `verified.json` must come off it, and a skill that leaves
+     `verified.json` while postings still ask for it goes on (2026-11-01:
+     Next.js, Node.js, Express, PostgreSQL, MySQL, Azure, GTM, Claude API).
+     `unverified_tech_claims` is the one implementation of the check, shared
+     with `tailor._check_summary`.
    - `_NEGATION_PRECEDES_RE` suppresses the watchlist under legitimate
      disclaiming context (`however`, `but i don't`, `though i haven't`), so a
      cover saying "However, I haven't worked with Kubernetes" does not fire.

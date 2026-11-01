@@ -15,6 +15,7 @@ from jobhunt.pipeline._keywords import phrase_present
 from jobhunt.pipeline._profile import candidate_name as _candidate_name
 from jobhunt.pipeline._profile import render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
+from jobhunt.pipeline.cover_validate import unverified_tech_claims
 from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
 
 
@@ -253,6 +254,12 @@ def _violation_hint_line(
             "with a truthful role label grounded in verified skills — keep the "
             "verified summary's own label, or use a JD-lane label only when "
             "its tech tokens appear in verified non-Familiar skills."
+        )
+    if v.kind == "summary-unverified-tech":
+        return (
+            f"- The summary names {v.detail!r}, which is NOT in verified.json. "
+            "REMOVE it from the summary, even if the JD asks for it. Describe "
+            "only technology the verified skills, roles or projects contain."
         )
     if v.kind == "unverified-project":
         return (
@@ -721,8 +728,15 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # superset claims like "React Native" still get rejected.
 #
 # Includes the JD-surface tokens from tailor.md rule 9's normalization table
-# (headless, cms, rest, api, apis) since those are category labels the LLM
-# is explicitly instructed to wrap verified anchors in.
+# (headless, cms) since those are category labels the LLM is explicitly
+# instructed to wrap verified anchors in.
+#
+# "api" and "apis" are NOT annotation (2026-11-01). As wrappers they let
+# "Claude API" reduce to {claude} and pass against verified "Claude Code", so
+# any "<verified token> API" was claimable. An API is an identity claim: it
+# must match a verified skill that names one ("REST APIs", "Shopify Admin
+# API"). "apis" folds to "api" in `_SURFACE_ALIASES` so singular and plural
+# still match.
 _ANNOTATION_TOKENS: frozenset[str] = frozenset({
     # parenthetical detail words
     "custom", "themes", "certified", "professional", "personalization",
@@ -732,7 +746,7 @@ _ANNOTATION_TOKENS: frozenset[str] = frozenset({
     # Category wrappers — these decorate an anchor but don't identify it.
     # "headless CMS (Contentful)" → identity {contentful}; "headless CMS" alone
     # → empty identity → rejected (too vague).
-    "headless", "cms", "api", "apis",
+    "headless", "cms",
     # generic articles / particles that survive tokenisation
     "and", "or", "with", "of", "the",
 })
@@ -753,6 +767,7 @@ _SURFACE_ALIASES: dict[str, str] = {
     "gh": "github",
     "postgres": "postgresql",
     "rest": "restful",
+    "apis": "api",
     "node": "nodejs",   # verified has "Node.js" → tokenises to {node, js}; we
                         # collapse both sides via this alias + the "js" mapping
                         # for safety
@@ -892,6 +907,18 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
                 raise FabricationError(
                     [FabricationViolation("summary-label-ungrounded", token)], msg
                 )
+
+    # Tech named anywhere in the summary, not only in the label. The label
+    # check above only sees the opening words, so a JD-echoed claim later in
+    # the summary ("agents against the Claude API") shipped unchecked
+    # (2026-11-01). Reuses the cover letter's watchlist, so one list decides
+    # what counts as a frequently invented technology.
+    unverified = unverified_tech_claims(summary, verified)
+    if unverified:
+        msg = f"summary names unverified tech {unverified[0]!r}"
+        raise FabricationError(
+            [FabricationViolation("summary-unverified-tech", unverified[0])], msg
+        )
 
 
 def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) -> None:

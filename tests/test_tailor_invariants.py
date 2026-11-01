@@ -311,8 +311,8 @@ def test_jd_surface_form_short_aliases_accepted():
 
 def test_rest_apis_surface_form_accepted():
     """JD-surface 'REST APIs' must match verified 'RESTful APIs' via the
-    rest→restful alias. Both have identity {restful} after alias normalisation
-    and api/apis annotation stripping."""
+    rest→restful alias. Both have identity {restful, api} after alias
+    normalisation (apis→api; "api" stopped being annotation in Phase 15b)."""
     verified_rest = {
         **VERIFIED,
         "skills_core": ["JavaScript", "TypeScript", "React", "RESTful APIs"],
@@ -564,3 +564,92 @@ def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
     assert fits_one_page(t)
     assert sum(len(p.bullets) for p in t.projects) < 8 * 3  # trimmed
     assert all(len(p.bullets) >= 1 for p in t.projects)  # survivors keep a lead
+
+
+# --- Phase 15b (2026-11-01): "<verified token> API" and summary tech -------
+#
+# The AI lane render shipped "Claude API" in a skills row and in the summary
+# against a profile holding only "Claude Code". "api" was an annotation token,
+# so "Claude API" reduced to {claude} and passed; the summary was never
+# checked past its opening label.
+
+
+def test_rejects_api_claim_riding_on_a_verified_token():
+    verified = {**VERIFIED, "skills_ai": ["Claude Code"]}
+    bad = _make(
+        skills_categories=[
+            TailoredCategory("AI", ["Claude API"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    with pytest.raises(PipelineError, match="not in verified"):
+        _enforce_no_fabrication(bad, verified)
+
+
+def test_singular_api_matches_verified_plural():
+    verified = {**VERIFIED, "skills_data_devops": ["Docker", "REST APIs"]}
+    ok = _make(
+        skills_categories=[
+            TailoredCategory("Backend", ["REST API"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    _enforce_no_fabrication(ok, verified)
+
+
+def test_api_claim_needs_a_verified_api_skill():
+    with_admin = {**VERIFIED, "skills_cms": ["Shopify Admin API"]}
+    claim = _make(
+        skills_categories=[
+            TailoredCategory("CMS", ["Shopify API"]),
+            TailoredCategory("Familiar", ["Java"]),
+        ]
+    )
+    _enforce_no_fabrication(claim, with_admin)
+    with pytest.raises(PipelineError, match="not in verified"):
+        _enforce_no_fabrication(claim, VERIFIED)  # only "Shopify (Liquid, ...)"
+
+
+def test_rejects_summary_naming_unverified_watchlisted_tech():
+    from jobhunt.pipeline.tailor import FabricationError
+
+    bad = _make(
+        summary="Full-stack JavaScript developer with 2+ years. "
+        "Builds agents against the Claude API."
+    )
+    with pytest.raises(FabricationError) as exc:
+        _enforce_no_fabrication(bad, VERIFIED)
+    [violation] = exc.value.violations
+    assert (violation.kind, violation.detail) == ("summary-unverified-tech", "claude api")
+
+
+def test_summary_tech_hint_names_the_term():
+    from jobhunt.pipeline.tailor import FabricationViolation, _violation_hint_line
+
+    line = _violation_hint_line(FabricationViolation("summary-unverified-tech", "claude api"))
+    assert "Unspecified violation" not in line  # the generic fallback
+    assert "claude api" in line
+    assert "remove" in line.lower()
+
+
+def test_summary_may_name_watchlisted_tech_the_profile_holds():
+    verified = {
+        **VERIFIED,
+        "projects": [
+            {
+                "name": "jobhunt",
+                "url": "github.com/SimBuds/Jobhunt",
+                "bullets": ["Static Astro site."],
+            },
+        ],
+    }
+    ok = _make(summary="Full-stack JavaScript developer with 2+ years. Ships Astro sites.")
+    _enforce_no_fabrication(ok, verified)
+
+
+def test_summary_negated_tech_passes():
+    ok = _make(
+        summary="Full-stack JavaScript developer with 2+ years, "
+        "shipping containers with Docker rather than Kubernetes."
+    )
+    _enforce_no_fabrication(ok, VERIFIED)
