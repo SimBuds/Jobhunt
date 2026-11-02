@@ -214,7 +214,7 @@ jobhunt setup
 
 The wizard walks every first-run step in order: init the SQLite DB + run
 migrations → locate your baseline resume and confirm the choice → parse it into
-`kb/profile/verified.json` + markdown sidecars → prompt for applicant defaults
+`<profile_dir>/verified.json` + markdown sidecars → prompt for applicant defaults
 (`years_experience`, `include_senior_roles`, salary, work arrangements,
 employment types) → print the resolved config → preview the curated
 GTA-employer seed list and offer to apply it. Safe to re-run any time to update
@@ -225,18 +225,18 @@ Manual equivalent, if you'd rather not use the wizard:
 ```bash
 jobhunt config show            # writes a default config and prints it
 jobhunt db init                # creates SQLite schema at data/jobhunt.db
-jobhunt convert-resume         # generates kb/profile/* from your baseline resume
+jobhunt convert-resume         # generates <profile_dir>/* from your baseline resume
 # check ~/.config/jobhunt/config.toml — convert-resume backfills [applicant]
 # from the resume contact line, but only fills fields that are still empty
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
 
 `scan`, `list`, `apply`, `answer`, `resume`, and `analyze` refuse to run until
-`convert-resume` has produced `kb/profile/verified.json`. To start over (drops
+`convert-resume` has produced `<profile_dir>/verified.json`. To start over (drops
 DB, tailored documents, HTTP cache, interview-prep docs, saved answers,
 browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
 
-> **`db reset` removes all of `kb/profile/`, not only the generated files.**
+> **`db reset` removes all of `<profile_dir>/`, not only the generated files.**
 > `convert-resume` regenerates `verified.json` and the five markdown sidecars,
 > but any hand-authored file kept in that directory (`supplement.toml`,
 > `verified-notes.md`, `work-long-form.md`) is gitignored, so a reset destroys
@@ -248,7 +248,7 @@ browser profile, parsed resume): `jobhunt db reset` then `jobhunt setup`.
 ### The profile supplement
 
 The resume is the source of truth, but some facts have no place on it. Put
-those in `kb/profile/supplement.toml` (mode 0600, gitignored, personal). On
+those in `<profile_dir>/supplement.toml` (mode 0600, gitignored, personal). On
 every run `convert-resume` merges it into the parsed resume before its write
 guard, and a file that fails validation refuses the whole write. A missing
 file changes nothing.
@@ -359,7 +359,7 @@ the full option list. The commands below are the ones you usually need.
 | `track` | Log + update applications made outside the pipeline (no LLM) | `jobhunt track applied --channel linkedin --paste`, `jobhunt track response <company>` |
 | `add` | Add an ATS source from a career URL | `jobhunt add <URL>` |
 | `analyze` | Run deterministic job-search reports | `jobhunt analyze certs`, `jobhunt analyze employers` |
-| `convert-resume` | Rebuild `kb/profile/` from the baseline resume | `jobhunt convert-resume` |
+| `convert-resume` | Rebuild `<profile_dir>/` from the baseline resume | `jobhunt convert-resume` |
 | `discover slugs` | Legacy slug discovery over past scan rows | `jobhunt discover slugs` |
 
 The `config` and `db` maintenance groups:
@@ -433,9 +433,8 @@ for your live values).
 
 Each private path has its own default, and they do not follow each other:
 setting `data_dir` alone moves neither `db_path`, `profile_dir` nor the
-browser `user_data_dir`. Set each one you want elsewhere. `profile_dir` is
-defined but not read yet: the profile is still read from `kb_dir/profile`
-until the profile readers move to it.
+browser `user_data_dir`. Set each one you want elsewhere. Every command and
+script reads the profile from `profile_dir`.
 
 ```toml
 [paths]
@@ -491,7 +490,7 @@ drop_non_engineering_titles = true
                               # signal always wins.
 
 [ingest.adzuna]
-# Empty list = auto-derive from kb/profile/verified.json (skills + bullets).
+# Empty list = auto-derive from <profile_dir>/verified.json (skills + bullets).
 # Populate to override with a verbatim list.
 queries          = []
 pages            = 3
@@ -584,12 +583,12 @@ adzuna_app_key = "..."
 | Path | What lives there |
 |---|---|
 | `Casey_Hsu_Baseline_Resume.docx` | Source-of-truth resume. Hand-edited, and the two-page fact store everything else is generated from. Any root-level `.docx` with "resume" in the name is found automatically, a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
-| `kb/profile/verified.json` | Structured facts emitted by `convert-resume`. |
-| `kb/profile/supplement.toml` | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement". |
+| `<profile_dir>/verified.json` | Structured facts emitted by `convert-resume`. |
+| `<profile_dir>/supplement.toml` | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement". |
 | `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |
 | `kb/policies/authoring.md` | Agent-facing resume-authoring policy. Not injected. |
-| `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
-| `kb/profile/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
+| `<profile_dir>/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
+| `<profile_dir>/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
 | `kb/lanes/*.md` | One pseudo-JD brief per lane, discovered at runtime. Currently full stack, AI automation and infrastructure, CMS and e-commerce, technical SEO. Briefs are generic postings with no personal claims, and they avoid fabrication-watchlist terms because the tailor echoes brief wording. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
