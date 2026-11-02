@@ -1,8 +1,24 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test runs against tmp XDG directories and no JOBHUNT_* overrides.
+
+    Private-path defaults resolve under XDG_DATA_HOME, and the real
+    config.toml (under XDG_CONFIG_HOME) names the real database. Without this,
+    a test that loads config without `tmp_config_dir` reads or writes Casey's
+    data (2026-11-02).
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    for key in [k for k in os.environ if k.startswith("JOBHUNT_")]:
+        monkeypatch.delenv(key)
 
 
 @pytest.fixture

@@ -30,7 +30,15 @@ def _default_config_path() -> Path:
 
 
 def _default_data_dir() -> Path:
-    return Path.cwd() / "data"
+    """Private data lives in the XDG data directory, never the working tree.
+
+    It defaulted to `Path.cwd() / "data"` until 2026-11-02, so the database,
+    tailored documents and browser profile landed inside the repo whenever the
+    CLI ran from it. Mirrors `_default_config_path`.
+    """
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "jobhunt"
 
 
 def _default_work_arrangements() -> list[WorkArrangement]:
@@ -44,6 +52,11 @@ def _default_employment_types() -> list[EmploymentType]:
 class PathsConfig(BaseModel):
     data_dir: Path = Field(default_factory=_default_data_dir)
     db_path: Path = Field(default_factory=lambda: _default_data_dir() / "jobhunt.db")
+    # The personal profile (verified.json, sidecars, supplement.toml). Split out
+    # of `kb_dir` so the public kb (prompts, policies, lanes) stays in the repo
+    # while the profile does not. Each default here is independent: setting
+    # `data_dir` alone moves neither `db_path` nor `profile_dir`.
+    profile_dir: Path = Field(default_factory=lambda: _default_data_dir() / "profile")
     migrations_dir: Path = Field(default_factory=lambda: Path.cwd() / "migrations")
     kb_dir: Path = Field(default_factory=lambda: Path.cwd() / "kb")
 

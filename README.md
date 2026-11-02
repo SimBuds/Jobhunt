@@ -429,12 +429,22 @@ Notes:
 
 `~/.config/jobhunt/config.toml` (abridged, full schema in
 [src/jobhunt/config.py](src/jobhunt/config.py), run `jobhunt config show`
-for your live values):
+for your live values).
+
+Each private path has its own default, and they do not follow each other:
+setting `data_dir` alone moves neither `db_path`, `profile_dir` nor the
+browser `user_data_dir`. Set each one you want elsewhere. `profile_dir` is
+defined but not read yet: the profile is still read from `kb_dir/profile`
+until the profile readers move to it.
 
 ```toml
 [paths]
-data_dir       = "/home/you/Apps/jobhunt/data"
-db_path        = "/home/you/Apps/jobhunt/data/jobhunt.db"
+# Defaults shown. Private data lives in the XDG data directory
+# ($XDG_DATA_HOME/jobhunt, else ~/.local/share/jobhunt), never in the repo.
+data_dir       = "/home/you/.local/share/jobhunt"
+db_path        = "/home/you/.local/share/jobhunt/jobhunt.db"
+profile_dir    = "/home/you/.local/share/jobhunt/profile"
+# Public material stays in the repo checkout (resolved from the working dir).
 migrations_dir = "/home/you/Apps/jobhunt/migrations"
 kb_dir         = "/home/you/Apps/jobhunt/kb"
 
@@ -534,7 +544,7 @@ score_transferable_credit = 0.7
 
 [browser]
 headed        = true
-user_data_dir = "/home/you/Apps/jobhunt/data/browser-profile"
+user_data_dir = "/home/you/.local/share/jobhunt/browser-profile"
 
 [applicant]
 full_name              = "Your Name"
