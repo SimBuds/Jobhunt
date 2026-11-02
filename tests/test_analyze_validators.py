@@ -22,6 +22,7 @@ def _seed_minimal_config(config_dir: Path, data_dir: Path) -> Path:
         f'data_dir = "{data_dir}"\n'
         f'db_path = "{data_dir / "jobhunt.db"}"\n'
         f'kb_dir = "{config_dir / "kb"}"\n'
+        f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
     )
     profile = config_dir / "kb" / "profile"
     profile.mkdir(parents=True, exist_ok=True)

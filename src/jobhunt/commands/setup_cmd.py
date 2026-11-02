@@ -77,10 +77,10 @@ def _step_resume_present() -> Path | None:
 
 
 def _step_convert_resume(docx: Path) -> bool:
-    """Parse the resume into kb/profile/. Returns True if `[applicant]` is incomplete."""
+    """Parse the resume into the profile directory. Returns True if `[applicant]` is incomplete."""
     _header("Step 3/6: parse resume")
     cfg = load_config()
-    verified = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified = cfg.paths.profile_dir / "verified.json"
     if (
         verified.is_file()
         and verified.stat().st_mtime > docx.stat().st_mtime
@@ -98,7 +98,7 @@ def _step_convert_resume(docx: Path) -> bool:
         # be read off the contact line (e.g. a resume with no GitHub link). That
         # is the right exit code standalone, but inside the wizard it aborted
         # steps 4-6, so the user lost applicant defaults and the seed list over
-        # one missing URL. kb/profile/ is already written by this point; carry
+        # one missing URL. The profile is already written by this point; carry
         # on and re-raise the warning at the end where it can be acted on.
         if not e.code:
             raise

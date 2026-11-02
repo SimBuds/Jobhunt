@@ -306,7 +306,7 @@ def kb_dir(tmp_path: Path) -> Path:
 
 def _cfg(kb: Path) -> Config:
     return Config(
-        paths=PathsConfig(kb_dir=kb),
+        paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
         gateway=GatewayConfig(tasks={"score": "qwen3.5:9b"}),
     )
 
@@ -674,7 +674,7 @@ async def test_score_job_keeps_senior_band_decline_when_opted_out(
         ),
     )
     cfg = Config(
-        paths=PathsConfig(kb_dir=kb_dir),
+        paths=PathsConfig(kb_dir=kb_dir, profile_dir=kb_dir / "profile"),
         gateway=GatewayConfig(tasks={"score": "qwen3.5:9b"}),
         applicant=ApplicantProfile(include_senior_roles=False),
     )

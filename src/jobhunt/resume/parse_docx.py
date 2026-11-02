@@ -104,8 +104,8 @@ class Project:
     """A personal-project entry from the `PROJECTS` docx section. Distinct from
     `Role` (employment): projects are genuine work but not employment, so the
     tailor never renders employer-style metrics on them. Long form lives in
-    `kb/profile/work-long-form.md`; claimability notes in
-    `kb/profile/verified-notes.md` (both gitignored, agent-reference only)."""
+    `<profile_dir>/work-long-form.md`; claimability notes in
+    `<profile_dir>/verified-notes.md` (both gitignored, agent-reference only)."""
 
     name: str
     url: str
@@ -928,9 +928,9 @@ def _md_bullets(items: list[str]) -> str:
     return "\n".join(f"- {b}" for b in items) + ("\n" if items else "")
 
 
-def write_kb_markdown(facts: VerifiedFacts, kb_dir: Path) -> list[Path]:
-    """Regenerate kb/profile/*.md from verified facts. Idempotent — overwrites."""
-    profile = kb_dir / "profile"
+def write_kb_markdown(facts: VerifiedFacts, profile_dir: Path) -> list[Path]:
+    """Regenerate the profile's markdown sidecars from verified facts. Idempotent — overwrites."""
+    profile = profile_dir
     profile.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 

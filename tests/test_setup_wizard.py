@@ -19,6 +19,7 @@ def _seed_minimal_config(config_dir: Path) -> Path:
     cfg_path.write_text(
         "[paths]\n"
         f'kb_dir = "{config_dir / "kb"}"\n'
+        f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
         f'db_path = "{config_dir / "data" / "jobhunt.db"}"\n'
         f'migrations_dir = "{config_dir / "migrations"}"\n'
         "[ingest]\n"

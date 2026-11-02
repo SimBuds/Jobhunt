@@ -27,6 +27,7 @@ def _seed_config(config_dir: Path, **overrides: list[str]) -> Path:
     cfg_path.write_text(
         "[paths]\n"
         f'kb_dir = "{config_dir / "kb"}"\n'
+        f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
         "[ingest]\n"
         + "\n".join(ingest_lines)
         + "\n"

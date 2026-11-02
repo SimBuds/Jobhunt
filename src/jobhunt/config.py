@@ -62,7 +62,7 @@ class PathsConfig(BaseModel):
 
 
 class AdzunaConfig(BaseModel):
-    # Empty list → auto-derive from `kb/profile/verified.json` via
+    # Empty list → auto-derive from `<profile_dir>/verified.json` via
     # `ingest._query_planner.derive_adzuna_queries`. Populate to override
     # with a verbatim list. See README §Configure ingest sources.
     queries: list[str] = Field(default_factory=list)

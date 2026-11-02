@@ -28,6 +28,7 @@ import json
 import re
 from pathlib import Path
 
+from jobhunt.config import load_config
 from jobhunt.pipeline.tailor import (
     TailoredCategory,
     TailoredProject,
@@ -37,12 +38,11 @@ from jobhunt.pipeline.tailor import (
 from jobhunt.resume.render_docx import estimate_lines, fits_one_page, render
 
 REPO = Path(__file__).resolve().parent.parent
-VERIFIED = REPO / "kb" / "profile" / "verified.json"
 OUT = REPO / "Casey_Hsu_Resume_OnePage.docx"
 
 
 def build() -> Path:
-    v = json.loads(VERIFIED.read_text())
+    v = json.loads((load_config().paths.profile_dir / "verified.json").read_text())
 
     cats = [
         TailoredCategory("Core", list(v.get("skills_core") or [])),

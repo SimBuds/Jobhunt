@@ -49,7 +49,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from jobhunt.config import Config, GatewayConfig, PathsConfig
+from jobhunt.config import Config, GatewayConfig, PathsConfig, load_config
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
 from jobhunt.pipeline.answer import Answer, validate_answer, write_answer_with_retry
@@ -325,7 +325,9 @@ def _make_cfg(model: str) -> Config:
         "answer": model,
     }
     return Config(
-        paths=PathsConfig(kb_dir=REPO_ROOT / "kb"),
+        # The profile is personal and lives outside the repo, so take its
+        # location from the user's config. Everything else stays a clean default.
+        paths=PathsConfig(kb_dir=REPO_ROOT / "kb", profile_dir=load_config().paths.profile_dir),
         gateway=GatewayConfig(tasks=tasks),
     )
 
@@ -343,7 +345,7 @@ async def _bench_one_run(
     `temperature` is NOT in `options`; the per-slot temperature kwarg wins.
     """
     job = fixture.job
-    verified_text = (kb_dir / "profile" / "verified.json").read_text(encoding="utf-8")
+    verified_text = (cfg.paths.profile_dir / "verified.json").read_text(encoding="utf-8")
     verified = json.loads(verified_text)
     policy_path = kb_dir / "policies" / "tailoring-rules.md"
     policy = policy_path.read_text(encoding="utf-8") if policy_path.is_file() else ""
@@ -577,7 +579,7 @@ async def _bench_one_run_production(
     `_shrink_to_one_page`, so one-page enforcement is included.
     """
     job = fixture.job
-    verified = json.loads((kb_dir / "profile" / "verified.json").read_text(encoding="utf-8"))
+    verified = json.loads((cfg.paths.profile_dir / "verified.json").read_text(encoding="utf-8"))
 
     # --- SCORE
     t0 = time.monotonic()
@@ -861,8 +863,9 @@ async def main() -> None:
     fixtures = DEFAULT_FIXTURES
 
     kb_dir = REPO_ROOT / "kb"
-    if not (kb_dir / "profile" / "verified.json").is_file():
-        print("error: kb/profile/verified.json missing — run `jobhunt convert-resume` first.")
+    verified_path = load_config().paths.profile_dir / "verified.json"
+    if not verified_path.is_file():
+        print(f"error: {verified_path} missing — run `jobhunt convert-resume` first.")
         return
 
     # Keyed by fixture so each fixture gets its own table block. One ModelMetrics

@@ -187,7 +187,7 @@ class ScoreResult:
 async def score_job(cfg: Config, job: Job) -> ScoreResult:
     if not job.description:
         raise PipelineError(f"job {job.id} has no description to score")
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     policy_path = cfg.paths.kb_dir / "policies" / "tailoring-rules.md"
     if not verified_path.is_file():
         raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")

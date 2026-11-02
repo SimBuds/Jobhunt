@@ -223,6 +223,7 @@ def env(tmp_path: Path, tmp_config_dir: Path) -> Path:
         f'data_dir = "{tmp_path / "data"}"\n'
         f'db_path = "{tmp_path / "data" / "jobhunt.db"}"\n'
         f'kb_dir = "{tmp_path / "kb"}"\n'
+        f'profile_dir = "{tmp_path / "kb" / "profile"}"\n'
     )
     return tmp_path
 

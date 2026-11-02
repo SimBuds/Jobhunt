@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -85,7 +86,15 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # the identity key the fabrication guard compares on.
     for e in employers:
         assert not e.endswith(("|", "-", "—", ",")), f"stray separator: {e!r}"
-    assert "Sous Chef & Team Lead" in {r.title for r in facts.work_history}
+    # Structural, not a pinned title (2026-11-02): an exact title from the live
+    # resume turned a resume edit ("&" to "and") into a false parser failure,
+    # the same lesson as the employer comment above. Each title must be its own
+    # cell: present, free of separators and dates, and not the employer.
+    for r in facts.work_history:
+        assert r.title.strip(), f"empty title for {r.employer!r}"
+        assert "|" not in r.title, f"separator in title: {r.title!r}"
+        assert not re.search(r"\b(?:19|20)\d{2}\b", r.title), f"date in title: {r.title!r}"
+        assert r.title != r.employer, f"title equals employer: {r.title!r}"
 
     # Familiar must stay separate from Core when populated. The 2026-07-27 resume
     # drops the familiar tier entirely (it previously carried Java/Spring Boot as
@@ -113,7 +122,6 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # IS present must come through with a clean name, a scheme-stripped url, and
     # its bullets attached. Named-project coverage belongs on a fixture, not the
     # live document — see IMPLEMENT.md Phase A12.
-    assert facts.projects, "PROJECTS section produced no structured projects"
     for p in facts.projects:
         assert p.name and "|" not in p.name, f"bad project name: {p.name!r}"
         assert p.url and not p.url.startswith(("http://", "https://"))
@@ -121,7 +129,6 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # A "Stack:" line under a project populates that project's stack rather than
     # being swallowed as a bullet — assert both halves, since the failure mode is
     # the row landing in bullets rather than disappearing outright.
-    assert any(p.stack for p in facts.projects), "no project captured a Stack: line"
     for p in facts.projects:
         assert not any(b.startswith("Stack:") for b in p.bullets), (
             f"project {p.name!r} swallowed a Stack: row as a bullet"
@@ -138,12 +145,16 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     assert len(payload["projects"]) == len(facts.projects)
     # Nested dataclass round-trips. Asserted by equality rather than truthiness so
     # a resume whose projects carry no Stack: row still exercises the round-trip.
-    assert payload["projects"][0]["stack"] == facts.projects[0].stack
+    assert [p["stack"] for p in payload["projects"]] == [p.stack for p in facts.projects]
 
-    # KB markdown writer leaves five files (projects.md added when projects exist).
+    # KB markdown writer: four files always, projects.md exactly when projects
+    # exist. The 2026-10 resume carries none (they come from supplement.toml).
     kb = tmp_path / "kb"
-    paths = write_kb_markdown(facts, kb)
-    assert len(paths) == 5
+    paths = write_kb_markdown(facts, kb / "profile")
+    names = {p.name for p in paths}
+    assert {"resume.md", "skills.md", "work-history.md", "education.md"} <= names
+    assert ("projects.md" in names) == bool(facts.projects)
+    assert len(paths) == 4 + bool(facts.projects)
     skills_md = (kb / "profile" / "skills.md").read_text()
     assert skills_md.count("## Familiar") == 1
     assert skills_md.count("## Project Stack") == 1
@@ -152,21 +163,27 @@ def test_parse_baseline_round_trip(tmp_path: Path):
     # trimming a skills row is not a test failure — same reasoning as the
     # projects assertion below (Phase A12). The 2026-09 skills trim dropped
     # FastAPI and turned this into a red suite for a legitimate resume edit.
-    for bucket in (
+    # Which buckets the resume alone fills is editorial (2026-11-02: Core and
+    # Project Stack now come from supplement.toml), so only populated buckets
+    # are checked, and an entirely empty parse still fails.
+    buckets = (
         facts.skills_core,
         facts.skills_cms,
         facts.skills_data_devops,
         facts.skills_ai,
         facts.skills_projects,
-    ):
-        assert bucket, "a populated skills bucket is expected on the curated master"
-        assert bucket[0] in skills_md
-    projects_md = (kb / "profile" / "projects.md").read_text()
+    )
+    assert any(buckets), "the curated master parsed no skills at all"
+    for bucket in buckets:
+        if bucket:
+            assert bucket[0] in skills_md
     # Every parsed project gets its own H2 in the markdown sidecar. Asserted
     # against what the resume actually carries rather than a fixed project name,
     # so trimming the PROJECTS section is not a test failure (Phase A12).
-    for p in facts.projects:
-        assert f"## {p.name}" in projects_md
+    if facts.projects:
+        projects_md = (kb / "profile" / "projects.md").read_text()
+        for p in facts.projects:
+            assert f"## {p.name}" in projects_md
 
 
 @pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
@@ -1068,7 +1085,7 @@ class TestSupplement:
             '[[projects]]\nname = "Alpha"\nstack = ["Python"]\n'
             'bullets = ["Built a CLI."]\nsource = "alpha/README.md"\n',
         )
-        write_kb_markdown(facts, tmp_path / "kb")
+        write_kb_markdown(facts, tmp_path / "kb" / "profile")
         profile = tmp_path / "kb" / "profile"
         assert "part-time" in (profile / "work-history.md").read_text(encoding="utf-8")
         assert "Source: alpha/README.md" in (profile / "projects.md").read_text(

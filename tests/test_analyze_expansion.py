@@ -29,6 +29,7 @@ def _seed_minimal_config(config_dir: Path, db_path: Path) -> Path:
         f'data_dir = "{db_path.parent}"\n'
         f'db_path = "{db_path}"\n'
         f'kb_dir = "{config_dir / "kb"}"\n'
+        f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
         "[ingest]\n"
         'greenhouse = ["live-co", "dead-co"]\n'
         'ashby = ["good-ash"]\n'

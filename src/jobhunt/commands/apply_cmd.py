@@ -577,7 +577,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
     import json as _json
     from collections import Counter
 
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     verified: dict[str, object] = {}
     if verified_path.is_file():
         verified = _json.loads(verified_path.read_text(encoding="utf-8"))

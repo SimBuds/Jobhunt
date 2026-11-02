@@ -12,7 +12,7 @@ Fixture format: line 1 is the title, line 2 the company, then a blank line,
 then the JD body. The off-lane control fixture SHOULD decline at the score
 step — a run where it ships is itself a red flag.
 
-Usage (from repo root, llama-server running, kb/profile/verified.json present):
+Usage (from repo root, llama-server running, the profile's verified.json present):
     uv run python scripts/eval_tailor.py
     uv run python scripts/eval_tailor.py --only shopify-developer
 """
@@ -104,7 +104,7 @@ async def main() -> int:
     args = parser.parse_args()
 
     cfg = load_config()
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
         print(f"error: {verified_path} missing — run `jobhunt convert-resume` first.")
         return 1

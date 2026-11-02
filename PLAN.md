@@ -16,7 +16,8 @@ guardrails, project structure). `README.md` is for end-users.
    tailoring, and cover letters all run on a local llama-server. Token cost at runtime is
    zero.
 2. **Future-proof the knowledge layer.** Profile facts live in
-   `kb/profile/verified.json` (regenerated from the baseline resume).
+   `<profile_dir>/verified.json` (regenerated from the baseline resume). The
+   profile is personal and lives in the XDG data directory, not the repo.
    Prompts live in `kb/prompts/*.md` with JSON-schema frontmatter. Model swaps
    don't break them.
 3. **Stay ToS-defensible.** Public ATS APIs only. No LinkedIn / Indeed /
@@ -208,7 +209,7 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
 The "no fabrication" rule from `kb/policies/tailoring-rules.md` is enforced
 in eight places, not just the prompt:
 
-1. **Verified snapshot.** `convert-resume` emits `kb/profile/verified.json`.
+1. **Verified snapshot.** `convert-resume` emits `<profile_dir>/verified.json`.
    The tailoring prompt is constrained to only use facts from this file.
    All skill buckets (`skills_core`, `skills_cms`, `skills_data_devops`, `skills_ai`,
    `skills_projects`, `skills_familiar`) are **atomic lists** (one item per skill).
@@ -237,7 +238,7 @@ in eight places, not just the prompt:
 
    **Profile supplement (November 2026).** The 2026-10 resume has no Projects
    section and does not state employment type, so `convert-resume` merges a
-   hand-authored `kb/profile/supplement.toml` into the parse before the guard
+   hand-authored `<profile_dir>/supplement.toml` into the parse before the guard
    below. It adds projects (each with a required `source`, the portfolio entry
    or README backing it), employment type per employer (stored, never rendered
    on a resume), and moves of resume-listed skills into Core. Two guards keep
@@ -248,7 +249,7 @@ in eight places, not just the prompt:
    conflict, and an invalid supplement refuses the whole write.
 
    **Bucket-regression guard (July 2026).** `convert-resume` refuses to write
-   `kb/profile/` when a bucket that carried items in the previous
+   `<profile_dir>/` when a bucket that carried items in the previous
    `verified.json` parses to empty. `parse_baseline` can only warn about rows it
    saw and could not place, so a row that is simply gone from the document
    produced no warning and the older partial-profile guard never fired. That

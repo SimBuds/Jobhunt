@@ -65,7 +65,7 @@ class CoverLetter:
 async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLetter:
     if not job.description:
         raise PipelineError(f"job {job.id} has no description")
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
         raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume`")
 

@@ -72,7 +72,7 @@ def kb_dir(tmp_path: Path) -> Path:
 
 def _cfg(kb: Path) -> Config:
     return Config(
-        paths=PathsConfig(kb_dir=kb),
+        paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
         gateway=GatewayConfig(tasks={"tailor": "qwen3.5:9b"}),
     )
 

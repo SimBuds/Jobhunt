@@ -93,7 +93,7 @@ def kb_dir(tmp_path: Path) -> Path:
 
 def _cfg(kb: Path) -> Config:
     return Config(
-        paths=PathsConfig(kb_dir=kb),
+        paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
         gateway=GatewayConfig(tasks={"tailor": "qwen-custom:latest"}),
         pipeline=PipelineConfig(cover_retry_attempts=3),
     )
@@ -920,7 +920,9 @@ def test_set_status_interviewing_prints_nudge(
     data_dir.mkdir()
 
     cfg = Config(
-        paths=PathsConfig(data_dir=data_dir, kb_dir=tmp_path / "kb"),
+        paths=PathsConfig(
+            data_dir=data_dir, kb_dir=tmp_path / "kb", profile_dir=tmp_path / "kb" / "profile"
+        ),
         applicant=ApplicantProfile(salary_expectation_cad="50,000 - 90,000 CAD"),
     )
 
@@ -974,7 +976,9 @@ def test_set_status_applied_no_nudge(
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     cfg = Config(
-        paths=PathsConfig(data_dir=data_dir, kb_dir=tmp_path / "kb"),
+        paths=PathsConfig(
+            data_dir=data_dir, kb_dir=tmp_path / "kb", profile_dir=tmp_path / "kb" / "profile"
+        ),
     )
     monkeypatch.setattr(apply_cmd, "load_config", lambda: cfg)
 

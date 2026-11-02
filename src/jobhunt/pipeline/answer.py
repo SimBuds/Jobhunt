@@ -60,7 +60,7 @@ async def write_answer(
     revisions: str = "",
 ) -> Answer:
     """Single-attempt LLM call. Raises `PipelineError` on schema mismatch."""
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
         raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume`")
     verified_text = verified_path.read_text(encoding="utf-8")

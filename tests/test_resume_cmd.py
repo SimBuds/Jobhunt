@@ -117,6 +117,15 @@ def test_brief_without_frontmatter_raises(tmp_path: Path) -> None:
 
 
 def test_unknown_focus_exits_2() -> None:
+    # A stub profile at the isolated default location, so `ensure_profile`
+    # passes and the focus check is what runs. Until 2026-11-02 the default
+    # profile path was the repo's kb/profile, so this test silently leaned on
+    # the real profile.
+    from jobhunt.config import Config
+
+    profile = Config().paths.profile_dir
+    profile.mkdir(parents=True)
+    (profile / "verified.json").write_text("{}")
     result = CliRunner().invoke(app, ["resume", "--focus", "bogus"])
     assert result.exit_code == 2
     assert "unknown focus" in result.output
@@ -152,6 +161,7 @@ def test_renders_docx_for_one_lane(
         "[paths]\n"
         f'data_dir = "{data_dir}"\n'
         f'kb_dir = "{kb_dir}"\n'
+        f'profile_dir = "{kb_dir / "profile"}"\n'
         "[applicant]\n"
         'full_name = "Casey Hsu"\n'
         'email = "x@y.com"\n'

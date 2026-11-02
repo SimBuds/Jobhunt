@@ -71,7 +71,7 @@ def run(
         "--refresh",
         help=(
             "Wipe HTTP cache and drop ingested jobs + scores before scanning. "
-            "Preserves applications history, kb/profile, and the browser profile. "
+            "Preserves applications history, the profile directory, and the browser profile. "
             "Jobs with an existing application row are kept so history stays intact."
         ),
     ),
@@ -433,7 +433,7 @@ async def _ingest_all(
             import json as _json
 
             from jobhunt.ingest._query_planner import derive_adzuna_queries
-            verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+            verified_path = cfg.paths.profile_dir / "verified.json"
             if verified_path.is_file():
                 verified = _json.loads(verified_path.read_text(encoding="utf-8"))
                 adzuna_queries = derive_adzuna_queries(verified)

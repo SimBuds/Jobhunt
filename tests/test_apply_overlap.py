@@ -58,6 +58,7 @@ async def test_next_llm_phase_starts_before_current_io_completes(
     class _FakeCfg:
         class _Paths:
             kb_dir = Path("/nonexistent")
+            profile_dir = Path("/nonexistent")
 
         paths = _Paths
 
@@ -144,6 +145,7 @@ async def test_continue_prompt_no_stops_loop(
     class _FakeCfg:
         class _Paths:
             kb_dir = Path("/nonexistent")
+            profile_dir = Path("/nonexistent")
 
         paths = _Paths
 

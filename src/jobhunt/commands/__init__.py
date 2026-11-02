@@ -20,11 +20,11 @@ from jobhunt.config import Config
 def ensure_profile(cfg: Config) -> None:
     """Bail with a friendly message if `convert-resume` hasn't been run yet.
 
-    `kb/profile/verified.json` is the source-of-truth that scoring, tailoring,
+    `<profile_dir>/verified.json` is the source-of-truth that scoring, tailoring,
     and listing all depend on. Running scan/list/apply without it produces
     confusing downstream errors, so guard at the command entry point.
     """
-    verified = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified = cfg.paths.profile_dir / "verified.json"
     if not verified.is_file():
         typer.echo(
             f"error: missing {verified}\n"

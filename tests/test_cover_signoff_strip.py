@@ -106,7 +106,7 @@ async def test_signoff_uses_verified_name_not_model_output(
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover = await cover_mod.write_cover(
         Config(
-            paths=PathsConfig(kb_dir=kb),
+            paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
             gateway=GatewayConfig(tasks={"cover": "qwen3.5:9b"}),
         ),
         Job(
@@ -134,7 +134,7 @@ async def test_signoff_falls_back_to_model_when_profile_has_no_name(
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover = await cover_mod.write_cover(
         Config(
-            paths=PathsConfig(kb_dir=kb),
+            paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
             gateway=GatewayConfig(tasks={"cover": "qwen3.5:9b"}),
         ),
         Job(

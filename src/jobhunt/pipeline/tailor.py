@@ -76,7 +76,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     the caller decides whether to retry or surface."""
     if not job.description:
         raise PipelineError(f"job {job.id} has no description to tailor against")
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     policy_path = cfg.paths.kb_dir / "policies" / "tailoring-rules.md"
     if not verified_path.is_file():
         raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")
@@ -198,7 +198,7 @@ def _format_tailor_revision_hint(
 
 
 def _verified_candidate_name(cfg: Config) -> str | None:
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
         return None
     try:

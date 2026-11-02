@@ -1,6 +1,6 @@
 """`jobhunt convert-resume`.
 
-Parse the baseline resume into kb/profile/*.md + verified.json. The file is
+Parse the baseline resume into the profile directory (*.md + verified.json). The file is
 located by `resume.locate` (any root-level .docx/.pdf named *resume*), not by
 one hard-coded filename.
 """
@@ -328,7 +328,7 @@ def run(
     force: bool = typer.Option(
         False,
         "--force",
-        help="Write kb/profile/ even when the parser dropped skills or roles.",
+        help="Write the profile even when the parser dropped skills or roles.",
     ),
 ) -> None:
     cfg = load_config()
@@ -352,16 +352,16 @@ def run(
     # Merged before the bucket guard: the supplement is what fills `projects`
     # and the Core moves, so the guard must judge the combined profile. A bad
     # supplement refuses the write outright, like a lossy parse.
-    supplement = cfg.paths.kb_dir / "profile" / "supplement.toml"
+    supplement = cfg.paths.profile_dir / "supplement.toml"
     try:
         apply_supplement(facts, supplement)
     except ConfigError as e:
-        typer.echo(f"error: {e}\nkb/profile/ NOT written.", err=True)
+        typer.echo(f"error: {e}\n{cfg.paths.profile_dir} NOT written.", err=True)
         raise typer.Exit(code=1) from e
     if supplement.is_file():
         typer.echo(f"supplement: {supplement}")
 
-    verified = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified = cfg.paths.profile_dir / "verified.json"
     # Appended BEFORE classification so a vanished row inherits the same
     # fail-closed refusal the parser's own loss warnings already get. Optional
     # buckets come back separately and never gate the write.
@@ -376,14 +376,14 @@ def run(
         typer.echo(
             f"error: parser dropped content from {docx} "
             f"({len(dropped)} of {len(warnings)} warning(s)). "
-            "kb/profile/ NOT written.",
+            f"{cfg.paths.profile_dir} NOT written.",
             err=True,
         )
         for w in dropped:
             typer.echo(f"  - {w}", err=True)
         typer.echo(
             "\nA partial profile is worse than none: scoring and tailoring "
-            "treat kb/profile/verified.json as the whole truth, and the "
+            "treat verified.json as the whole truth, and the "
             "fabrication guard rejects any skill missing from it. Fix the "
             "resume formatting (or the parser), then re-run. "
             "Use --force only if the dropped content is genuinely unwanted.",
@@ -392,7 +392,7 @@ def run(
         raise typer.Exit(code=1)
 
     write_verified_json(facts, verified)
-    written = write_kb_markdown(facts, cfg.paths.kb_dir)
+    written = write_kb_markdown(facts, cfg.paths.profile_dir)
 
     filled, missing = _sync_applicant(facts)
 

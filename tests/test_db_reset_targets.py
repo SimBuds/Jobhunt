@@ -13,6 +13,7 @@ def _stub_cfg(root: Path) -> SimpleNamespace:
             db_path=data_dir / "jobhunt.db",
             data_dir=data_dir,
             kb_dir=root / "kb",
+            profile_dir=root / "kb" / "profile",
         ),
         browser=SimpleNamespace(user_data_dir=data_dir / "browser-profile"),
     )

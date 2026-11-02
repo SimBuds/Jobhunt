@@ -213,7 +213,7 @@ def run(
         )
         raise typer.Exit(code=2)
 
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     verified: dict[str, object] = json.loads(verified_path.read_text(encoding="utf-8"))
 
     focuses = list(lanes) if focus == "all" else [focus]

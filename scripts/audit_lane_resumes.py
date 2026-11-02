@@ -219,7 +219,7 @@ def _resume_path(out_dir: Path, name: str, label: str) -> Path:
 
 def main() -> int:
     cfg = load_config()
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     verified = json.loads(verified_path.read_text(encoding="utf-8"))
     out_dir = cfg.paths.data_dir / "resumes"
     lanes = discover_lanes(cfg.paths.kb_dir)

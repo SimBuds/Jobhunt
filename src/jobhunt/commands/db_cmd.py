@@ -36,7 +36,7 @@ def _reset_targets(cfg: Config) -> list[Path]:
         data_dir / "interview-prep",
         data_dir / "answers",
         Path(cfg.browser.user_data_dir),
-        cfg.paths.kb_dir / "profile",
+        cfg.paths.profile_dir,
     ]
 
 
@@ -78,7 +78,7 @@ def reset(
 
     Removes data/jobhunt.db (+WAL siblings), data/applications/, data/cache/,
     data/interview-prep/, data/answers/, the Playwright user_data_dir, and
-    kb/profile/ (the convert-resume output). Re-runs all migrations so the
+    the profile directory (the convert-resume output). Re-runs all migrations so the
     database is left ready to scan, then reminds the user to re-run
     `convert-resume` before scanning.
     """
@@ -115,7 +115,7 @@ def reset(
     finally:
         conn.close()
     typer.echo(f"reset: db re-initialised ({len(result.applied)} migration(s) applied)")
-    typer.echo("next: run `jobhunt convert-resume` to regenerate kb/profile/.")
+    typer.echo(f"next: run `jobhunt convert-resume` to regenerate {cfg.paths.profile_dir}.")
 
 
 @dataclass

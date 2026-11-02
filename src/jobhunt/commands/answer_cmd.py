@@ -132,7 +132,7 @@ def run(
 
 
 def _load_verified(cfg: Config) -> dict[str, Any]:
-    verified_path = cfg.paths.kb_dir / "profile" / "verified.json"
+    verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
         raise PipelineError(
             f"missing {verified_path} — run `jobhunt convert-resume` first"
