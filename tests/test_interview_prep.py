@@ -593,7 +593,8 @@ def test_patch_prep_sections_rewrites_ai_generated_content_pipeline() -> None:
     """Live-run repro from manual:89f772b92cf1: qwen kept dropping the JD
     phrase 'AI-generated content pipeline' into beats and gap reframes,
     blocking the artifact after 3 attempts. The patch tier converts it to
-    Casey's verified surface (Ollama + Shopify/HubSpot)."""
+    neutral text that names no product (2026-11-02: it used to insert Ollama
+    and Shopify/HubSpot, which the profile does not support)."""
     sections = PrepDocSections(
         role_decode=[],
         strongest_anchors=[],
@@ -618,7 +619,13 @@ def test_patch_prep_sections_rewrites_ai_generated_content_pipeline() -> None:
         + [r for g in patched.honest_gaps for r in g.reframes]
     ).lower()
     assert "ai-generated content pipeline" not in blob
-    assert "ollama" in blob
+    assert "ollama" not in blob
+    assert patched.likely_questions[0].beats == [
+        "I built an LLM-assisted content workflow for client sites."
+    ]
+    assert patched.honest_gaps[0].reframes == [
+        "Closest verified bridge: my LLM-assisted content workflow work."
+    ]
 
 
 def test_patch_prep_sections_rewrites_observed_bad_gap_patterns() -> None:
@@ -654,7 +661,12 @@ def test_patch_prep_sections_rewrites_observed_bad_gap_patterns() -> None:
     assert "start immediately" not in out
     assert "coursework" not in out
     assert "full automation" not in out
-    assert "ollama" in out
+    assert "ollama" not in out
+    assert "authorization" not in out
+    assert patched.likely_questions[0].beats == [
+        "I can discuss availability once the role structure and timeline are clear."
+    ]
+    assert patched.likely_questions[1].beats == ["I stay current through hands-on project work."]
     assert patched.strongest_anchors == []
 
 
@@ -993,3 +1005,47 @@ def test_set_status_applied_no_nudge(
     )
     out = capsys.readouterr().out
     assert "draft prep doc" not in out
+
+
+def test_patch_table_inserts_no_claims() -> None:
+    """Phase 16d (2026-11-02): every string `patch_claim` can insert must be
+    neutral. The table had grown "Ollama", "Shopify and HubSpot", a GitHub
+    Actions CI claim and "Canadian work authorization", all bypassing
+    `verified.json`. Vocabulary comes from the fictional fixture profile, the
+    fabrication watchlist and fixed personal-fact words, so no real name sits
+    in this public test."""
+    import json
+    import re
+
+    from jobhunt.pipeline.cover_validate import _FABRICATION_WATCHLIST
+    from jobhunt.pipeline.interview_prep import _CLAIM_PATCHES, _COURSEWORK_REPLACEMENT
+
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "profile" / "verified.json").read_text()
+    )
+    vocab: set[str] = set(_FABRICATION_WATCHLIST)
+    for key in (
+        "skills_core", "skills_cms", "skills_data_devops",
+        "skills_ai", "skills_projects", "skills_familiar",
+    ):
+        for skill in fixture.get(key, []):
+            name = re.sub(r"\s*\(.*?\)", "", skill).strip()
+            vocab.add(name.lower())
+            head = name.split()[0]
+            if head[0].isupper() and len(head) >= 4:  # product names: Shopify, GitHub
+                vocab.add(head.lower())
+    vocab |= {r["employer"].split(",")[0].lower() for r in fixture["work_history"]}
+    vocab |= {"college", "university", "polytechnic", "institute"}
+    vocab |= {"authorization", "authorized", "citizen", "citizenship", "canadian",
+              "visa", "sponsorship"}
+
+    inserted = [_COURSEWORK_REPLACEMENT] + [new for _, new in _CLAIM_PATCHES]
+    hits = sorted(
+        {
+            (term, text)
+            for text in inserted
+            for term in vocab
+            if re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text, re.IGNORECASE)
+        }
+    )
+    assert hits == []

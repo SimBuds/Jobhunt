@@ -556,6 +556,96 @@ async def draft_prep_with_retry(
     return last_sections, last_violations, attempts
 
 
+# Last-resort rewrites from unsafe generic phrasing to lower-claim phrasing,
+# applied in order by `_patch_prep_sections`. Kept as data so a test can
+# read every string this table can insert into an interview-prep document.
+#
+# Every replacement is neutral (2026-11-02): it names no technology, employer,
+# school or personal fact, because nothing here passes through verified.json.
+# The table used to insert "Ollama", "Shopify and HubSpot", a GitHub Actions CI
+# claim and the candidate's work-authorization status.
+# `test_patch_table_inserts_no_claims` keeps it that way.
+_COURSEWORK_REPLACEMENT = "I stay current through hands-on project work."
+_CLAIM_PATCHES: tuple[tuple[str, str], ...] = (
+    (
+        "I can start immediately with full work authorization.",
+        "I can discuss availability once the role structure and timeline are clear.",
+    ),
+    (
+        "can start immediately",
+        "can discuss availability once the role structure and timeline are clear",
+    ),
+    (
+        "or within two weeks depending on the offer",
+        "",
+    ),
+    (
+        "within two weeks depending on the offer",
+        "once the role structure and timeline are clear",
+    ),
+    (
+        "full automation",
+        "CMS implementation, scripting, and QA work",
+    ),
+    (
+        "fully automate",
+        "improve CMS publishing workflows",
+    ),
+    (
+        "zero errors",
+        "fewer preventable QA issues",
+    ),
+    (
+        "automated content upload systems",
+        "CMS implementation and scripting workflows",
+    ),
+    # JD-mirror: "AI-generated content pipeline" is a verbatim borrow the model
+    # latches onto for any AI-flavored content role. Describe the work at the
+    # level the resume supports, without naming a product. The phrase follows
+    # "an" or "my" in practice, so the replacement must read after either.
+    (
+        "ai-generated content pipeline",
+        "LLM-assisted content workflow",
+    ),
+    (
+        "ai generated content pipeline",
+        "LLM-assisted content workflow",
+    ),
+    (
+        "full content automation",
+        "CMS content workflows",
+    ),
+    (
+        "content and fulfillment teams",
+        "the content team and adjacent stakeholders",
+    ),
+    (
+        "automated systems",
+        "CMS and scripting workflows",
+    ),
+    (
+        "developed scripts and API integrations that keep pipelines running smoothly",
+        "worked on scripting and integration tasks",
+    ),
+    (
+        "scripts and API integrations",
+        "scripting and integration work",
+    ),
+    (
+        "error-free implementation",
+        "careful implementation",
+    ),
+    (
+        "replace manual uploads",
+        "reduce manual CMS work",
+    ),
+    (
+        "replacing manual uploads",
+        "reducing manual CMS work",
+    ),
+)
+
+
 def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSections | None:
     changed = False
 
@@ -564,112 +654,9 @@ def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSe
         original = text
         out = text
         if "coursework" in out.lower():
-            out = (
-                "I stay current through hands-on project work, local LLM "
-                "tooling with Ollama, and CMS implementation work across "
-                "Shopify and HubSpot."
-            )
-        out = _replace_case_insensitive(
-            out,
-            "I can start immediately with full work authorization.",
-            (
-                "[removed] and can discuss availability "
-                "once the role structure and timeline are clear."
-            ),
-        )
-        out = _replace_case_insensitive(
-            out,
-            "can start immediately",
-            "can discuss availability once the role structure and timeline are clear",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "or within two weeks depending on the offer",
-            "",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "within two weeks depending on the offer",
-            "once the role structure and timeline are clear",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "full automation",
-            "CMS implementation, scripting, and QA work",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "fully automate",
-            "improve CMS publishing workflows",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "zero errors",
-            "fewer preventable QA issues",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "automated content upload systems",
-            "CMS implementation and scripting workflows",
-        )
-        # JD-mirror: "AI-generated content pipeline" — verbatim borrow that
-        # qwen latches onto for any AI-flavored content role. Replace with
-        # a narrower phrasing that names the candidate's actual verified surface
-        # (Ollama local LLM + Shopify/HubSpot CMS) so the artifact still
-        # speaks to the JD without claiming a product the candidate hasn't shipped.
-        out = _replace_case_insensitive(
-            out,
-            "ai-generated content pipeline",
-            "Ollama local-LLM tooling alongside Shopify and HubSpot CMS work",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "ai generated content pipeline",
-            "Ollama local-LLM tooling alongside Shopify and HubSpot CMS work",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "full content automation",
-            "CMS content workflows",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "content and fulfillment teams",
-            "the content team and adjacent stakeholders",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "automated systems",
-            "CMS and scripting workflows",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "developed scripts and API integrations that keep pipelines running smoothly",
-            (
-                "[removed claim] "
-                "pipelines with automated linting"
-            ),
-        )
-        out = _replace_case_insensitive(
-            out,
-            "scripts and API integrations",
-            "[removed claim]",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "error-free implementation",
-            "careful implementation",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "replace manual uploads",
-            "reduce manual CMS work",
-        )
-        out = _replace_case_insensitive(
-            out,
-            "replacing manual uploads",
-            "reducing manual CMS work",
-        )
+            out = _COURSEWORK_REPLACEMENT
+        for old, new in _CLAIM_PATCHES:
+            out = _replace_case_insensitive(out, old, new)
         if out != original:
             changed = True
         return out
