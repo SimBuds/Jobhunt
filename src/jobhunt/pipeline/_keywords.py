@@ -63,8 +63,11 @@ PEER_FAMILIES: dict[str, frozenset[str]] = {
         "headless_cms": (
             "contentful", "strapi", "sanity", "ghost", "payload", "storyblok",
         ),
+        # llama.cpp joined 2026-11-02: postings still ask for Ollama, and the
+        # profile serves local models with llama.cpp. Mirrors the "AI SDKs /
+        # hosts" line in kb/prompts/score.md.
         "ai_sdk": (
-            "openai", "anthropic", "bedrock", "vertex ai", "ollama",
+            "openai", "anthropic", "bedrock", "vertex ai", "ollama", "llama.cpp",
         ),
         "llm_orchestration": ("langchain", "llamaindex", "haystack", "dspy"),
     }.items()

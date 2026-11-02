@@ -653,3 +653,64 @@ def test_summary_negated_tech_passes():
         "shipping containers with Docker rather than Kubernetes."
     )
     _enforce_no_fabrication(ok, VERIFIED)
+
+
+# --- Phase 16c (2026-11-02): proficiency inflation in the summary ----------
+#
+# The full-stack lane render shipped "Expert in AI/LLM tooling" and passed:
+# the summary guard rejected seniority words but not mastery claims.
+
+FULL_STACK_RENDER_SUMMARY = (
+    "Full-stack developer since 2022 building Shopify, HubSpot, and WordPress "
+    "sites for small brands. Expert in AI/LLM tooling with local LLMs, prompt "
+    "engineering, and Claude Code to automate content workflows."
+)
+
+
+def test_rejects_expert_from_the_full_stack_render():
+    from jobhunt.pipeline.tailor import FabricationError
+
+    verified = {
+        **VERIFIED,
+        "summary": "Full-stack developer since 2022, building Shopify, HubSpot and "
+        "WordPress sites for small brands.",
+        "skills_cms": ["Shopify (Liquid)", "HubSpot (HubL)", "WordPress"],
+        "skills_ai": ["Claude Code", "local LLMs", "prompt engineering"],
+    }
+    with pytest.raises(FabricationError) as exc:
+        _enforce_no_fabrication(_make(summary=FULL_STACK_RENDER_SUMMARY), verified)
+    [violation] = exc.value.violations
+    assert (violation.kind, violation.detail) == ("summary-proficiency", "expert")
+
+
+def test_rejects_guru():
+    from jobhunt.pipeline.tailor import FabricationError
+
+    # After the opening label, so the role-label check cannot be what fires.
+    bad = _make(summary="Full-stack JavaScript developer with 2+ years. A React guru.")
+    with pytest.raises(FabricationError) as exc:
+        _enforce_no_fabrication(bad, VERIFIED)
+    [violation] = exc.value.violations
+    assert (violation.kind, violation.detail) == ("summary-proficiency", "guru")
+
+
+def test_expertise_and_specialist_do_not_trigger():
+    ok = _make(
+        summary="Full-stack JavaScript developer with 2+ years. Brings expertise "
+        "to teams of experts as a CMS specialist."
+    )
+    _enforce_no_fabrication(ok, VERIFIED)
+
+
+def test_expert_allowed_when_the_verified_summary_says_it():
+    verified = {**VERIFIED, "summary": "Expert full-stack JavaScript developer."}
+    _enforce_no_fabrication(_make(summary="Expert full-stack JavaScript developer."), verified)
+
+
+def test_proficiency_hint_names_the_word():
+    from jobhunt.pipeline.tailor import FabricationViolation, _violation_hint_line
+
+    line = _violation_hint_line(FabricationViolation("summary-proficiency", "expert"))
+    assert "Unspecified violation" not in line
+    assert "'expert'" in line
+    assert "remove" in line.lower()

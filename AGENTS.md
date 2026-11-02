@@ -1127,7 +1127,8 @@ Beyond the four pillars, these project docs are load-bearing:
   promote a Familiar one (2026-11-01). See README "The profile supplement".
 - `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
   `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
-  on disk (currently AI automation, CMS and e-commerce, technical SEO) and is
+  on disk (currently full stack, AI automation and infrastructure, CMS and
+  e-commerce, technical SEO, 2026-11-02) and is
   never hardcoded. Adding a brief adds its `--focus` key and brings it under
   `scripts/audit_lane_resumes.py`.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is
@@ -1359,7 +1360,7 @@ jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt add <URL>            # parse URL -> write ATS slug to config.toml
 jobhunt answer "<q>" [--job <id>] [--recall] [--max-words N] [--no-save]
 jobhunt interview-prep <id> [--stage ...] [--research] [--recruiter-type ...]
-jobhunt resume [--focus ai|cms|all]
+jobhunt resume [--focus <lane key>|all]   # keys: ai, cms, full, seo
 jobhunt list [--applied|--drafted|--withdrawn] [--week N] [--verdict ...]
              [--no-reply] [--older-than 14d] [--limit N]
 jobhunt track applied <ref> --channel linkedin|indeed|referral|recruiter|...
@@ -1618,7 +1619,10 @@ missing. Fix the resume or the parser first.
    a wrapper: as a wrapper it let "Claude API" pass against verified "Claude
    Code" (2026-11-01). The summary is checked against the cover validator's
    fabrication watchlist, not only its opening label, because a JD-echoed
-   "Claude API" later in the summary shipped unchecked. Any new tailoring
+   "Claude API" later in the summary shipped unchecked. Mastery words
+   ("expert", "guru") are rejected like seniority words unless the verified
+   summary has them (2026-11-02, after a lane render shipped "Expert in
+   AI/LLM tooling"). Any new tailoring
    capability MUST keep these checks green.
    - **Deterministic retry on violation.** `_enforce_no_fabrication` raises
      `FabricationError` carrying structured `FabricationViolation(kind,

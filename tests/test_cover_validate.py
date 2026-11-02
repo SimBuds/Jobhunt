@@ -593,3 +593,14 @@ def test_removed_profile_skills_are_watchlisted(verified: dict) -> None:
         "google tag manager",
         "kv cache",
     }
+
+
+def test_ollama_is_watchlisted() -> None:
+    """Phase 16b: the profile serves models with llama.cpp, not Ollama, so a
+    cover naming Ollama is a claim the profile cannot back."""
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    without = {"skills_ai": ["llama.cpp", "local LLMs"]}
+    with_ollama = {"skills_ai": ["Ollama (Local LLM hosting)"]}
+    assert unverified_tech_claims("I serve models with Ollama.", without) == ["ollama"]
+    assert unverified_tech_claims("I serve models with Ollama.", with_ollama) == []

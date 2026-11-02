@@ -70,7 +70,7 @@ A JD must-have counts as **matched** when verified_facts shows any of:
    - CMS / e-commerce: Shopify ↔ BigCommerce ↔ WooCommerce ↔ Medusa;
      Contentful ↔ Strapi ↔ Sanity ↔ Ghost ↔ Payload ↔ Storyblok;
      HubSpot ↔ Marketo (templating side only — not marketing automation strategy).
-   - AI SDKs / hosts: OpenAI SDK ↔ Anthropic SDK ↔ Bedrock ↔ Vertex AI ↔ Ollama
+   - AI SDKs / hosts: OpenAI SDK ↔ Anthropic SDK ↔ Bedrock ↔ Vertex AI ↔ Ollama ↔ llama.cpp
    - LLM orchestration: LangChain ↔ LlamaIndex ↔ Haystack ↔ DSPy
 3. School coursework or contract/freelance projects covering fundamentals:
    data structures, algorithms, REST, SQL, version control, CI/CD concepts,

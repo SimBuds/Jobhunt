@@ -581,7 +581,7 @@ adzuna_app_key = "..."
 | `kb/profile/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
 | `kb/profile/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
-| `kb/lanes/*.md` | One pseudo-JD brief per lane, discovered at runtime. Currently AI automation, CMS and e-commerce, technical SEO. |
+| `kb/lanes/*.md` | One pseudo-JD brief per lane, discovered at runtime. Currently full stack, AI automation and infrastructure, CMS and e-commerce, technical SEO. Briefs are generic postings with no personal claims, and they avoid fabrication-watchlist terms because the tailor echoes brief wording. |
 | `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
 | `~/.config/jobhunt/config.toml` | Sources, models, applicant profile, paths. |
 | `~/.config/jobhunt/secrets.toml` | API keys (Adzuna), mode 0600. |

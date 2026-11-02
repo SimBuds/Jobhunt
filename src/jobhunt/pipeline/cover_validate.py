@@ -322,6 +322,7 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     # LLM APIs, orchestration and vector DBs. The profile has local llama.cpp,
     # local LLMs and Claude Code, not these.
     "claude api",
+    "ollama",
     "langchain",
     "llamaindex",
     "haystack",

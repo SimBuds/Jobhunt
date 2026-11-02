@@ -275,6 +275,9 @@ in eight places, not just the prompt:
      against a verified "Claude Code" (November 2026).
    - rejects a watchlisted technology named anywhere in the summary that the
      profile does not hold, using the same watchlist as the cover validator.
+   - rejects mastery claims ("expert", "guru") in the summary unless the
+     verified summary makes them, the same way it rejects seniority words
+     (November 2026). "specialist" stays allowed as a role noun.
 
    **Retry layer (May 2026).** `_enforce_no_fabrication` raises a
    `FabricationError` carrying structured violations.

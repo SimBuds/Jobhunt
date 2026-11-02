@@ -28,7 +28,8 @@ humans edit `policies/`.
 - `prompts/`: task prompts loaded by the gateway. Frontmatter declares model,
   temperature, and JSON schema.
 - `lanes/`: one hand-edited pseudo-JD brief per lane, currently
-  `ai-automation.md`, `cms-ecommerce.md` and `seo-technical.md`. Lanes are
+  `ai-automation.md`, `cms-ecommerce.md`, `full-stack.md` and
+  `seo-technical.md`. Briefs are generic postings with no personal claims. Lanes are
   discovered from this directory by `resume_cmd.discover_lanes`, so adding a
   brief adds a `--focus` key (the slug's first segment) with no code change.
   `jobhunt resume --focus <key>|all` tailors the base resumes against them. Same fabrication checks as

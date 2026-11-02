@@ -7,7 +7,7 @@ flow ships. Base resumes serve the manual channels (LinkedIn Easy Apply,
 Indeed, recruiters) the auto-apply pipeline never touches, and are
 regenerable whenever `verified.json` changes:
 
-    jobhunt resume                 # all three lanes
+    jobhunt resume                 # every lane in kb/lanes/
     jobhunt resume --focus ai      # one lane
 
 Output: `data/resumes/<Name>_Resume_<Lane>.docx` plus the tailored JSON
@@ -32,7 +32,7 @@ from jobhunt.pipeline.tailor import tailor_resume_with_retry
 from jobhunt.resume.render_docx import render
 
 app = typer.Typer(
-    help="Render lane-focused base resumes (AI automation / CMS & e-commerce).",
+    help="Render lane-focused base resumes, one per kb/lanes/*.md brief.",
     invoke_without_command=True,
 )
 

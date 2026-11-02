@@ -241,6 +241,12 @@ def _violation_hint_line(
             f"{subject}'s verified profile does not support prepending "
             "Senior/Lead/Staff/etc."
         )
+    if v.kind == "summary-proficiency":
+        return (
+            f"- The summary calls the candidate {v.detail!r}, a mastery claim "
+            "verified_facts.summary does not make. REMOVE the word and state "
+            "what the verified work shows instead, without a proficiency label."
+        )
     if v.kind == "summary-culinary":
         return (
             "- The summary leads with culinary/kitchen content. Move any "
@@ -800,6 +806,11 @@ def _identity_tokens(s: str) -> frozenset[str]:
 
 
 _FORBIDDEN_SENIORITY = ("senior", "sr", "staff", "lead", "principal", "architect")
+# Mastery claims, checked like seniority (2026-11-02): the full-stack lane
+# render shipped "Expert in AI/LLM tooling" because only seniority words were
+# guarded. "specialist" is deliberately absent: it is a role noun ("CMS
+# specialist") that `_LABEL_GENERIC_TOKENS` allows in the role label.
+_FORBIDDEN_PROFICIENCY = ("expert", "guru")
 _CULINARY_TERMS = ("culinary", "chef", "kitchen", "restaurant", "sous")
 
 # Generic role-label words that carry no tech identity of their own. Used by
@@ -868,6 +879,12 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
             msg = f"summary contains seniority token {token!r} not present in verified.summary"
             raise FabricationError(
                 [FabricationViolation("summary-seniority", token)], msg
+            )
+    for token in _FORBIDDEN_PROFICIENCY:
+        if _has_word(s, token) and not _has_word(verified_summary, token):
+            msg = f"summary claims {token!r} mastery not present in verified.summary"
+            raise FabricationError(
+                [FabricationViolation("summary-proficiency", token)], msg
             )
     first_sentence = re.split(r"(?<=[.!?])\s+", summary.strip(), maxsplit=1)[0].lower()
     if any(_has_word(first_sentence, term) for term in _CULINARY_TERMS):

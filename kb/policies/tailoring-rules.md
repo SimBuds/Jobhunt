@@ -86,12 +86,12 @@ or infrastructure work:
   an employment-title claim like "AI Engineer". For all other lanes AI tooling
   stays a supporting signal.
 - The **resume summary**'s first or second sentence MUST surface {candidate_name}'s
-  Ollama / local LLM / prompt-engineering work using the literal tokens
+  local LLM (llama.cpp) / prompt-engineering work using the literal tokens
   "AI" and "LLM" for AI-adjacent roles so ATS keyword matchers latch on.
 - At least one bullet in the most recent role MUST reference the AI/LLM
   tooling work concretely when the JD asks for it.
-- The **cover-letter lead paragraph** MUST surface Ollama / local LLM /
-  GPU-tuning in the hook sentence, not paragraph 3. AI-screener
+- The **cover-letter lead paragraph** MUST surface the local LLM (llama.cpp) /
+  prompt-engineering work in the hook sentence, not paragraph 3. AI-screener
   summarizers in 2026 pull the lead first. This is a strong differentiator
   for AI-adjacent roles and burying it costs the application.
 - Do not treat vague phrases like "modern stack", "modern engineering", or

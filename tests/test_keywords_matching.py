@@ -214,3 +214,15 @@ def test_discriminating_nouns_are_still_required() -> None:
     # so an abstract category ask is still a genuine miss.
     assert not phrase_present("distributed systems", _RESUME_BLOB)
     assert not phrase_present("relational databases", _RESUME_BLOB)
+
+
+def test_ollama_ask_credits_llama_cpp_and_back() -> None:
+    """Phase 16b: postings ask for Ollama, the profile serves with llama.cpp.
+    Both sit in the `ai_sdk` family so either side credits the other, matching
+    the "AI SDKs / hosts" line in `kb/prompts/score.md`."""
+    from jobhunt.pipeline._keywords import peer_family_of, peer_match
+
+    assert peer_match("Ollama", "local llm serving with llama.cpp")
+    assert peer_match("llama.cpp", "experience with ollama")
+    family = peer_family_of("llama.cpp")
+    assert family is not None and "ollama" in family
