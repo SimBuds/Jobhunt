@@ -238,3 +238,51 @@ def test_cli_refuses_but_config_show_path_and_help_still_run(tmp_path: Path) -> 
     for argv in (["config", "show"], ["config", "path"], ["list", "--help"]):
         result = runner.invoke(app, argv)
         assert result.exit_code == 0, (argv, result.output)
+
+
+# --- Phase 20 (2026-11-03): work-authorization defaults ship empty ----------
+#
+# The shipped defaults were `work_auth_canada = True` and
+# `requires_visa_sponsorship = False`: one person's status, published as every
+# user's default. Unset now means "not answered": form-fill leaves the field
+# blank and the interview-prep prompt says "not set".
+
+
+def _field_map(profile):
+    from jobhunt.browser.profile_map import build_field_map
+
+    return build_field_map(profile, resume_path=Path("r.docx"), cover_path=Path("c.docx"))
+
+
+def test_work_auth_defaults_are_unset() -> None:
+    from jobhunt.config import ApplicantProfile
+
+    profile = ApplicantProfile()
+    assert (profile.work_auth_canada, profile.requires_visa_sponsorship) == (None, None)
+
+
+def test_unset_work_auth_leaves_form_fields_blank() -> None:
+    from jobhunt.config import ApplicantProfile
+
+    fields = _field_map(ApplicantProfile())
+    assert (fields["work_auth_canada"], fields["requires_visa_sponsorship"]) == ("", "")
+
+
+@pytest.mark.parametrize(
+    ("auth", "sponsor", "expected"),
+    [(True, False, ("Yes", "No")), (False, True, ("No", "Yes"))],
+)
+def test_set_work_auth_maps_to_yes_no(auth: bool, sponsor: bool, expected: tuple[str, str]) -> None:
+    from jobhunt.config import ApplicantProfile
+
+    fields = _field_map(
+        ApplicantProfile(work_auth_canada=auth, requires_visa_sponsorship=sponsor)
+    )
+    assert (fields["work_auth_canada"], fields["requires_visa_sponsorship"]) == expected
+
+
+@pytest.mark.parametrize(("value", "text"), [(True, "true"), (False, "false"), (None, "not set")])
+def test_interview_prep_renders_the_flag(value: bool | None, text: str) -> None:
+    from jobhunt.pipeline.interview_prep import _flag_text
+
+    assert _flag_text(value) == text

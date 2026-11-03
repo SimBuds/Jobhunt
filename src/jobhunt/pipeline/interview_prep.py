@@ -142,6 +142,12 @@ _RECRUITER_BIAS_BLURB: dict[str, str] = {
 # --- LLM call -----------------------------------------------------------------
 
 
+def _flag_text(value: bool | None) -> str:
+    """Prompt text for a yes/no applicant fact. "not set" rather than a guess,
+    so the model never states an answer the user did not give."""
+    return "not set" if value is None else str(value).lower()
+
+
 async def draft_prep_sections(
     cfg: Config,
     *,
@@ -175,10 +181,10 @@ async def draft_prep_sections(
             or cfg.applicant.salary_expectation_cad
             or "(not configured)"
         ),
-        applicant_work_auth_canada=str(cfg.applicant.work_auth_canada).lower(),
-        applicant_requires_visa_sponsorship=str(
+        applicant_work_auth_canada=_flag_text(cfg.applicant.work_auth_canada),
+        applicant_requires_visa_sponsorship=_flag_text(
             cfg.applicant.requires_visa_sponsorship
-        ).lower(),
+        ),
         audit_summary=ctx.audit_summary or "(no application yet)",
         cover_summary=ctx.cover_summary or "(no cover letter drafted)",
         research_blob=_truncate(ctx.research_blob, _RESEARCH_MAX_CHARS) or "(none)",

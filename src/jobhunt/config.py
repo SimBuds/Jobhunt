@@ -248,8 +248,11 @@ class ApplicantProfile(BaseModel):
     city: str = ""
     region: str = ""
     country: str = ""
-    work_auth_canada: bool = True
-    requires_visa_sponsorship: bool = False
+    # None means "not answered". These defaulted to True and False until
+    # 2026-11-03, which shipped one person's work status as every user's
+    # default. Set them in config.toml. Unset, form-fill leaves the field blank.
+    work_auth_canada: bool | None = None
+    requires_visa_sponsorship: bool | None = None
     salary_expectation_cad: str = ""
     # Years of professional dev experience. Threaded into the score prompt so
     # auto-decline rules track the candidate's actual band (years required >

@@ -577,6 +577,7 @@ portfolio_url          = "https://you.com"
 city                   = "Toronto"
 region                 = "Ontario"
 country                = "Canada"
+# Unset by default: form-fill leaves these questions blank until you answer them.
 work_auth_canada       = true
 requires_visa_sponsorship = false
 salary_expectation_cad = "50,000 - 90,000 CAD"

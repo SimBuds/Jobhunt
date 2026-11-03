@@ -24,6 +24,12 @@ def _pretty_employment(value: str) -> str:
     return _EMPLOYMENT_LABELS.get(value, value)
 
 
+def _yes_no(value: bool | None) -> str:
+    # "" for unset: every handler skips an empty value, so an unanswered
+    # question stays blank instead of being answered "No" on the user's behalf.
+    return "" if value is None else ("Yes" if value else "No")
+
+
 def build_field_map(
     profile: ApplicantProfile,
     *,
@@ -45,8 +51,8 @@ def build_field_map(
         "city": profile.city,
         "region": profile.region,
         "country": profile.country,
-        "work_auth_canada": "Yes" if profile.work_auth_canada else "No",
-        "requires_visa_sponsorship": "Yes" if profile.requires_visa_sponsorship else "No",
+        "work_auth_canada": _yes_no(profile.work_auth_canada),
+        "requires_visa_sponsorship": _yes_no(profile.requires_visa_sponsorship),
         "salary_expectation": profile.salary_expectation_cad,
         "pronouns": profile.pronouns,
         "work_arrangement": ", ".join(_pretty_arrangement(a) for a in profile.work_arrangements),
