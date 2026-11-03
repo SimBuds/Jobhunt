@@ -203,6 +203,10 @@ SQLite, plain SQL, no ORM. Schema in `migrations/`:
   still be applied to via LinkedIn Easy Apply.
 - `0010_score_breakdown.sql`: adds the nullable `scores.breakdown` JSON
   column. See "Score breakdowns" under honesty enforcement item 4.
+- `0011_drafted_by.sql`: adds the nullable `applications.drafted_by`. NULL
+  means Casey drafted it, and an automated caller records its name (`hub`).
+  Written on insert only, so a later human re-tailor never erases who made
+  the first draft. See "Automated caller".
 
 ## Honesty enforcement (the structural part)
 

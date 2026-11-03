@@ -26,6 +26,7 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import click
 import typer
 
 from jobhunt.browser import autofill
@@ -145,6 +146,16 @@ def run(
             "Read JD body from stdin. Requires --url, --title, and --company."
         ),
     ),
+    drafted_by: str | None = typer.Option(
+        None,
+        "--drafted-by",
+        hidden=True,
+        click_type=click.Choice(["hub"]),
+        help=(
+            "Automated callers only: record who drafted the application. Runs "
+            "only with --top N --no-browser."
+        ),
+    ),
     include_borderline: bool = typer.Option(
         False, "--include-borderline",
         help=(
@@ -154,6 +165,27 @@ def run(
         ),
     ),
 ) -> None:
+    # An automated caller may only draft: pick from the ranked queue, write
+    # documents, never open a browser, never touch a recorded status. Anything
+    # else is refused here as a backup to the caller's own allowlist.
+    if drafted_by is not None and (
+        job_id is not None
+        or best
+        or url is not None
+        or top is None
+        or not no_browser
+        or set_status is not None
+        or mark_response is not None
+        or mark_interview is not None
+        or set_outcome is not None
+    ):
+        typer.echo(
+            "error: --drafted-by is for automated runs: use it only with "
+            "--top N --no-browser, never with a job id, --best, --url or "
+            "lifecycle flags.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     lifecycle_only = (
         set_status is not None
         or mark_response is not None
@@ -255,7 +287,7 @@ def run(
         suffix = "" if str(j["source"]) == "manual" else f" — {j['id']}"
         typer.echo(f"  • [{score}] {j['title']} @ {j['company']}{suffix}")
 
-    asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser))
+    asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by))
 
     if manual_mode and url is not None:
         _maybe_suggest_add(cfg, url)
@@ -573,7 +605,13 @@ def _parse_picks(raw: str, max_n: int) -> list[int]:
 # --- apply each --------------------------------------------------------------
 
 
-async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool) -> None:
+async def _apply_each(
+    cfg: Config,
+    rows: list[sqlite3.Row],
+    *,
+    no_browser: bool,
+    drafted_by: str | None = None,
+) -> None:
     import json as _json
     from collections import Counter
 
@@ -638,7 +676,7 @@ async def _apply_each(cfg: Config, rows: list[sqlite3.Row], *, no_browser: bool)
                 violation_topics[t] += 1
         else:
             verdict, topics = await _apply_io_phase(
-                cfg, job, phase, no_browser=no_browser
+                cfg, job, phase, no_browser=no_browser, drafted_by=drafted_by
             )
             verdicts.append(verdict)
             for t in topics:
@@ -876,6 +914,7 @@ async def _apply_io_phase(
     phase: _LLMPhaseResult,
     *,
     no_browser: bool,
+    drafted_by: str | None = None,
 ) -> tuple[str, list[str]]:
     """IO-bound finish for one job: print revise warnings, render docx,
     optional browser autofill, prompt submission status, record."""
@@ -915,7 +954,9 @@ async def _apply_io_phase(
     # (`_unapplied_top_query` admits `a.status = 'drafted'`), and the upsert is
     # idempotent on job_id, so the post-prompt write below simply overwrites
     # the status and fills in fill_plan_path.
-    _record_application(cfg, job, "drafted", resume_path, cover_docx_path, None)
+    _record_application(
+        cfg, job, "drafted", resume_path, cover_docx_path, None, drafted_by=drafted_by
+    )
 
     plan_path = await _run_browser_step(
         cfg, job, resume_path=resume_path, cover_path=cover_docx_path,
@@ -924,7 +965,9 @@ async def _apply_io_phase(
     status = _confirm_submission_status(
         plan_path, browser_attempted=not no_browser and bool(job.url)
     )
-    _record_application(cfg, job, status, resume_path, cover_docx_path, plan_path)
+    _record_application(
+        cfg, job, status, resume_path, cover_docx_path, plan_path, drafted_by=drafted_by
+    )
     return audit_result.verdict, phase.topics
 
 
@@ -934,6 +977,7 @@ async def _apply_one(
     *,
     verified: dict[str, object],
     no_browser: bool,
+    drafted_by: str | None = None,
 ) -> tuple[str | None, list[str]]:
     """Run the tailor → cover → audit → render → autofill → DB pipeline for one job.
 
@@ -959,7 +1003,9 @@ async def _apply_one(
         return None, []
     if phase.early_exit:
         return phase.audit_result.verdict, phase.topics
-    return await _apply_io_phase(cfg, job, phase, no_browser=no_browser)
+    return await _apply_io_phase(
+        cfg, job, phase, no_browser=no_browser, drafted_by=drafted_by
+    )
 
 
 
@@ -1119,6 +1165,8 @@ def _record_application(
     resume_path: Path,
     cover_docx_path: Path,
     plan_path: Path | None,
+    *,
+    drafted_by: str | None = None,
 ) -> None:
     from datetime import date
 
@@ -1138,6 +1186,12 @@ def _record_application(
                 existing = conn.execute(
                     "SELECT status FROM applications WHERE job_id = ?", (job.id,)
                 ).fetchone()
+                if drafted_by is not None and existing is not None and existing[0] != "drafted":
+                    # Write-time backstop for an automated run: the queue
+                    # excludes these, so this is the race where the job was
+                    # marked applied mid-run. Leave the row exactly as it is.
+                    typer.echo(f"    skip record: {job.id} is {existing[0]}, not drafted")
+                    return
                 if existing is not None and existing[0] != "drafted":
                     # A redraft of a job already past 'drafted' (re-tailoring
                     # for an interview) refreshes the documents only. Writing
@@ -1156,6 +1210,7 @@ def _record_application(
                 cover_path=str(cover_docx_path),
                 fill_plan_path=str(plan_path) if plan_path else None,
                 applied_week=applied_week,
+                drafted_by=drafted_by,
                 # channel stays None: new rows default to 'pipeline', and a
                 # re-tailor of a job first logged via `track applied` keeps
                 # its manual channel instead of being reclassified.

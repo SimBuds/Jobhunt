@@ -160,3 +160,66 @@ def test_upsert_application_status_transitions(conn):
     assert row["status"] == "applied"
     assert row["resume_path"] == "/r.docx"  # COALESCE preserved it
     assert row["applied_at"] is not None
+
+
+# --- Phase 22a (2026-11-03): applications record who drafted them -----------
+#
+# NULL means Casey drafted it by hand. An automated caller (the hub) passes
+# `drafted_by="hub"`. The value is written on insert only, so a later human
+# re-tailor never erases who produced the first draft.
+
+
+def _app(conn, *, drafted_by=None, status="drafted"):
+    upsert_application(
+        conn,
+        application_id="app-1",
+        job_id=_job().id,
+        status=status,
+        resume_path=None,
+        cover_path=None,
+        fill_plan_path=None,
+        applied_week=None,
+        drafted_by=drafted_by,
+    )
+    return conn.execute("SELECT drafted_by FROM applications").fetchone()[0]
+
+
+def test_drafted_by_is_recorded_on_insert(conn) -> None:
+    upsert_job(conn, _job())
+    assert _app(conn, drafted_by="hub") == "hub"
+
+
+def test_a_later_write_keeps_the_original_drafter(conn) -> None:
+    upsert_job(conn, _job())
+    _app(conn, drafted_by="hub")
+    assert _app(conn, drafted_by=None) == "hub"
+
+
+def test_drafted_by_defaults_to_null(conn) -> None:
+    upsert_job(conn, _job())
+    assert _app(conn) is None
+
+
+def test_migration_keeps_existing_rows_null(tmp_path: Path, migrations_dir: Path) -> None:
+    import shutil
+
+    staged = tmp_path / "migrations"
+    staged.mkdir()
+    for f in sorted(migrations_dir.glob("*.sql")):
+        if f.name < "0011":
+            shutil.copy(f, staged / f.name)
+    c = connect(tmp_path / "old.db")
+    try:
+        migrate(c, staged)
+        upsert_job(c, _job())
+        with c:
+            c.execute(
+                "INSERT INTO applications (id, job_id, status) VALUES ('old', ?, 'applied')",
+                (_job().id,),
+            )
+        for f in migrations_dir.glob("*.sql"):
+            shutil.copy(f, staged / f.name)
+        migrate(c, staged)
+        assert c.execute("SELECT drafted_by FROM applications").fetchone()[0] is None
+    finally:
+        c.close()

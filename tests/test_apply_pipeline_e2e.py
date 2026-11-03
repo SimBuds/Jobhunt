@@ -354,3 +354,67 @@ def test_prompt_answer_still_moves_a_recorded_status(
 
     [row] = _app_rows(cfg.paths.db_path)
     assert row["status"] == "withdrawn"
+
+
+# --- Phase 22a (2026-11-03): the automated caller is recorded and fenced ----
+
+
+def test_hub_draft_records_the_actor(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    asyncio.run(
+        apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub")
+    )
+    [row] = _app_rows(cfg.paths.db_path)
+    assert (row["status"], row["drafted_by"]) == ("drafted", "hub")
+
+
+def test_human_draft_records_null(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+    [row] = _app_rows(cfg.paths.db_path)
+    assert row["drafted_by"] is None
+
+
+def test_hub_run_leaves_a_job_past_drafted_untouched(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Selection already excludes these. This is the write-time backstop for a
+    race (Casey marks it applied mid-run): the row is not written at all."""
+    _seed_application(cfg, "applied")
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    asyncio.run(
+        apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub")
+    )
+    [row] = _app_rows(cfg.paths.db_path)
+    assert (row["status"], row["resume_path"], row["drafted_by"]) == (
+        "applied",
+        "/old/Resume.docx",
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "reason"),
+    [
+        (["apply", "test:1", "--drafted-by", "hub"], "automated runs"),
+        (["apply", "test:1", "--set-status", "applied", "--drafted-by", "hub"], "automated runs"),
+        (["apply", "--top", "1", "--drafted-by", "bot"], "Invalid value"),
+        (["apply", "--top", "1", "--drafted-by", "hub"], "automated runs"),
+        (["apply", "--best", "--no-browser", "--drafted-by", "hub"], "automated runs"),
+        (
+            ["apply", "--url", "https://example.com/job", "--no-browser", "--drafted-by", "hub"],
+            "automated runs",
+        ),
+    ],
+    ids=["explicit-id", "lifecycle-flag", "unknown-actor", "browser", "best", "url"],
+)
+def test_drafted_by_usage_errors_exit_2(argv: list[str], reason: str) -> None:
+    """Exit 2 alone would also pass on HEAD, where --drafted-by is simply an
+    unknown option, so each case also checks why it was refused."""
+    from typer.testing import CliRunner
+
+    from jobhunt.cli import app
+
+    result = CliRunner().invoke(app, argv)
+    assert result.exit_code == 2, result.output
+    assert reason in result.output

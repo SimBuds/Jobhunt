@@ -398,6 +398,11 @@ jobhunt analyze funnel --by channel
 
 Notes:
 
+- `apply --drafted-by hub` is a hidden flag for the automated caller only. It
+  runs only with `--top N --no-browser` (never a job id, `--best`, `--url` or
+  a lifecycle flag), records `drafted_by = 'hub'` on the application, and
+  never writes a row already past `drafted`. Hand-run applications record
+  NULL.
 - Anywhere a `<job-id>` is accepted, a company or title fragment works too:
   `jobhunt apply shopify`, `jobhunt interview-prep opentable`,
   `jobhunt track response faire`. An exact id always wins; an ambiguous

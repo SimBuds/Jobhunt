@@ -199,18 +199,21 @@ def upsert_application(
     applied_week: str | None,
     notes: str | None = None,
     channel: str | None = None,
+    drafted_by: str | None = None,
 ) -> None:
     # `channel` semantics: None means "don't care" — new rows default to
     # 'pipeline', existing rows keep whatever channel they already have (so a
     # re-tailor via `apply` never clobbers a row logged as 'linkedin' by
     # `track applied`). An explicit value always wins.
+    # `drafted_by` is written on insert only (migration 0011): who produced the
+    # first draft. NULL is Casey. A later write never changes it.
     conn.execute(
         """
         INSERT INTO applications
             (id, job_id, status, resume_path, cover_path, fill_plan_path,
-             applied_week, notes, channel, applied_at)
+             applied_week, notes, channel, applied_at, drafted_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'pipeline'),
-                CASE WHEN ? = 'applied' THEN CURRENT_TIMESTAMP ELSE NULL END)
+                CASE WHEN ? = 'applied' THEN CURRENT_TIMESTAMP ELSE NULL END, ?)
         ON CONFLICT(job_id) DO UPDATE SET
             status = excluded.status,
             resume_path = COALESCE(excluded.resume_path, applications.resume_path),
@@ -238,6 +241,7 @@ def upsert_application(
             notes,
             channel,
             status,
+            drafted_by,
             channel,
         ),
     )

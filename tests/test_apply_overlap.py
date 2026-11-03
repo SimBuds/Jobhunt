@@ -42,7 +42,9 @@ async def test_next_llm_phase_starts_before_current_io_completes(
         # Minimal _LLMPhaseResult-shaped stand-in.
         return _StubPhase(job.id)
 
-    async def fake_io_phase(cfg: Any, job: Any, phase: Any, *, no_browser: bool) -> Any:
+    async def fake_io_phase(
+        cfg: Any, job: Any, phase: Any, *, no_browser: bool, drafted_by: str | None = None
+    ) -> Any:
         rec.note(f"io-start:{job.id}")
         await asyncio.sleep(0.1)  # IO is the slow side (mimics user-review time)
         rec.note(f"io-end:{job.id}")
@@ -123,7 +125,9 @@ async def test_continue_prompt_no_stops_loop(
         rec.note(f"llm-end:{job.id}")
         return _StubPhase(job.id)
 
-    async def fake_io_phase(cfg: Any, job: Any, phase: Any, *, no_browser: bool) -> Any:
+    async def fake_io_phase(
+        cfg: Any, job: Any, phase: Any, *, no_browser: bool, drafted_by: str | None = None
+    ) -> Any:
         rec.note(f"io:{job.id}")
         # Tiny yield so the prefetched LLM task for the *next* job gets a
         # chance to start. In production _apply_io_phase has many real
