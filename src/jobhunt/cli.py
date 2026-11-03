@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 import typer
@@ -55,6 +56,12 @@ def main(
     debug: bool = typer.Option(False, "--debug", help="Show full tracebacks on error."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
 ) -> None:
+    # Everything jobhunt writes is personal: the database, the profile,
+    # tailored documents, the browser profile. umask 077 makes every new file
+    # 0600 and every new directory 0700, including the ones SQLite and
+    # Chromium create themselves, which a per-file chmod would miss. Existing
+    # files keep their mode: tightening those is the migration's job.
+    os.umask(0o077)
     ctx.obj = {"debug": debug, "verbose": verbose}
 
 

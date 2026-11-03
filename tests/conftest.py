@@ -21,6 +21,17 @@ def _isolate_user_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key)
 
 
+@pytest.fixture(autouse=True)
+def _restore_umask():
+    """The CLI callback sets umask 077 process-wide (Phase 18). Restore it after
+    every test, so a test that runs the CLI cannot change the modes the next
+    test's files are created with."""
+    previous = os.umask(0o022)
+    os.umask(previous)
+    yield
+    os.umask(previous)
+
+
 @pytest.fixture
 def tmp_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect XDG_CONFIG_HOME to a tmp dir so config writes don't escape."""

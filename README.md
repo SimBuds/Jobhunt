@@ -436,6 +436,10 @@ setting `data_dir` alone moves neither `db_path`, `profile_dir` nor the
 browser `user_data_dir`. Set each one you want elsewhere. Every command and
 script reads the profile from `profile_dir`.
 
+Every file jobhunt creates is mode 0600 and every directory 0700. Existing
+files keep their mode: they are tightened only by the one-time migration that
+moves private data out of the repo.
+
 ```toml
 [paths]
 # Defaults shown. Private data lives in the XDG data directory

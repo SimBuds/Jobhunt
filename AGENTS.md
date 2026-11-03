@@ -1247,6 +1247,14 @@ paths, model names, or API keys.
 **Secrets.** API keys (Adzuna, USAJobs) live in
 `~/.config/jobhunt/secrets.toml` (mode 0600) or env vars.
 
+**File permissions (2026-11-03).** The CLI callback sets `umask 077`, so
+every file jobhunt creates is 0600 and every directory 0700, including the
+ones SQLite and Chromium create themselves. The CLI never chmods an existing
+file: the one-time migration owns tightening existing private data, and
+`test_existing_file_mode_is_left_alone` pins that with a deliberate-break
+check. Tests that run the CLI rely on conftest's autouse `_restore_umask`,
+because umask is process-wide.
+
 **Database.** SQLite at `data/jobhunt.db`. Migrations are numbered SQL files in
 `migrations/`, run by `jobhunt db migrate`. Plain parameterized SQL only.
 

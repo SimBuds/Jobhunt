@@ -70,3 +70,45 @@ def test_config_toml_beats_defaults_and_env_beats_both(
 
     monkeypatch.setenv("JOBHUNT_PATHS__PROFILE_DIR", str(tmp_path / "env-profile"))
     assert load_config().paths.profile_dir == tmp_path / "env-profile"
+
+
+# --- Phase 18 (2026-11-03): private files are created user-only -------------
+#
+# The CLI callback sets umask 077, so every file the app or its children
+# (SQLite, Chromium) create is 0600 and every directory 0700. umask is
+# process-wide, so conftest's autouse `_restore_umask` puts it back after every
+# test.
+
+
+def _mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
+
+
+def test_db_init_creates_user_only_files(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from jobhunt.cli import app
+
+    os.umask(0o022)  # the common shell default, so the test cannot pass by luck
+    result = CliRunner().invoke(app, ["db", "init"])
+    assert result.exit_code == 0, result.output
+    paths = Config().paths
+    assert _mode(paths.data_dir) == 0o700
+    assert _mode(paths.db_path) == 0o600
+
+
+def test_existing_file_mode_is_left_alone(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from jobhunt.cli import app
+
+    os.umask(0o022)
+    existing = Config().paths.data_dir / "notes.txt"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("kept")
+    existing.chmod(0o644)
+    result = CliRunner().invoke(app, ["db", "init"])
+    assert result.exit_code == 0, result.output
+    # Tightening existing files is the migration's job, done once and visibly,
+    # never a side effect of running a command.
+    assert _mode(existing) == 0o644
