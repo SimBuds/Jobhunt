@@ -112,3 +112,129 @@ def test_existing_file_mode_is_left_alone(tmp_path: Path) -> None:
     # Tightening existing files is the migration's job, done once and visibly,
     # never a side effect of running a command.
     assert _mode(existing) == 0o644
+
+
+# --- Phase 19a (2026-11-03): refuse to run with private data in the repo ----
+#
+# conftest's autouse `_fake_repo_root` points `privacy.repo_root()` at an empty
+# tmp "checkout", so these tests build their own leftovers there and no CLI
+# test ever sees the real repo.
+
+
+def _repo(tmp_path: Path) -> Path:
+    from jobhunt import privacy
+
+    root = privacy.repo_root()
+    assert root is not None and root.is_relative_to(tmp_path)
+    return root
+
+
+@pytest.mark.parametrize("field", ["data_dir", "db_path", "profile_dir"])
+def test_private_path_inside_the_repo_is_refused(tmp_path: Path, field: str) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_private_paths
+
+    root = _repo(tmp_path)
+    cfg = Config()
+    setattr(cfg.paths, field, root / "data" / field)
+    with pytest.raises(PrivacyError) as exc:
+        check_private_paths(cfg, root)
+    assert field in str(exc.value)
+    assert str(root) in str(exc.value)
+
+
+def test_browser_profile_inside_the_repo_is_refused(tmp_path: Path) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_private_paths
+
+    root = _repo(tmp_path)
+    cfg = Config()
+    cfg.browser.user_data_dir = root / "browser-profile"
+    with pytest.raises(PrivacyError, match="user_data_dir"):
+        check_private_paths(cfg, root)
+
+
+def test_symlink_into_the_repo_is_refused(tmp_path: Path) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_private_paths
+
+    root = _repo(tmp_path)
+    (root / "hidden").mkdir()
+    link = tmp_path / "looks-outside"
+    link.symlink_to(root / "hidden")
+    cfg = Config()
+    cfg.paths.profile_dir = link
+    with pytest.raises(PrivacyError, match="profile_dir"):
+        check_private_paths(cfg, root)
+
+
+def test_paths_outside_the_repo_pass(tmp_path: Path) -> None:
+    from jobhunt.privacy import check_private_paths
+
+    check_private_paths(Config(), _repo(tmp_path))  # defaults live under tmp XDG
+
+
+@pytest.mark.parametrize("leftover", ["kb/profile", "data"])
+def test_leftover_private_dir_in_the_repo_is_refused(tmp_path: Path, leftover: str) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_private_paths
+
+    root = _repo(tmp_path)
+    (root / leftover).mkdir(parents=True)
+    with pytest.raises(PrivacyError) as exc:
+        check_private_paths(Config(), root)
+    assert str(root / leftover) in str(exc.value)
+
+
+def test_resume_in_the_repo_root_is_refused_and_named(tmp_path: Path) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_private_paths
+
+    root = _repo(tmp_path)
+    (root / "Jane_Dev_Resume.docx").write_bytes(b"")
+    with pytest.raises(PrivacyError) as exc:
+        check_private_paths(Config(), root)
+    message = str(exc.value)
+    assert "Jane_Dev_Resume.docx" in message
+    assert "--docx" in message
+    assert str(Config().paths.profile_dir) in message
+
+
+def test_no_checkout_passes() -> None:
+    """An installed copy has no repo root, so there is nothing to protect."""
+    from jobhunt.privacy import check_private_paths
+
+    check_private_paths(Config(), None)
+
+
+def test_real_finder_returns_this_checkout() -> None:
+    """The autouse fixture replaces `repo_root()`, so the production finder is
+    tested here directly. Without this, the fixture would hide a broken one."""
+    from jobhunt import privacy
+
+    assert privacy._find_repo_root(Path(privacy.__file__)) == REPO
+
+
+def test_real_finder_outside_a_checkout_returns_none(tmp_path: Path) -> None:
+    from jobhunt.privacy import _find_repo_root
+
+    fake = tmp_path / "site-packages" / "jobhunt" / "privacy.py"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("")
+    assert _find_repo_root(fake) is None
+
+
+def test_cli_refuses_but_config_show_path_and_help_still_run(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from jobhunt.cli import app
+
+    root = _repo(tmp_path)
+    (root / "kb" / "profile").mkdir(parents=True)
+    runner = CliRunner()
+    refused = runner.invoke(app, ["list"])
+    assert refused.exit_code != 0
+    assert str(root / "kb" / "profile") in refused.output
+    for argv in (["config", "show"], ["config", "path"], ["list", "--help"]):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0, (argv, result.output)

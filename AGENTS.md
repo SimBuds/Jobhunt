@@ -1255,6 +1255,18 @@ file: the one-time migration owns tightening existing private data, and
 check. Tests that run the CLI rely on conftest's autouse `_restore_umask`,
 because umask is process-wide.
 
+**Private data stays out of the checkout (2026-11-03).** `privacy.check_private_paths`
+runs in the CLI callback and refuses (exit 1 until the exit-code work maps it
+to 10) when a private path resolves into the repo, when `kb/profile/` or
+`data/` exists there, or when a resume file sits in the repo root. `config
+show`, `config path` and `--help` are exempt so a refused user can still see
+why. The callback learns the subcommand from argv recorded by
+`cli._ArgvRecordingGroup.parse_args`, because click clears those arguments
+before the group callback runs. Tests never see the real checkout: conftest's
+autouse `_fake_repo_root` points the guard at an empty tmp dir, and
+`test_real_finder_returns_this_checkout` covers the production finder that
+fixture would otherwise hide.
+
 **Database.** SQLite at `data/jobhunt.db`. Migrations are numbered SQL files in
 `migrations/`, run by `jobhunt db migrate`. Plain parameterized SQL only.
 

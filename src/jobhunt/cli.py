@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import sys
 
+import click
 import typer
+import typer.core
 
+from jobhunt import privacy
 from jobhunt.commands import (
     add_cmd,
     analyze_cmd,
@@ -23,11 +26,24 @@ from jobhunt.commands import (
     setup_cmd,
     track_cmd,
 )
-from jobhunt.errors import JobHuntError
+from jobhunt.config import load_config
+from jobhunt.errors import JobHuntError, PrivacyError
+
+
+class _ArgvRecordingGroup(typer.core.TyperGroup):
+    """Keep the raw argv where the callback can read it. Click clears the
+    subcommand's arguments before the group callback runs, so the callback
+    alone cannot tell `config show` from `config seed` or see `--help`."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        ctx.meta["jobhunt_argv"] = list(args)
+        return super().parse_args(ctx, args)
+
 
 app = typer.Typer(
     help="Local-first CLI for a personal job search.",
     no_args_is_help=True,
+    cls=_ArgvRecordingGroup,
 )
 
 app.command("setup", help=setup_cmd.app.info.help)(setup_cmd.run)
@@ -63,6 +79,12 @@ def main(
     # files keep their mode: tightening those is the migration's job.
     os.umask(0o077)
     ctx.obj = {"debug": debug, "verbose": verbose}
+    if not privacy.is_exempt(ctx.meta.get("jobhunt_argv", [])):
+        try:
+            privacy.check_private_paths(load_config(), privacy.repo_root())
+        except PrivacyError as e:
+            typer.echo(f"error: {e}", err=True)
+            raise typer.Exit(code=1) from e
 
 
 def _run() -> None:

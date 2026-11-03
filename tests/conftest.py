@@ -22,6 +22,23 @@ def _isolate_user_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _fake_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the privacy guard at an empty tmp checkout (Phase 19a).
+
+    The real checkout may hold leftovers the guard refuses, so a CLI test
+    against it would fail or, worse, pass only because of the developer's
+    machine. Guard tests build their own leftovers under this root, and
+    `test_real_finder_returns_this_checkout` covers the production finder.
+    """
+    from jobhunt import privacy
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    monkeypatch.setattr(privacy, "repo_root", lambda: root)
+    return root
+
+
+@pytest.fixture(autouse=True)
 def _restore_umask():
     """The CLI callback sets umask 077 process-wide (Phase 18). Restore it after
     every test, so a test that runs the CLI cannot change the modes the next

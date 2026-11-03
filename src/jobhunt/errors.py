@@ -27,3 +27,7 @@ class PipelineError(JobHuntError):
 
 class BrowserError(JobHuntError):
     pass
+
+
+class PrivacyError(JobHuntError):
+    """Personal data found inside the repository checkout."""

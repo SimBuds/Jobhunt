@@ -441,6 +441,23 @@ Every file jobhunt creates is mode 0600 and every directory 0700. Existing
 files keep their mode: they are tightened only by the one-time migration that
 moves private data out of the repo.
 
+### Private data
+
+Personal data never lives inside the repository checkout, even gitignored.
+Every command except `config show`, `config path` and `--help` refuses to run,
+naming each problem, when it finds:
+
+- `data_dir`, `db_path`, `profile_dir` or the browser `user_data_dir`
+  resolving inside the checkout (symlinks are followed),
+- a leftover `kb/profile/` or `data/` in the checkout,
+- a `.docx` or `.pdf` with "resume" in its name in the repo root.
+
+To fix it, move the files into the private data directory (`profile_dir` for
+the profile and the resume, `data_dir` for the rest), keep them mode 0600, and
+delete any `[paths]` override in `config.toml` that points into the checkout.
+An installed copy with no checkout has nothing to protect and is never
+refused.
+
 ```toml
 [paths]
 # Defaults shown. Private data lives in the XDG data directory
