@@ -15,32 +15,28 @@ from jobhunt.resume.parse_docx import (
     write_verified_json,
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# The two live-resume tests below are the **only** tests that touch the user's
+# real resume. They run only with `--live-resume PATH` (conftest `live_resume`,
+# Phase 19c), read nothing else, and assert it parses cleanly rather than
+# asserting its content. Content assertions belong on the fictional fixture
+# profile (tests/conftest.py).
 
 
-def _live_baseline() -> Path | None:
-    """The real baseline resume, or None when the repo has none.
+def _assert_projects_parsed_if_heading(docx_path: Path, facts) -> None:
+    """A resume with a Projects heading must yield parsed projects (Casey,
+    2026-11-02). Conditional, because whether a resume carries projects is an
+    editorial choice, and the supplement now supplies them otherwise."""
+    from docx import Document
 
-    Resolved through `resume.locate` rather than a hard-coded filename: on
-    2026-07-24 the file was renamed and the previous `REPO_ROOT /
-    "Baseline_Resume.docx"` turned two regression guards into silent skips,
-    which is strictly worse than a failure because nothing surfaces it.
+    from jobhunt.resume.parse_docx import _canonical_section
 
-    These are the **only** tests that touch the user's real resume, and they
-    assert it parses cleanly rather than asserting its content. Content
-    assertions belong on the fictional fixture profile (tests/conftest.py).
-    """
-    from jobhunt.errors import PipelineError
-    from jobhunt.resume.locate import find_baseline_resume
-
-    try:
-        found = find_baseline_resume(REPO_ROOT)
-    except PipelineError:
-        return None
-    return found if found.suffix.lower() == ".docx" else None
-
-
-BASELINE = _live_baseline() or REPO_ROOT / "Baseline_Resume.docx"
+    has_heading = any(
+        _canonical_section(p.text.strip()) == "PROJECTS"
+        for p in Document(str(docx_path)).paragraphs
+        if p.text.strip()
+    )
+    if has_heading:
+        assert facts.projects, "the resume has a Projects heading but no project parsed"
 
 
 def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
@@ -64,9 +60,9 @@ def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
     assert facts.summary == "A developer."  # contact block didn't swallow the summary
 
 
-@pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
-def test_parse_baseline_round_trip(tmp_path: Path):
-    facts, warnings = parse_baseline(BASELINE)
+def test_parse_baseline_round_trip(tmp_path: Path, live_resume: Path):
+    facts, warnings = parse_baseline(live_resume)
+    _assert_projects_parsed_if_heading(live_resume, facts)
     assert warnings == []  # the curated master parses cleanly (RP1 regression guard)
     assert facts.name
     assert "Toronto" in facts.contact_line
@@ -186,8 +182,7 @@ def test_parse_baseline_round_trip(tmp_path: Path):
             assert f"## {p.name}" in projects_md
 
 
-@pytest.mark.skipif(not BASELINE.is_file(), reason="baseline .docx not present")
-def test_parse_baseline_positioning_and_atomic_skills():
+def test_parse_baseline_positioning_and_atomic_skills(live_resume: Path):
     """Regression guard for the 2026-06 specialist re-positioning (Initiative:
     Positioning resync). Locks the things that were either hand-patched or newly
     moved, so a future re-parse can't silently regress them:
@@ -200,7 +195,7 @@ def test_parse_baseline_positioning_and_atomic_skills():
       line).
     - The lead role carries the JD-aligned retitle, not the old generic title.
     """
-    facts, warnings = parse_baseline(BASELINE)
+    facts, warnings = parse_baseline(live_resume)
     assert warnings == []
 
     # Atomic: no item is a comma-split artifact (a stray dangling close-paren
@@ -1091,3 +1086,38 @@ class TestSupplement:
         assert "Source: alpha/README.md" in (profile / "projects.md").read_text(
             encoding="utf-8"
         )
+
+
+class TestProjectsHeadingGuard:
+    """Phase 19c: the live round-trip's conditional Projects guard, pinned on
+    fictional documents so it is shown to fire without the real resume."""
+
+    @staticmethod
+    def _doc(tmp_path: Path, *lines: str) -> Path:
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("Jane Dev")
+        doc.add_paragraph("Toronto, ON  |  jane@example.com")
+        for line in lines:
+            doc.add_paragraph(line)
+        path = tmp_path / "r.docx"
+        doc.save(path)
+        return path
+
+    def test_heading_with_nothing_parsed_fails(self, tmp_path: Path):
+        path = self._doc(tmp_path, "PROJECTS", "A line that is not a project header.")
+        facts, _ = parse_baseline(path)
+        with pytest.raises(AssertionError, match="Projects heading"):
+            _assert_projects_parsed_if_heading(path, facts)
+
+    def test_no_heading_passes(self, tmp_path: Path):
+        path = self._doc(tmp_path, "SUMMARY", "A developer.")
+        facts, _ = parse_baseline(path)
+        _assert_projects_parsed_if_heading(path, facts)
+
+    def test_heading_with_a_parsed_project_passes(self, tmp_path: Path):
+        path = self._doc(tmp_path, "PROJECTS", "Alpha | github.com/jane/alpha", "Built a CLI.")
+        facts, _ = parse_baseline(path)
+        assert facts.projects
+        _assert_projects_parsed_if_heading(path, facts)

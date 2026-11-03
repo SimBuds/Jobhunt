@@ -5,6 +5,47 @@ from pathlib import Path
 
 import pytest
 
+LIVE_RESUME_SKIP = "live resume not supplied: pass --live-resume PATH"
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--live-resume",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Run the live-resume parser tests against this .docx, read only. "
+            "Off by default: the suite never reads personal data unless asked."
+        ),
+    )
+
+
+@pytest.fixture
+def live_resume(request: pytest.FixtureRequest) -> Path:
+    """The real resume, only when the run asks for it (Phase 19c).
+
+    The resume left the repo root for the private profile dir, so the old
+    discovery would skip these tests silently. An explicit option keeps the
+    default run off personal data, and the summary line keeps the skip visible.
+    """
+    raw = request.config.getoption("--live-resume")
+    if raw is None:
+        pytest.skip(LIVE_RESUME_SKIP)
+    path = Path(raw).expanduser()
+    if not path.is_file():
+        pytest.fail(f"--live-resume {path} is not a file")
+    return path
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    skipped = [
+        r for r in terminalreporter.stats.get("skipped", []) if LIVE_RESUME_SKIP in str(r.longrepr)
+    ]
+    if skipped:
+        terminalreporter.write_line(
+            f"{len(skipped)} live-resume test(s) not run: pass --live-resume PATH to run them."
+        )
+
 
 @pytest.fixture(autouse=True)
 def _isolate_user_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

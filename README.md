@@ -638,6 +638,17 @@ uv run ruff check
 uv run mypy src
 ```
 
+The suite never reads personal data by default. Two parser tests check the
+real resume and run only when asked, reading that one file and writing only
+to pytest's temp dir:
+
+```bash
+uv run pytest tests/test_parse_docx.py --live-resume ~/.local/share/jobhunt/profile/Your_Resume.docx
+```
+
+Without the option they skip, and the run ends with "2 live-resume test(s)
+not run: pass --live-resume PATH to run them."
+
 ### Quality harnesses
 
 Two manual, live-model scripts live in `scripts/` and stay out of CI.
