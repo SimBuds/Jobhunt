@@ -1400,7 +1400,11 @@ paths: existing job id, URL fetch, `--jd-from-stdin` paste, `--paste`
 `ingest.manual.parse_linkedin_paste`), or `--no-jd` stub for expired postings
 (a tracking-only row that scoring and interview-prep refuse). `--when`
 backdates. Channel lands on `applications.channel` (`pipeline` default), and a
-re-tailor never reclassifies a manual channel. `track sweep` is the **only**
+re-tailor never reclassifies a manual channel. A re-tailor also never resets a
+recorded status or the week it was applied in (2026-11-03: a redraft had put
+applied jobs back in the `--top` queue). The guard is in
+`apply_cmd._record_application`, not the upsert, so `--set-status drafted`
+still resets on purpose. `track sweep` is the **only**
 writer of non-responses — without it `analyze funnel` cannot distinguish
 silence from pending. Its selection is deliberately narrow (status `applied`,
 no `response_received_at`, no outcome). The lifecycle subcommands are thin

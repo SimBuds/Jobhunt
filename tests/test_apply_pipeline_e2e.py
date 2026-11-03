@@ -257,3 +257,100 @@ def test_apply_one_confirmed_status_overwrites_early_draft(
     assert rows[0]["status"] == "applied"
     assert rows[0]["applied_at"] is not None
     assert rows[0]["fill_plan_path"].endswith("fill-plan.json")
+
+
+# --- Phase 21b (2026-11-03): a redraft never resets a recorded status --------
+#
+# `apply` writes 'drafted' before the submission prompt, and again after it
+# when there is no browser step or no tty. The upsert sets `status =
+# excluded.status` on conflict, so redrafting a job already marked applied
+# (to re-tailor for an interview, say) reset it to 'drafted', put it back in
+# the `--top` queue, and overwrote the week it was applied in.
+
+
+def _seed_application(cfg: Config, status: str) -> None:
+    conn = sqlite3.connect(cfg.paths.db_path)
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO applications (id, job_id, status, resume_path, "
+                "applied_at, applied_week, outcome_at) VALUES "
+                "('app-1', 'test:1', ?, '/old/Resume.docx', "
+                "'2026-10-01 09:00:00', '2026-W40', '2026-10-15 09:00:00')",
+                (status,),
+            )
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "status", ["applied", "interviewing", "offer", "rejected", "withdrawn"]
+)
+def test_redraft_keeps_a_recorded_status_and_its_dates(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    _seed_application(cfg, status)
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+
+    [row] = _app_rows(cfg.paths.db_path)
+    assert row["status"] == status
+    assert (row["applied_at"], row["applied_week"], row["outcome_at"]) == (
+        "2026-10-01 09:00:00",
+        "2026-W40",
+        "2026-10-15 09:00:00",
+    )
+    # The documents are still regenerated and the row points at the new ones.
+    assert row["resume_path"] != "/old/Resume.docx"
+    assert row["resume_path"].endswith("Resume.docx")
+
+
+def test_redraft_of_a_drafted_job_stays_drafted(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_application(cfg, "drafted")
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+
+    [row] = _app_rows(cfg.paths.db_path)
+    assert row["status"] == "drafted"
+    assert row["resume_path"] != "/old/Resume.docx"
+
+
+def test_set_status_drafted_still_resets_on_purpose(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard lives in apply's draft path, not in the upsert, so an explicit
+    `apply --set-status drafted` (undoing a mistaken 'applied') still works."""
+    _seed_application(cfg, "applied")
+    monkeypatch.setattr(apply_cmd, "load_config", lambda: cfg)
+
+    apply_cmd._run_lifecycle(
+        "test:1",
+        set_status="drafted",
+        mark_response=None,
+        mark_interview=None,
+        set_outcome=None,
+        recruiter_type=None,
+    )
+
+    [row] = _app_rows(cfg.paths.db_path)
+    assert row["status"] == "drafted"
+
+
+def test_prompt_answer_still_moves_a_recorded_status(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a 'drafted' write is held back. A real answer at the submission
+    prompt (here 'withdrawn' on a job already marked applied) is recorded."""
+    _seed_application(cfg, "applied")
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "w")
+
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
+
+    [row] = _app_rows(cfg.paths.db_path)
+    assert row["status"] == "withdrawn"

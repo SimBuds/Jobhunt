@@ -1133,6 +1133,20 @@ def _record_application(
             # already in memory, and `applications` is the source of truth for
             # history regardless of what `jobs` looks like.
             upsert_job(conn, job)
+            applied_week: str | None = week_label
+            if status == "drafted":
+                existing = conn.execute(
+                    "SELECT status FROM applications WHERE job_id = ?", (job.id,)
+                ).fetchone()
+                if existing is not None and existing[0] != "drafted":
+                    # A redraft of a job already past 'drafted' (re-tailoring
+                    # for an interview) refreshes the documents only. Writing
+                    # 'drafted' reset applied rows into the --top queue and
+                    # overwrote the week they were applied in (2026-11-03).
+                    # The guard is here, not in the upsert, so an explicit
+                    # `--set-status drafted` still resets on purpose.
+                    status = existing[0]
+                    applied_week = None
             upsert_application(
                 conn,
                 application_id=str(uuid.uuid4()),
@@ -1141,7 +1155,7 @@ def _record_application(
                 resume_path=str(resume_path),
                 cover_path=str(cover_docx_path),
                 fill_plan_path=str(plan_path) if plan_path else None,
-                applied_week=week_label,
+                applied_week=applied_week,
                 # channel stays None: new rows default to 'pipeline', and a
                 # re-tailor of a job first logged via `track applied` keeps
                 # its manual channel instead of being reclassified.
