@@ -115,3 +115,10 @@ def test_describe_choice_stays_quiet_when_unambiguous(tmp_path: Path) -> None:
     _touch(tmp_path / "Baseline_Resume.docx")
     chosen = find_baseline_resume(tmp_path)
     assert "also found" not in describe_choice(chosen, tmp_path)
+
+
+def test_describe_choice_with_a_missing_root(tmp_path: Path) -> None:
+    """Phase 19b: an explicit --docx on a first run, before the profile dir
+    exists, must name the pick rather than crash listing a missing dir."""
+    chosen = tmp_path / "Resume.docx"
+    assert describe_choice(chosen, tmp_path / "missing") == f"resume: {chosen}"

@@ -26,7 +26,7 @@ so the hierarchy the document already expresses is preserved rather than
 flattened.
 
 Run:  uv run python scripts/normalize_resume.py [path]   (default: the resume
-      `resume.locate` would pick)
+      `resume.locate` picks in the profile dir)
 """
 
 from __future__ import annotations
@@ -42,8 +42,6 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
-
-REPO = Path(__file__).resolve().parent.parent
 
 # One size and one spacing rule per role: (space_before, space_after, line).
 SIZE_PT = {"name": 16.0, "heading": 12.0}
@@ -241,9 +239,11 @@ def main(argv: list[str]) -> int:
     if len(argv) > 1:
         target = Path(argv[1])
     else:
+        from jobhunt.config import load_config
         from jobhunt.resume.locate import find_baseline_resume
 
-        target = find_baseline_resume(REPO)
+        # The resume is personal and lives with the profile, not the checkout.
+        target = find_baseline_resume(load_config().paths.profile_dir)
     if not target.is_file():
         print(f"not found: {target}")
         return 1

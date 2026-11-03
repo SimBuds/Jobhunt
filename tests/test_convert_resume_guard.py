@@ -555,3 +555,49 @@ class TestSupplementWiring:
         assert got["work_history"][0]["employment_type"] == "part-time"
         assert got["projects"][0]["source"] == "alpha/README.md"
         assert got["skills_projects"] == ["React"]
+
+
+class TestResumeLookup:
+    """Phase 19b (2026-11-03): without --docx, convert-resume looks for the
+    resume in `profile_dir` (private, outside the repo), never the cwd, so a
+    resume left in the checkout is never picked up by accident."""
+
+    def test_finds_the_resume_in_profile_dir_not_the_cwd(
+        self, env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import shutil
+
+        from jobhunt.commands import convert_resume_cmd
+
+        profile = env / "kb" / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        good = _resume(
+            env,
+            skill_label="Languages & Frameworks",
+            role_line="Dev | Acme   Jan 2024 – Present",
+        )
+        shutil.copy(good, profile / "Baseline_Resume.docx")
+        cwd = env / "cwd"
+        cwd.mkdir()
+        (cwd / "Decoy_Resume.docx").write_bytes(b"not a docx")
+        monkeypatch.chdir(cwd)
+
+        result = runner.invoke(convert_resume_cmd.app, [])
+        assert f"resume: {profile / 'Baseline_Resume.docx'}" in result.output
+        assert "Decoy_Resume" not in result.output
+        assert (profile / "verified.json").is_file()
+
+    def test_a_resume_only_in_the_cwd_is_not_found(
+        self, env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from jobhunt.commands import convert_resume_cmd
+
+        cwd = env / "cwd"
+        cwd.mkdir()
+        (cwd / "Baseline_Resume.docx").write_bytes(b"")
+        monkeypatch.chdir(cwd)
+
+        result = runner.invoke(convert_resume_cmd.app, [])
+        assert result.exit_code != 0
+        assert str(env / "kb" / "profile") in result.output
+        assert "--docx" in result.output

@@ -197,13 +197,14 @@ gateway sends its own on every request.
 
 ## Workflows
 
-The day-to-day is **scan → list → apply**. Everything else is occasional. Drop
-your baseline resume in the repo root before the first run — any root-level
-`.docx` with "resume" in the filename is picked up, so `Baseline_Resume.docx`
-and `Jane_Dev_Resume.docx` both work. Put "baseline" in the name when the root
-also holds tailored copies, because that is what wins the tie. The search is non-recursive on purpose,
-so a generated copy under `data/` can never become its own source. Pass
-`--docx <path>` to override. This README covers the common path. Use
+The day-to-day is **scan → list → apply**. Everything else is occasional. Put
+your baseline resume in the profile directory (`profile_dir`, default
+`~/.local/share/jobhunt/profile`) before the first run. It is personal, so it
+never goes in the checkout. Any `.docx` there with "resume" in the filename is
+picked up, so `Baseline_Resume.docx` and `Jane_Dev_Resume.docx` both work. Put
+"baseline" in the name when the directory holds more than one, because that is
+what wins the tie. The search is non-recursive on purpose, so a generated copy
+can never become its own source. Pass `--docx <path>` to override. This README covers the common path. Use
 `jobhunt --help` and `jobhunt <command> --help` for the full flag reference.
 
 ### First run
@@ -586,7 +587,7 @@ adzuna_app_key = "..."
 
 | Path | What lives there |
 |---|---|
-| `Casey_Hsu_Baseline_Resume.docx` | Source-of-truth resume. Hand-edited, and the two-page fact store everything else is generated from. Any root-level `.docx` with "resume" in the name is found automatically, a name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
+| `<profile_dir>/*Resume*.docx` | Source-of-truth resume. Hand-edited, and the fact store everything else is generated from. Personal, so it lives in the profile directory, never the checkout. A name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
 | `<profile_dir>/verified.json` | Structured facts emitted by `convert-resume`. |
 | `<profile_dir>/supplement.toml` | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement". |
 | `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |

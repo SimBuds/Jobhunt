@@ -57,22 +57,24 @@ def _step_resume_present() -> Path | None:
     from jobhunt.resume.locate import describe_choice, find_baseline_resume
 
     _header("Step 2/6: resume file")
+    # Personal, so it lives with the profile, never in the checkout.
+    resume_dir = load_config().paths.profile_dir
     try:
-        docx = find_baseline_resume()
+        docx = find_baseline_resume(resume_dir)
     except PipelineError:
         typer.echo(
-            "no resume found here. Drop a .docx with 'resume' in the filename "
-            "(e.g. Baseline_Resume.docx) into this directory."
+            f"no resume found in {resume_dir}. Put a .docx with 'resume' in "
+            "the filename (e.g. Baseline_Resume.docx) there."
         )
         if not typer.confirm("place your baseline resume there now and continue?", default=False):
             typer.echo("setup paused — re-run `jobhunt setup` once the resume is added.")
             return None
         try:
-            docx = find_baseline_resume()
+            docx = find_baseline_resume(resume_dir)
         except PipelineError:
             typer.echo("still no resume found. aborting.")
             return None
-    typer.echo(describe_choice(docx))
+    typer.echo(describe_choice(docx, resume_dir))
     return docx
 
 

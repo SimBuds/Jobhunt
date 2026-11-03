@@ -2,8 +2,10 @@
 
 The path used to be hard-coded to `Baseline_Resume.docx`. Renaming the file —
 an ordinary thing to do while rewriting a resume — broke `convert-resume` and
-`setup` with a file-not-found. This module matches any root-level `.docx` /
-`.pdf` whose name contains "resume" instead.
+`setup` with a file-not-found. This module matches any `.docx` / `.pdf`
+directly inside the search root whose name contains "resume" instead. Both
+commands pass the profile directory as the root (2026-11-03): the resume is
+personal, so it is never looked for in the checkout.
 
 The search is deliberately **non-recursive**. `data/resumes/` holds the
 generated lane resumes and `data/applications/<id>/` holds tailored per-job
@@ -83,7 +85,12 @@ def describe_choice(chosen: Path, root: Path | None = None) -> str:
     Silently choosing among several resumes is worse than choosing loudly:
     the whole verified-facts pipeline downstream treats this file as truth.
     """
-    others = [p.name for p in _candidates(root or Path()) if p != chosen]
+    search = root or Path()
+    # With an explicit --docx the search root (the profile dir) may not exist
+    # yet on a first run. There is nothing to list then, not an error.
+    others = (
+        [p.name for p in _candidates(search) if p != chosen] if search.is_dir() else []
+    )
     if not others:
         return f"resume: {chosen}"
     return f"resume: {chosen}  (also found: {', '.join(others)})"

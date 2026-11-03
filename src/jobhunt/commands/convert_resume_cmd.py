@@ -321,8 +321,8 @@ def run(
         None,
         "--docx",
         help=(
-            "Path to the baseline resume. Default: the newest root-level "
-            ".docx/.pdf with 'resume' in the filename."
+            "Path to the baseline resume. Default: the newest .docx/.pdf "
+            "with 'resume' in the filename, in the profile directory."
         ),
     ),
     force: bool = typer.Option(
@@ -332,12 +332,18 @@ def run(
     ),
 ) -> None:
     cfg = load_config()
+    # The resume is personal, so it lives with the profile, never in the
+    # checkout: searching the cwd picked up a resume left in the repo root.
+    resume_dir = cfg.paths.profile_dir
     try:
-        docx = find_baseline_resume(explicit=docx)
+        docx = find_baseline_resume(resume_dir, explicit=docx)
     except PipelineError as e:
         typer.echo(f"error: {e}", err=True)
+        typer.echo(
+            f"put the resume in {resume_dir} or pass --docx <path>.", err=True
+        )
         raise typer.Exit(code=1) from e
-    typer.echo(describe_choice(docx))
+    typer.echo(describe_choice(docx, resume_dir))
 
     if docx.suffix.lower() == ".pdf":
         typer.echo(

@@ -16,7 +16,7 @@ One-pager composition choices (vs the comprehensive baseline):
 - Contact URLs render as bare domains so the contact line fits one line.
 
 Run:  uv run python scripts/build_onepager.py
-Out:  Casey_Hsu_Resume_OnePage.docx  (repo root)
+Out:  <data_dir>/resumes/<Name>_Resume_OnePage.docx  (never the checkout)
 
 For an actual application, prefer a JD-tailored one-pager:
 `jobhunt apply --url <posting-url>` — it beats any generic master.
@@ -37,12 +37,16 @@ from jobhunt.pipeline.tailor import (
 )
 from jobhunt.resume.render_docx import estimate_lines, fits_one_page, render
 
-REPO = Path(__file__).resolve().parent.parent
-OUT = REPO / "Casey_Hsu_Resume_OnePage.docx"
-
 
 def build() -> Path:
-    v = json.loads((load_config().paths.profile_dir / "verified.json").read_text())
+    cfg = load_config()
+    v = json.loads((cfg.paths.profile_dir / "verified.json").read_text())
+    # Personal output, so it goes with the other rendered resumes in data_dir,
+    # never the checkout. Named like `jobhunt resume`'s files, from the profile.
+    out_dir = cfg.paths.data_dir / "resumes"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name_slug = "_".join(str(v.get("name", "")).split())
+    out = out_dir / f"{name_slug + '_' if name_slug else ''}Resume_OnePage.docx"
 
     cats = [
         TailoredCategory("Core", list(v.get("skills_core") or [])),
@@ -93,7 +97,7 @@ def build() -> Path:
         print(f"warning: estimate {estimate_lines(tr)} lines may exceed one page")
 
     contact = re.sub(r"https?://", "", v["contact_line"])  # bare domains
-    return render(tr, contact, v["name"], OUT)
+    return render(tr, contact, v["name"], out)
 
 
 if __name__ == "__main__":

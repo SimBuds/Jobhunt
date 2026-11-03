@@ -45,17 +45,15 @@ def test_setup_wizard_writes_applicant_fields(
 ) -> None:
     cfg_path = _seed_minimal_config(tmp_config_dir)
 
-    # Work in a tmp cwd so the wizard finds Baseline_Resume.docx in the expected spot.
-    workdir = tmp_path / "workdir"
-    workdir.mkdir()
-    (workdir / "Baseline_Resume.docx").write_bytes(b"")  # presence is enough
-    monkeypatch.chdir(workdir)
+    # The wizard looks for the resume in profile_dir (Phase 19b), not the cwd.
+    resume = tmp_config_dir / "kb" / "profile" / "Baseline_Resume.docx"
+    resume.write_bytes(b"")  # presence is enough
 
     # Make verified.json newer than Baseline_Resume.docx so the re-parse branch is
     # skipped (and convert_resume_cmd.run is never called even if mocked).
     verified = tmp_config_dir / "kb" / "profile" / "verified.json"
     import os
-    now = (workdir / "Baseline_Resume.docx").stat().st_mtime
+    now = resume.stat().st_mtime
     os.utime(verified, (now + 10, now + 10))
 
     # Mock the heavyweight steps: DB migrate, convert-resume, config seed.
@@ -110,10 +108,8 @@ def test_setup_wizard_finishes_when_convert_resume_exits_nonzero(
     kb/profile/ is written before that exit, so there is nothing to roll back.
     """
     cfg_path = _seed_minimal_config(tmp_config_dir)
-    workdir = tmp_path / "workdir"
-    workdir.mkdir()
-    (workdir / "Baseline_Resume.docx").write_bytes(b"")
-    monkeypatch.chdir(workdir)
+    # The wizard looks for the resume in profile_dir (Phase 19b), not the cwd.
+    (tmp_config_dir / "kb" / "profile" / "Baseline_Resume.docx").write_bytes(b"")
 
     def _exit_one(**_k: object) -> None:
         raise SystemExit(1)
@@ -154,3 +150,23 @@ def test_setup_wizard_exits_cleanly_when_resume_missing(
     result = runner.invoke(app, ["setup"], input="n\n")
     assert result.exit_code == 0, result.output
     assert "setup paused" in result.output
+
+
+def test_setup_looks_for_the_resume_in_profile_dir(
+    tmp_config_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 19b: a resume in the cwd is ignored, and the pause message names
+    the profile dir as the place to put it."""
+    _seed_minimal_config(tmp_config_dir)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    (workdir / "Baseline_Resume.docx").write_bytes(b"")
+    monkeypatch.chdir(workdir)
+    monkeypatch.setattr(setup_cmd, "migrate", lambda *_a, **_k: None)
+
+    result = CliRunner().invoke(app, ["setup"], input="n\n")
+    assert result.exit_code == 0, result.output
+    assert "setup paused" in result.output
+    assert str(tmp_config_dir / "kb" / "profile") in result.output
