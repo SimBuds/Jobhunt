@@ -1411,6 +1411,14 @@ no `response_received_at`, no outcome). The lifecycle subcommands are thin
 wrappers over `apply_cmd._run_lifecycle`, so there is one code path for
 lifecycle writes.
 
+**Automated caller (2026-11-04).** A local hub runs `scan --no-discover
+--json`, `list --json`, `analyze ...` and `apply --top N --no-browser
+--drafted-by hub --json`, and nothing else. README "Automation" is the
+contract (exit codes, JSON envelope, refusals). A new error must declare its
+`exit_code` in `jobhunt.errors`, a new prompt must call `require_tty` first,
+and `--json` payloads carry ids, counts and paths, never document, profile or
+error text.
+
 **Job references.** `commands/_refs.py:resolve_job_ref(conn, ref, scope=...)`
 is the single resolver behind every command that takes a job reference. Exact
 id wins, otherwise a case-insensitive substring match over company + title,

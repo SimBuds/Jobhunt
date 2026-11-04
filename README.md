@@ -431,6 +431,38 @@ Notes:
 - `add`, `config seed --apply`, and `discover slugs --apply` rewrite
   `config.toml` and create a `.bak` snapshot.
 
+## Automation
+
+A local service can run jobhunt on a schedule and queue the results for review.
+The service only ever drafts. Every application is still reviewed and
+submitted by hand. These commands are the whole automated surface:
+
+```bash
+jobhunt scan --no-discover --json
+jobhunt list --json
+jobhunt analyze funnel        # any analyze subcommand (human text, no --json)
+jobhunt apply --top 3 --no-browser --drafted-by hub --json
+```
+
+Never automate these: browser autofill (`apply` without `--no-browser`),
+`apply --best` or an explicit job id or `--url`, the lifecycle flags
+(`--set-status`, `--mark-response`, `--mark-interview`, `--set-outcome`),
+`track`, `db`, `config`, `setup` and `convert-resume`. `scan` needs
+`--no-discover` because discovery appends to `config.toml`.
+
+The caller enforces its own allowlist. jobhunt backs it up:
+
+- `--drafted-by` and `apply --json` exit 2 outside `--top N --no-browser`.
+- An automated `apply` only creates `drafted` rows, records `drafted_by`, and
+  leaves any row already past `drafted` as it is.
+- Run from the repo root. Anywhere else, with the default `kb_dir` and
+  `migrations_dir`, a command exits 10 before doing anything. A first run from
+  the wrong directory also writes those wrong paths into a new `config.toml`,
+  and later runs then fail further in, so delete that file and rerun from the
+  repo root.
+- Without a terminal, a command that would prompt exits 11 at once instead of
+  waiting.
+
 ### Exit codes
 
 Every command exits with one of these codes, so a script can tell a fault it
@@ -470,6 +502,12 @@ under `--skip-ingest`, else `inserted`, `filtered` counts by reason, and
 `declined`), `jobs` scored this run (id, title, company, score, declined) and
 `failures` (each job id with its error class). A run the router stops still
 prints what it scored before the stop.
+
+`jobhunt apply --top N --no-browser --json` uses it too, and refuses `--json`
+in any other shape (exit 2). Its payload is `drafted` (id, title, company,
+score, the recorded status and `drafted_by`, the audit verdict, and the resume,
+cover and audit paths), `blocked` (id and the audit rule labels that fired),
+`skipped` (id and error class) and `counts`. Paths only: no document text.
 
 On a failure inside the command, `ok` is false, `exit_code` matches the
 process exit code, and `error` names only the class (`{"class":

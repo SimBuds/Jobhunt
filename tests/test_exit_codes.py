@@ -324,7 +324,9 @@ async def test_apply_llm_phase_raises_only_run_wide_failures(
         with pytest.raises(type(exc)):
             await apply_cmd._apply_llm_phase(cfg, _job("1"), verified={})
     else:
-        assert await apply_cmd._apply_llm_phase(cfg, _job("1"), verified={}) is None
+        assert await apply_cmd._apply_llm_phase(cfg, _job("1"), verified={}) == apply_cmd._Skipped(
+            "PipelineError"
+        )
 
 
 async def test_apply_each_stops_after_the_current_job_and_shows_progress(

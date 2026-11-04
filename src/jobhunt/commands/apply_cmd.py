@@ -22,14 +22,16 @@ import sqlite3
 import sys
 import uuid
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import click
 import typer
 
 from jobhunt.browser import autofill
+from jobhunt.commands._json_out import json_output
 from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.commands._refs import resolve_job_ref
 from jobhunt.config import Config, load_config
@@ -156,6 +158,13 @@ def run(
             "only with --top N --no-browser."
         ),
     ),
+    as_json: bool = typer.Option(
+        False, "--json",
+        help=(
+            "Print one JSON object on stdout, human output on stderr. Runs only "
+            "with --top N --no-browser."
+        ),
+    ),
     include_borderline: bool = typer.Option(
         False, "--include-borderline",
         help=(
@@ -168,7 +177,7 @@ def run(
     # An automated caller may only draft: pick from the ranked queue, write
     # documents, never open a browser, never touch a recorded status. Anything
     # else is refused here as a backup to the caller's own allowlist.
-    if drafted_by is not None and (
+    if (drafted_by is not None or as_json) and (
         job_id is not None
         or best
         or url is not None
@@ -179,8 +188,9 @@ def run(
         or mark_interview is not None
         or set_outcome is not None
     ):
+        flag = "--drafted-by" if drafted_by is not None else "--json"
         typer.echo(
-            "error: --drafted-by is for automated runs: use it only with "
+            f"error: {flag} is for automated runs: use it only with "
             "--top N --no-browser, never with a job id, --best, --url or "
             "lifecycle flags.",
             err=True,
@@ -237,6 +247,44 @@ def run(
         )
         raise typer.Exit(code=2)
 
+    envelope: AbstractContextManager[dict[str, Any]] = (
+        json_output("apply") if as_json else nullcontext({})
+    )
+    with envelope as out:
+        out.update(
+            drafted=[], blocked=[], skipped=[],
+            counts={"drafted": 0, "blocked": 0, "skipped": 0},
+        )
+        _run_apply(
+            job_id=job_id, top=top, best=best, url=url, title=title, company=company,
+            no_score=no_score, force_robots=force_robots,
+            description_from_stdin=description_from_stdin, min_score=min_score,
+            include_borderline=include_borderline, no_browser=no_browser,
+            drafted_by=drafted_by, manual_mode=manual_mode,
+            out=out if as_json else None,
+        )
+
+
+def _run_apply(
+    *,
+    job_id: str | None,
+    top: int | None,
+    best: bool,
+    url: str | None,
+    title: str | None,
+    company: str | None,
+    no_score: bool,
+    force_robots: bool,
+    description_from_stdin: bool,
+    min_score: int | None,
+    include_borderline: bool,
+    no_browser: bool,
+    drafted_by: str | None,
+    manual_mode: bool,
+    out: dict[str, Any] | None,
+) -> None:
+    """Selection, drafting and the `add` nudge: everything `apply` does
+    after its options are validated, run inside the `--json` envelope."""
     from jobhunt.commands import ensure_profile
 
     cfg = load_config()
@@ -287,7 +335,9 @@ def run(
         suffix = "" if str(j["source"]) == "manual" else f" — {j['id']}"
         typer.echo(f"  • [{score}] {j['title']} @ {j['company']}{suffix}")
 
-    asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by))
+    asyncio.run(
+        _apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by, out=out)
+    )
 
     if manual_mode and url is not None:
         _maybe_suggest_add(cfg, url)
@@ -618,7 +668,10 @@ async def _apply_each(
     *,
     no_browser: bool,
     drafted_by: str | None = None,
+    out: dict[str, Any] | None = None,
 ) -> None:
+    """`out`, when given, collects the `--json` payload as each job finishes,
+    so a run that stops partway still reports what it drafted."""
     import json as _json
     from collections import Counter
 
@@ -644,7 +697,7 @@ async def _apply_each(
     # Prefetched LLM phases for job 1+ buffer their output to avoid
     # interleaving with the previous job's IO-phase prompts.
     next_buf: list[tuple[str, bool]] | None = None
-    next_llm: asyncio.Task[_LLMPhaseResult | None] = asyncio.create_task(
+    next_llm: asyncio.Task[_LLMPhaseResult | _Skipped] = asyncio.create_task(
         _apply_llm_phase(cfg, _row_to_job(rows[0]), verified=verified)
     )
     for i, row in enumerate(rows):
@@ -683,12 +736,18 @@ async def _apply_each(
                 _apply_llm_phase(cfg, next_job, verified=verified, echo=_buf_echo)
             )
 
-        if phase is None:
-            pass  # tailor/cover/audit failed — fall through to between-jobs prompt
+        if isinstance(phase, _Skipped):
+            # tailor/cover/audit failed — fall through to between-jobs prompt
+            if out is not None:
+                out["skipped"].append({"id": job.id, "error": {"class": phase.error_class}})
+                out["counts"]["skipped"] += 1
         elif phase.early_exit:
             verdicts.append(phase.audit_result.verdict)
             for t in phase.topics:
                 violation_topics[t] += 1
+            if out is not None:
+                out["blocked"].append({"id": job.id, "rules": list(phase.topics)})
+                out["counts"]["blocked"] += 1
         else:
             verdict, topics = await _apply_io_phase(
                 cfg, job, phase, no_browser=no_browser, drafted_by=drafted_by
@@ -696,6 +755,9 @@ async def _apply_each(
             verdicts.append(verdict)
             for t in topics:
                 violation_topics[t] += 1
+            if out is not None:
+                out["drafted"].append(_drafted_json(cfg, row, verdict, phase.audit_path))
+                out["counts"]["drafted"] += 1
 
         # Between-jobs prompt: give the user a clean exit. Only show when
         # there's another job queued and stdin is a TTY (non-interactive
@@ -725,6 +787,13 @@ async def _apply_each(
             typer.echo(f"top warning categories: {top}")
 
 
+@dataclass(frozen=True)
+class _Skipped:
+    """`_apply_llm_phase` could not draft this job (tailor, cover or audit
+    failed). Carries the error class, never the message, for `--json`."""
+    error_class: str
+
+
 @dataclass
 class _LLMPhaseResult:
     """Output of the LLM-bound phase of `_apply_one`. Carries everything the
@@ -742,6 +811,35 @@ class _LLMPhaseResult:
     early_exit: bool
 
 
+def _drafted_json(
+    cfg: Config, row: sqlite3.Row, verdict: str, audit_path: Path
+) -> dict[str, Any]:
+    """One `--json` drafted entry, read back from the `applications` row so it
+    reports what was recorded, including a row the write-time backstop left
+    alone. Paths only, never document text."""
+    conn = connect(cfg.paths.db_path)
+    try:
+        app_row = conn.execute(
+            "SELECT status, resume_path, cover_path, drafted_by "
+            "FROM applications WHERE job_id = ?",
+            (row["id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "company": row["company"],
+        "score": row["score"],
+        "status": app_row["status"] if app_row else None,
+        "verdict": verdict,
+        "drafted_by": app_row["drafted_by"] if app_row else None,
+        "resume_path": app_row["resume_path"] if app_row else None,
+        "cover_path": app_row["cover_path"] if app_row else None,
+        "audit_path": str(audit_path),
+    }
+
+
 def _default_echo(msg: str = "", *, err: bool = False) -> None:
     typer.echo(msg, err=err)
 
@@ -752,10 +850,10 @@ async def _apply_llm_phase(
     *,
     verified: dict[str, object],
     echo: Callable[..., None] = _default_echo,
-) -> _LLMPhaseResult | None:
+) -> _LLMPhaseResult | _Skipped:
     """LLM-bound work for one job: tailor + cover + audit + write artifacts.
 
-    Returns None when an unrecoverable LLM/audit error means the caller
+    Returns `_Skipped` when an unrecoverable LLM/audit error means the caller
     should skip this job entirely. Returns `_LLMPhaseResult` otherwise —
     `early_exit=True` when audit verdict was 'block' (no render/browser).
     A run-wide failure (`stops_batch`) is raised instead, since every
@@ -777,7 +875,7 @@ async def _apply_llm_phase(
         if stops_batch(e):
             raise
         echo(f"    ! tailor failed: {e}", err=True)
-        return None
+        return _Skipped(type(e).__name__)
     if tailor_attempts > 1:
         n = len(tailor_violations)
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
@@ -795,7 +893,7 @@ async def _apply_llm_phase(
         if stops_batch(e):
             raise
         echo(f"    ! cover letter failed: {e}", err=True)
-        return None
+        return _Skipped(type(e).__name__)
     if cover_attempts > 1:
         n = len(cover_violations)
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
@@ -810,7 +908,7 @@ async def _apply_llm_phase(
         )
     except PipelineError as e:
         echo(f"    ! audit failed: {e}", err=True)
-        return None
+        return _Skipped(type(e).__name__)
 
     audit_path = write_audit(out_dir, audit_result)
     diff_path = out_dir / "tailor-diff.md"
@@ -1022,7 +1120,7 @@ async def _apply_one(
     `_apply_each`, not here.
     """
     phase = await _apply_llm_phase(cfg, job, verified=verified)
-    if phase is None:
+    if isinstance(phase, _Skipped):
         return None, []
     if phase.early_exit:
         return phase.audit_result.verdict, phase.topics

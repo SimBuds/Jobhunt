@@ -138,7 +138,7 @@ channel actually converts to interviews.
 - Web UI / mobile (CLI-first, no current need).
 - Recruiter outreach automation (different problem, do not bolt on).
 
-## Automated caller (decided 2026-11-01, not yet built)
+## Automated caller (decided 2026-11-01, built 2026-11-04)
 
 A hub service in its own repository (an API, Postgres and n8n in one compose
 stack, bound to 127.0.0.1 on this workstation) will run the `jobhunt` CLI as a
@@ -171,8 +171,8 @@ hub:
 
 The hub enforces its own allowlist of commands. Jobhunt's refusals back it up,
 so a bug in the hub still cannot submit an application, change a status, or
-edit config. The README "Automation" section will document the contract once
-it is built.
+edit config. The README "Automation" section documents the contract: the
+allowed commands, the exit codes and the JSON envelope.
 
 ## Database
 
