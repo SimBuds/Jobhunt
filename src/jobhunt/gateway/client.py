@@ -4,11 +4,12 @@ response_format for schema-constrained output."""
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import httpx
 
-from jobhunt.errors import GatewayError
+from jobhunt.errors import ConfigError, GatewayError, GatewayUnavailableError
 
 # Sampler settings the app pins on every structured call, so behavior is defined
 # in-repo rather than by the router's per-model preset
@@ -60,6 +61,14 @@ def _chat_url(base_url: str) -> str:
     if host.endswith("/v1"):
         host = host[: -len("/v1")]
     return f"{host}/v1/chat/completions"
+
+
+# A model process that could not load or died mid-request (2026-11-01: a CUDA
+# OOM on wake). Read from llama.cpp's router (server-models.cpp "failed to
+# load", the proxy's "Failed to read connection"). Retry later, not a defect.
+_MODEL_DOWN_RE = re.compile(r"failed to load|failed to read connection", re.IGNORECASE)
+# The router does not serve the configured model name: fix [gateway.tasks].
+_UNKNOWN_MODEL_RE = re.compile(r"model .* not found", re.IGNORECASE)
 
 
 def _error_detail(r: httpx.Response) -> str:
@@ -125,14 +134,24 @@ async def complete_json(
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s)) as client:
                 r = await client.post(url, json=p)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise GatewayUnavailableError(
+                f"llama-server request failed (model={model}, {type(e).__name__}): {e}"
+            ) from e
         except httpx.HTTPError as e:
+            # A read timeout lands here on purpose: one slow posting must not
+            # read as "router down", or a retry loop would stall on it forever.
             raise GatewayError(
                 f"llama-server request failed (model={model}, {type(e).__name__}): {e}"
             ) from e
         if r.status_code >= 400:
-            raise GatewayError(
-                f"llama-server {r.status_code} (model={model}): {_error_detail(r)}"
-            )
+            detail = _error_detail(r)
+            message = f"llama-server {r.status_code} (model={model}): {detail}"
+            if r.status_code == 503 or (r.status_code == 500 and _MODEL_DOWN_RE.search(detail)):
+                raise GatewayUnavailableError(message)
+            if r.status_code == 400 and _UNKNOWN_MODEL_RE.search(detail):
+                raise ConfigError(f"{message}. Check [gateway.tasks] in config.toml.")
+            raise GatewayError(message)
         body = r.json()
         choice = (body.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content")
@@ -141,9 +160,11 @@ async def complete_json(
             # the in-band reasoning runaway described at `max_tokens`. The
             # reinforcement retry below cannot fix that and would burn a second
             # full-length generation, so fail fast instead.
+            # The fragment is model output, possibly resume text, so it stays
+            # out of the message (Q-J) and prints only under --debug.
             raise GatewayError(
-                f"llama-server hit max_tokens (model={model}); "
-                f"output truncated: {str(content)[:200]}"
+                f"llama-server hit max_tokens (model={model}); output truncated",
+                detail=str(content)[:200],
             )
         if not isinstance(content, str) or not content:
             raise GatewayError(f"llama-server returned no content: {body!r}")

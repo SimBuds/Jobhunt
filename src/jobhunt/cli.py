@@ -84,7 +84,7 @@ def main(
             privacy.check_private_paths(load_config(), privacy.repo_root())
         except PrivacyError as e:
             typer.echo(f"error: {e}", err=True)
-            raise typer.Exit(code=1) from e
+            raise typer.Exit(code=e.exit_code) from e
 
 
 def _run() -> None:
@@ -92,9 +92,14 @@ def _run() -> None:
         app()
     except JobHuntError as e:
         if "--debug" in sys.argv:
+            detail = getattr(e, "detail", "")
+            if detail:
+                typer.echo(f"detail: {detail}", err=True)
             raise
         typer.echo(f"error: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        # The class decides the code (errors.py), so the automated caller can
+        # tell a router outage from bad config from a failed stage.
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

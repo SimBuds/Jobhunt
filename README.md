@@ -431,6 +431,25 @@ Notes:
 - `add`, `config seed --apply`, and `discover slugs --apply` rewrite
   `config.toml` and create a `.bak` snapshot.
 
+### Exit codes
+
+Every command exits with one of these codes, so a script can tell a fault it
+should retry from one it must not. An error prints one `error: ...` line to
+stderr. `--debug` prints the traceback and any model output the error carried.
+A few input checks (a missing profile, an unknown job reference, nothing to
+apply to) still exit 1 for now.
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Unhandled bug (a traceback, worth reporting) |
+| 2 | Usage error: a bad option or argument |
+| 10 | Config or input problem you can fix: a broken `config.toml`, an unknown model name, private data inside the checkout |
+| 11 | Needs a person: the command reached a step only a human can do (defined, not yet raised) |
+| 12 | A pipeline stage failed (ingest, scoring, tailoring, audit, render) |
+| 13 | The llama-server router is unreachable or could not load the model |
+| 14 | Reserved, not raised |
+
 ## Configuration
 
 `~/.config/jobhunt/config.toml` (abridged, full schema in
