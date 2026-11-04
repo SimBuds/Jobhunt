@@ -436,15 +436,18 @@ Notes:
 Every command exits with one of these codes, so a script can tell a fault it
 should retry from one it must not. An error prints one `error: ...` line to
 stderr. `--debug` prints the traceback and any model output the error carried.
-A few input checks (a missing profile, an unknown job reference, nothing to
-apply to) still exit 1 for now.
+A batch (`scan`, `apply --top`) stops at the first 10 or 13, since every
+remaining job would fail the same way, and a 12 skips only the job it hit.
+Commands the automation does not run can still exit 1 for an input or fetch
+problem: `convert-resume`, `answer`, `interview-prep`, `add`, `resume`,
+`track`, `db`, `config`, and `apply` with `--url` or a lifecycle flag.
 
 | Code | Meaning |
 |---|---|
-| 0 | Success |
+| 0 | Success, including nothing to do |
 | 1 | Unhandled bug (a traceback, worth reporting) |
 | 2 | Usage error: a bad option or argument |
-| 10 | Config or input problem you can fix: a broken `config.toml`, an unknown model name, private data inside the checkout |
+| 10 | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, private data inside the checkout |
 | 11 | Needs a person: the command reached a step only a human can do (defined, not yet raised) |
 | 12 | A pipeline stage failed (ingest, scoring, tailoring, audit, render) |
 | 13 | The llama-server router is unreachable or could not load the model |

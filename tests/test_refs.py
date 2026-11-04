@@ -71,7 +71,7 @@ def test_jobs_scope_ambiguous_lists_candidates(
 ) -> None:
     with pytest.raises(typer.Exit) as e:
         resolve_job_ref(conn, "developer", scope="jobs")
-    assert e.value.exit_code == 1
+    assert e.value.exit_code == 10
     err = capsys.readouterr().err
     assert "ambiguous" in err
     assert "adzuna_ca:2" in err

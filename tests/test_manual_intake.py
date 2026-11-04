@@ -156,5 +156,5 @@ def test_resolve_job_id_ambiguous_fragment_exits(
             cfg, job_id="acme", url=None, title=None, company=None,
             description_from_stdin=False, force_robots=False,
         )
-    assert exc.value.exit_code == 1
+    assert exc.value.exit_code == 10
     assert "ambiguous" in capsys.readouterr().err

@@ -25,6 +25,8 @@ import sqlite3
 
 import typer
 
+from jobhunt.errors import InputError
+
 # Cap the candidate list on an ambiguous match. A bare company fragment can hit
 # dozens of postings in the jobs scope, and a wall of ids is not a useful error.
 _MAX_CANDIDATES = 10
@@ -85,7 +87,7 @@ def resolve_job_ref(
                 f"error: no job matches {ref!r}. Try `jobhunt list` for ids.",
                 err=True,
             )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=InputError.exit_code)
     if len(hits) > 1:
         typer.echo(f"error: {ref!r} is ambiguous — matches:", err=True)
         for h in hits[:_MAX_CANDIDATES]:
@@ -93,5 +95,5 @@ def resolve_job_ref(
         extra = len(hits) - _MAX_CANDIDATES
         if extra > 0:
             typer.echo(f"  … +{extra} more", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=InputError.exit_code)
     return str(hits[0]["id"])

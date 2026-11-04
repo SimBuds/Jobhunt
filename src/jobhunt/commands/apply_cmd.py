@@ -47,7 +47,7 @@ from jobhunt.db import (
 from jobhunt.db import (
     set_outcome as db_set_outcome,
 )
-from jobhunt.errors import BrowserError, JobHuntError, PipelineError
+from jobhunt.errors import BrowserError, InputError, JobHuntError, PipelineError
 from jobhunt.http import RateLimiter, resolve_redirect, with_client
 from jobhunt.ingest.manual import fetch_url_as_job, robots_allowed
 from jobhunt.models import Job
@@ -279,7 +279,7 @@ def run(
 
     if not jobs:
         typer.echo("nothing to apply to.")
-        raise typer.Exit(code=1)
+        return
 
     typer.echo(f"\nselected {len(jobs)} job(s):")
     for j in jobs:
@@ -445,6 +445,10 @@ async def _resolve_manual(
             try:
                 result = await score_job(cfg, job)
             except JobHuntError as e:
+                from jobhunt.commands import stops_batch
+
+                if stops_batch(e):
+                    raise
                 typer.echo(f"  ! score failed: {e}", err=True)
             else:
                 ph = prompt_hash(cfg)
@@ -499,7 +503,7 @@ def _resolve_by_id(conn: sqlite3.Connection, job_id: str) -> list[sqlite3.Row]:
     )
     if not rows:
         typer.echo(f"error: no job with id {resolved!r}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=InputError.exit_code)
     return rows
 
 
@@ -642,13 +646,21 @@ async def _apply_each(
     )
     for i, row in enumerate(rows):
         job = _row_to_job(row)
-        phase = await next_llm
+        stop: JobHuntError | None = None
+        try:
+            phase = await next_llm
+        except JobHuntError as e:
+            # `_apply_llm_phase` raises only a run-wide failure (stops_batch).
+            stop = e
         # Flush the prefetched LLM phase's buffered output (if any) now
         # that it's this job's turn to be in the foreground.
         if next_buf is not None:
             for msg, err in next_buf:
                 typer.echo(msg, err=err)
             next_buf = None
+        if stop is not None:
+            typer.echo(f"stopped: {len(rows) - i} job(s) not processed.")
+            raise stop
         # Kick off the *next* job's LLM phase BEFORE the current IO phase,
         # so the LLM is already running while the user reads/submits.
         if i + 1 < len(rows):
@@ -743,7 +755,11 @@ async def _apply_llm_phase(
     Returns None when an unrecoverable LLM/audit error means the caller
     should skip this job entirely. Returns `_LLMPhaseResult` otherwise —
     `early_exit=True` when audit verdict was 'block' (no render/browser).
+    A run-wide failure (`stops_batch`) is raised instead, since every
+    remaining job would fail the same way.
     """
+    from jobhunt.commands import stops_batch
+
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -755,6 +771,8 @@ async def _apply_llm_phase(
             cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
         )
     except JobHuntError as e:
+        if stops_batch(e):
+            raise
         echo(f"    ! tailor failed: {e}", err=True)
         return None
     if tailor_attempts > 1:
@@ -771,6 +789,8 @@ async def _apply_llm_phase(
             max_attempts=cfg.pipeline.cover_retry_attempts,
         )
     except JobHuntError as e:
+        if stops_batch(e):
+            raise
         echo(f"    ! cover letter failed: {e}", err=True)
         return None
     if cover_attempts > 1:

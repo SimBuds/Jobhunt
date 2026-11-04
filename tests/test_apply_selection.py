@@ -119,7 +119,7 @@ def test_resolve_by_id_ambiguous_fragment_exits(conn, capsys) -> None:
     _seed(conn, "80", score=80)
     with pytest.raises(typer.Exit) as e:
         apply_cmd._resolve_by_id(conn, "acme")
-    assert e.value.exit_code == 1
+    assert e.value.exit_code == 10
     assert "ambiguous" in capsys.readouterr().err
 
 

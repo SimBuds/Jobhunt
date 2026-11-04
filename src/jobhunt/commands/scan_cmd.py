@@ -201,6 +201,11 @@ async def _run(
             try:
                 result = await score_job(cfg, job)
             except JobHuntError as e:
+                from jobhunt.commands import stops_batch
+
+                if stops_batch(e):
+                    typer.echo(f"score: {ok}/{total} scored, stopped at {job.id}")
+                    raise
                 typer.echo(f"  ! {job.id}: {e}", err=True)
                 continue
             with conn:
