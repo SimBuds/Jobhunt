@@ -493,6 +493,8 @@ data_dir       = "/home/you/.local/share/jobhunt"
 db_path        = "/home/you/.local/share/jobhunt/jobhunt.db"
 profile_dir    = "/home/you/.local/share/jobhunt/profile"
 # Public material stays in the repo checkout (resolved from the working dir).
+# Left at these defaults, jobhunt must run from the repo root: anywhere else
+# it exits 10 before doing anything. Set both to run from elsewhere.
 migrations_dir = "/home/you/Apps/jobhunt/migrations"
 kb_dir         = "/home/you/Apps/jobhunt/kb"
 

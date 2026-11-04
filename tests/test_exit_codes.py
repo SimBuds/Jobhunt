@@ -408,3 +408,48 @@ def test_unknown_reference_exits_10(migrations_dir: Path, tmp_path: Path) -> Non
     finally:
         conn.close()
     assert exc.value.exit_code == 10
+
+
+# --- wrong working directory (Phase 22e) -------------------------------------
+#
+# `kb_dir` and `migrations_dir` resolve against the working directory, so run
+# from anywhere else jobhunt used to fail late, on a missing prompt or
+# migration. The callback now checks both up front and exits 10.
+
+
+def test_wrong_working_dir_exits_10_naming_both_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["jobhunt", "list"])
+    with pytest.raises(SystemExit) as exc:
+        cli._run()
+    assert exc.value.code == 10
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1, err
+    assert "migrations" in err and "prompts" in err
+    assert "run from the repo root" in err
+
+
+def test_repo_root_passes_the_working_dir_check() -> None:
+    cli._check_working_dir(Config())
+
+
+@pytest.mark.parametrize("args", [["config", "show"], ["config", "path"], ["scan", "--help"]])
+def test_exempt_commands_run_outside_the_repo(
+    args: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+
+
+def test_a_set_path_is_not_checked_as_a_working_dir_symptom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Q (2026-11-04): only defaulted paths depend on the working directory.
+    A kb_dir set in config is the user's choice, even one without prompts/."""
+    monkeypatch.setenv("JOBHUNT_PATHS__KB_DIR", str(tmp_path / "elsewhere"))
+    from jobhunt.config import load_config
+
+    cli._check_working_dir(load_config())

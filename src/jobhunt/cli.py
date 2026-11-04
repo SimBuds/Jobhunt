@@ -26,8 +26,8 @@ from jobhunt.commands import (
     setup_cmd,
     track_cmd,
 )
-from jobhunt.config import load_config
-from jobhunt.errors import JobHuntError, PrivacyError
+from jobhunt.config import Config, load_config
+from jobhunt.errors import InputError, JobHuntError, PrivacyError
 
 
 class _ArgvRecordingGroup(typer.core.TyperGroup):
@@ -66,6 +66,30 @@ app.add_typer(db_cmd.app, name="db")
 app.add_typer(config_cmd.app, name="config")
 
 
+def _check_working_dir(cfg: Config) -> None:
+    """Refuse to run where the public kb and migrations cannot be found.
+
+    Both default to paths under the working directory, so a run from anywhere
+    else used to fail late, on a missing prompt or migration. Only a path left
+    at its default is checked: one set in config or env is the user's choice,
+    not a symptom of the working directory.
+    """
+    defaults = {
+        "migrations_dir": cfg.paths.migrations_dir,
+        "kb_dir": cfg.paths.kb_dir / "prompts",
+    }
+    missing = [
+        str(path)
+        for field, path in defaults.items()
+        if field not in cfg.paths.model_fields_set and not path.is_dir()
+    ]
+    if missing:
+        raise InputError(
+            f"cannot find {' and '.join(missing)}: run from the repo root, or set "
+            "[paths] kb_dir and migrations_dir"
+        )
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -80,11 +104,13 @@ def main(
     os.umask(0o077)
     ctx.obj = {"debug": debug, "verbose": verbose}
     if not privacy.is_exempt(ctx.meta.get("jobhunt_argv", [])):
+        cfg = load_config()
         try:
-            privacy.check_private_paths(load_config(), privacy.repo_root())
+            privacy.check_private_paths(cfg, privacy.repo_root())
         except PrivacyError as e:
             typer.echo(f"error: {e}", err=True)
             raise typer.Exit(code=e.exit_code) from e
+        _check_working_dir(cfg)
 
 
 def _run() -> None:
