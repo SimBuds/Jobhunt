@@ -532,6 +532,9 @@ def _resolve_interactive(
     min_score: int,
     include_borderline: bool = False,
 ) -> list[sqlite3.Row]:
+    from jobhunt.commands import require_tty
+
+    require_tty("apply --best asks you to pick jobs. Use --top N or run it in a terminal")
     sql, params = _unapplied_top_query(min_score, 10)
     rows = list(conn.execute(sql, params))
 

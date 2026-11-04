@@ -169,6 +169,12 @@ def reprobe(
     """
     if force and not prune:
         raise typer.BadParameter("--force only applies with --prune")
+    if prune and not force:
+        from jobhunt.commands import require_tty
+
+        require_tty(
+            "config reprobe --prune asks to confirm. Pass --force or run it in a terminal"
+        )
 
     cfg = load_config()
 

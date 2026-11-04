@@ -448,7 +448,7 @@ problem: `convert-resume`, `answer`, `interview-prep`, `add`, `resume`,
 | 1 | Unhandled bug (a traceback, worth reporting) |
 | 2 | Usage error: a bad option or argument |
 | 10 | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, private data inside the checkout |
-| 11 | Needs a person: the command reached a step only a human can do (defined, not yet raised) |
+| 11 | Needs a person: a prompting command ran without a terminal. `setup` and `apply --best` always need one. `db reset`, `db gc --prune` and `config reprobe --prune` need one unless given `--force` |
 | 12 | A pipeline stage failed (ingest, scoring, tailoring, audit, render) |
 | 13 | The llama-server router is unreachable or could not load the model |
 | 14 | Reserved, not raised |

@@ -82,6 +82,10 @@ def reset(
     database is left ready to scan, then reminds the user to re-run
     `convert-resume` before scanning.
     """
+    from jobhunt.commands import require_tty
+
+    if not force:
+        require_tty("db reset asks to confirm. Pass --force or run it in a terminal")
     cfg = load_config()
     targets = _reset_targets(cfg)
 
@@ -229,6 +233,10 @@ def gc(
     Bare `gc` only reports. Directories whose audit verdict is `block` are
     listed but never actioned — no row is the correct state for those.
     """
+    from jobhunt.commands import require_tty
+
+    if prune and not force:
+        require_tty("db gc --prune asks to confirm. Pass --force or run it in a terminal")
     cfg = load_config()
     conn = connect(cfg.paths.db_path)
     try:

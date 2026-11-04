@@ -199,6 +199,9 @@ def _footer(applicant_incomplete: bool) -> None:
 @app.callback(invoke_without_command=True)
 def run() -> None:
     """Guided first-run setup. Safe to re-run for updating applicant defaults."""
+    from jobhunt.commands import require_tty
+
+    require_tty("setup is an interactive wizard. Run it in a terminal")
     _step_db_init()
     docx = _step_resume_present()
     if docx is None:

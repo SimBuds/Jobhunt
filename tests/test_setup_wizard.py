@@ -7,8 +7,16 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from jobhunt import commands
 from jobhunt.cli import app
 from jobhunt.commands import config_cmd, convert_resume_cmd, setup_cmd
+
+
+@pytest.fixture(autouse=True)
+def _terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CliRunner input is never a terminal. These tests drive the wizard's
+    prompts, so the no-terminal guard (tests/test_no_tty.py) is stubbed."""
+    monkeypatch.setattr(commands, "require_tty", lambda reason: None)
 
 
 def _seed_minimal_config(config_dir: Path) -> Path:

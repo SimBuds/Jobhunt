@@ -123,6 +123,8 @@ def test_reprobe_prune_aborts_without_confirmation(
         },
     }))
 
+    # CliRunner input is not a terminal: stub the guard tests/test_no_tty.py covers.
+    monkeypatch.setattr("jobhunt.commands.require_tty", lambda reason: None)
     runner = CliRunner()
     # Stdin "n\n" → typer.confirm returns False
     result = runner.invoke(app, ["config", "reprobe", "--prune"], input="n\n")
