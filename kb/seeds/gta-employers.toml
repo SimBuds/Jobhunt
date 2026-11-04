@@ -11,6 +11,7 @@
 # Workday is intentionally absent: tenant:host:site triples are easier to
 # acquire by pasting the URL into `jobhunt add` than by curating here.
 
+# All slugs below re-probed live via scripts/verify_seeds.py on 2026-06-08.
 greenhouse = [
     "appnovation", "konradgroup", "valtech",
     "contentful", "storyblok",
