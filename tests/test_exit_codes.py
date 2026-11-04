@@ -455,3 +455,25 @@ def test_a_set_path_is_not_checked_as_a_working_dir_symptom(
     from jobhunt.config import load_config
 
     cli._check_working_dir(load_config())
+
+
+def test_a_first_run_from_the_wrong_dir_does_not_pin_its_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Phase 22j: with no config.toml, the first run writes one. It used to
+    pin the wrong directory's kb and migrations paths, so the second run
+    skipped the check and failed late. Both runs must exit 10 here, and a run
+    from the repo root afterwards must pass the check."""
+    from jobhunt.config import config_path, load_config
+
+    assert not config_path().exists()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["jobhunt", "list"])
+    for _ in range(2):
+        with pytest.raises(SystemExit) as exc:
+            cli._run()
+        assert exc.value.code == 10
+        assert "run from the repo root" in capsys.readouterr().err
+    assert config_path().exists()
+    monkeypatch.chdir(REPO)
+    cli._check_working_dir(load_config())

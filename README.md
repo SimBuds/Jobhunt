@@ -456,10 +456,7 @@ The caller enforces its own allowlist. jobhunt backs it up:
 - An automated `apply` only creates `drafted` rows, records `drafted_by`, and
   leaves any row already past `drafted` as it is.
 - Run from the repo root. Anywhere else, with the default `kb_dir` and
-  `migrations_dir`, a command exits 10 before doing anything. A first run from
-  the wrong directory also writes those wrong paths into a new `config.toml`,
-  and later runs then fail further in, so delete that file and rerun from the
-  repo root.
+  `migrations_dir`, a command exits 10 before doing anything.
 - Without a terminal, a command that would prompt exits 11 at once instead of
   waiting.
 
@@ -554,11 +551,12 @@ refused.
 data_dir       = "/home/you/.local/share/jobhunt"
 db_path        = "/home/you/.local/share/jobhunt/jobhunt.db"
 profile_dir    = "/home/you/.local/share/jobhunt/profile"
-# Public material stays in the repo checkout (resolved from the working dir).
-# Left at these defaults, jobhunt must run from the repo root: anywhere else
-# it exits 10 before doing anything. Set both to run from elsewhere.
-migrations_dir = "/home/you/Apps/jobhunt/migrations"
-kb_dir         = "/home/you/Apps/jobhunt/kb"
+# Public material stays in the repo checkout. These two are not written to a
+# new config.toml: unset, they resolve from the working dir, so jobhunt must
+# run from the repo root (anywhere else it exits 10 before doing anything).
+# Set both to run from elsewhere.
+# migrations_dir = "/home/you/Apps/jobhunt/migrations"
+# kb_dir         = "/home/you/Apps/jobhunt/kb"
 
 [ingest]
 user_agent           = "jobhunt/0.1 (+personal-use; you@example.com)"

@@ -284,8 +284,13 @@ class Config(BaseModel):
 
     @classmethod
     def example_toml(cls) -> str:
-        cfg = cls()
-        return tomli_w.dumps(_to_toml_dict(cfg.model_dump(mode="json")))
+        data = cls().model_dump(mode="json")
+        # kb_dir and migrations_dir default to the working directory. Writing
+        # them would pin whatever directory jobhunt first ran from, and a pin
+        # to the wrong one reads as a user choice the working-dir check skips.
+        for key in ("kb_dir", "migrations_dir"):
+            data["paths"].pop(key)
+        return tomli_w.dumps(_to_toml_dict(data))
 
 
 def _to_toml_dict(obj: Any) -> dict[str, Any]:

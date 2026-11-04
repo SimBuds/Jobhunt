@@ -65,3 +65,16 @@ def test_invalid_toml_raises(tmp_config_dir: Path) -> None:
     config_path().write_text("not = valid = toml")
     with pytest.raises(ConfigError):
         load_config(write_default_if_missing=False)
+
+
+def test_example_toml_leaves_working_dir_paths_out(tmp_config_dir: Path) -> None:
+    """Phase 22j (2026-11-04): the first-run config used to pin kb_dir and
+    migrations_dir to whatever directory jobhunt was first run from. From a
+    wrong directory that baked the wrong paths in, and the working-dir check
+    then skipped them as user-set. Private paths are still written."""
+    import tomllib
+
+    paths = tomllib.loads(Config.example_toml())["paths"]
+    assert "kb_dir" not in paths
+    assert "migrations_dir" not in paths
+    assert {"data_dir", "db_path", "profile_dir"} <= paths.keys()
