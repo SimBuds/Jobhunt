@@ -453,6 +453,30 @@ problem: `convert-resume`, `answer`, `interview-prep`, `add`, `resume`,
 | 13 | The llama-server router is unreachable or could not load the model |
 | 14 | Reserved, not raised |
 
+### JSON output
+
+`jobhunt list --json` prints exactly one JSON object on stdout, and every
+human line moves to stderr:
+
+```json
+{"schema": 1, "command": "list", "ok": true, "exit_code": 0, "error": null,
+ "count": 1, "jobs": [{"id": "greenhouse:acme:1", "title": "Developer",
+ "company": "Acme", "score": 80, "status": null, "verdict": "ship"}]}
+```
+
+`jobhunt scan --json` uses the same envelope. Its payload is `ingest` (null
+under `--skip-ingest`, else `inserted`, `filtered` counts by reason, and
+`source_errors` as source and label pairs), `score` (`scored`, `failed`,
+`declined`), `jobs` scored this run (id, title, company, score, declined) and
+`failures` (each job id with its error class). A run the router stops still
+prints what it scored before the stop.
+
+On a failure inside the command, `ok` is false, `exit_code` matches the
+process exit code, and `error` names only the class (`{"class":
+"InputError"}`), never the message. An error raised before the command starts
+(a broken `config.toml`, a usage error, the privacy or working directory
+check) prints no object: read the exit code and stderr.
+
 ## Configuration
 
 `~/.config/jobhunt/config.toml` (abridged, full schema in

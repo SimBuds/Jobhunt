@@ -7,8 +7,9 @@ import shutil
 import sqlite3
 import sys
 from collections.abc import AsyncIterator
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import typer
@@ -23,6 +24,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from jobhunt.commands._json_out import json_output
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
     connect,
@@ -95,25 +97,34 @@ def run(
             "[ingest] auto_discover=false in config.toml, to opt out."
         ),
     ),
+    as_json: bool = typer.Option(
+        False, "--json",
+        help="Print one JSON object on stdout. Human output moves to stderr.",
+    ),
 ) -> None:
     from jobhunt.commands import ensure_profile
 
-    cfg = load_config()
-    ensure_profile(cfg)
-    effective_max_age = (
-        max_age_days if max_age_days is not None else cfg.ingest.max_age_days
+    envelope: AbstractContextManager[dict[str, Any]] = (
+        json_output("scan") if as_json else nullcontext({})
     )
-    asyncio.run(
-        _run(
-            cfg,
-            skip_score=skip_score,
-            skip_ingest=skip_ingest,
-            limit=limit,
-            refresh=refresh,
-            max_age_days=effective_max_age,
-            no_discover=no_discover,
+    with envelope as out:
+        cfg = load_config()
+        ensure_profile(cfg)
+        effective_max_age = (
+            max_age_days if max_age_days is not None else cfg.ingest.max_age_days
         )
-    )
+        asyncio.run(
+            _run(
+                cfg,
+                skip_score=skip_score,
+                skip_ingest=skip_ingest,
+                limit=limit,
+                refresh=refresh,
+                max_age_days=effective_max_age,
+                no_discover=no_discover,
+                out=out,
+            )
+        )
 
 
 async def _run(
@@ -125,7 +136,17 @@ async def _run(
     refresh: bool = False,
     max_age_days: int = 7,
     no_discover: bool = False,
+    out: dict[str, Any] | None = None,
 ) -> None:
+    """`out` collects the `--json` payload as the run goes, so a run that
+    stops partway still reports what it did. Error text never goes in it: a
+    message can carry a URL, a response body or model output."""
+    out = {} if out is None else out
+    out["ingest"] = None
+    score_counts = {"scored": 0, "failed": 0, "declined": 0}
+    scored_jobs: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    out.update(score=score_counts, jobs=scored_jobs, failures=failures)
     conn = connect(cfg.paths.db_path)
     try:
         migrate(conn, cfg.paths.migrations_dir)
@@ -139,6 +160,15 @@ async def _run(
             )
             _print_ingest_summary(per_source)
             typer.echo(f"ingest: {inserted} new job(s) inserted")
+            out["ingest"] = {
+                "inserted": inserted,
+                "filtered": dict(filtered),
+                "source_errors": [
+                    {"source": source, "label": label}
+                    for source, label, _n, err in per_source
+                    if err is not None
+                ],
+            }
             if any(filtered.values()):
                 parts = [
                     f"{filtered['mgmt']} management-title",
@@ -207,6 +237,8 @@ async def _run(
                     typer.echo(f"score: {ok}/{total} scored, stopped at {job.id}")
                     raise
                 typer.echo(f"  ! {job.id}: {e}", err=True)
+                score_counts["failed"] += 1
+                failures.append({"id": job.id, "error": {"class": type(e).__name__}})
                 continue
             with conn:
                 write_score(
@@ -222,6 +254,15 @@ async def _run(
                 )
                 set_decline_reason(conn, job.id, result.decline_reason)
             ok += 1
+            score_counts["scored"] += 1
+            score_counts["declined"] += bool(result.decline_reason)
+            scored_jobs.append({
+                "id": job.id,
+                "title": job.title,
+                "company": job.company,
+                "score": result.score,
+                "declined": bool(result.decline_reason),
+            })
             tag = (
                 f"DECLINE: {result.decline_reason}"
                 if result.decline_reason

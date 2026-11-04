@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 import typer
 
+from jobhunt.commands._json_out import json_output
 from jobhunt.commands.apply_cmd import _safe_id
 from jobhunt.config import Config, load_config
 from jobhunt.db import connect
@@ -66,82 +68,93 @@ def run(
         help="Only applications submitted before NOW - duration (e.g. 14d, 2w).",
     ),
     limit: int = typer.Option(10, "--limit", help="Max rows to display."),
+    as_json: bool = typer.Option(
+        False, "--json",
+        help="Print one JSON object on stdout. Human output moves to stderr.",
+    ),
 ) -> None:
-    from jobhunt.commands import ensure_profile
-
-    cfg = load_config()
-    ensure_profile(cfg)
-
-    if verdict is not None and verdict not in VALID_VERDICTS:
-        typer.echo(
-            f"error: --verdict must be one of {', '.join(VALID_VERDICTS)}",
-            err=True,
-        )
-        raise typer.Exit(code=2)
-    selected_statuses = _selected_flag_statuses(
-        drafted=drafted,
-        applied=applied,
-        withdrawn=withdrawn,
+    # Both branches yield the payload dict, so the body fills it either way.
+    envelope: AbstractContextManager[dict[str, object]] = (
+        json_output("list") if as_json else nullcontext({})
     )
-    if status is not None and selected_statuses:
-        typer.echo(
-            "error: use either --status or lifecycle flags "
-            "(--drafted/--applied/--withdrawn), not both.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
-    older_than_iso = _parse_older_than(older_than)
+    with envelope as out:
+        from jobhunt.commands import ensure_profile
 
-    conn = connect(cfg.paths.db_path)
-    try:
-        target_week = _iso_week_label(week) if week is not None else None
-        default_apply_targets = not (
-            target_week
-            or status is not None
-            or selected_statuses
-            or verdict is not None
-            or no_reply
-            or older_than_iso is not None
-        )
-        if default_apply_targets:
-            _render_action_board(conn, min_score or cfg.pipeline.min_score)
-        rows = _query(
-            conn,
-            week_label=target_week,
-            status=status,
-            selected_statuses=selected_statuses,
-            min_score=min_score,
-            source=source,
-            no_reply=no_reply,
-            applied_before=older_than_iso,
-            default_apply_targets=default_apply_targets,
-            # When filtering by verdict, take a generous buffer because verdict
-            # lives in audit.json (not SQL) and we filter post-fetch.
-            limit=limit if verdict is None else max(limit * 10, 200),
-        )
-        rows_with_audit = [(r, _load_audit_summary(cfg, r["id"])) for r in rows]
-        if verdict is not None:
-            rows_with_audit = [
-                (r, a) for r, a in rows_with_audit if a.verdict == verdict
-            ]
-        # Default sort: ship-first then score-desc when no explicit "filter
-        # that already implies an order" is set. --week / --status keep the
-        # SQL ordering. --verdict implies the user wants verdict-grouped
-        # output and we re-sort here.
-        if verdict is not None or (week is None and status is None):
-            rows_with_audit.sort(
-                key=lambda ra: (
-                    _VERDICT_PRIORITY.get(ra[1].verdict or "", 9),
-                    -(ra[0]["score"] or -1),
-                )
+        cfg = load_config()
+        ensure_profile(cfg)
+
+        if verdict is not None and verdict not in VALID_VERDICTS:
+            typer.echo(
+                f"error: --verdict must be one of {', '.join(VALID_VERDICTS)}",
+                err=True,
             )
-        rows_with_audit = rows_with_audit[:limit]
+            raise typer.Exit(code=2)
+        selected_statuses = _selected_flag_statuses(
+            drafted=drafted,
+            applied=applied,
+            withdrawn=withdrawn,
+        )
+        if status is not None and selected_statuses:
+            typer.echo(
+                "error: use either --status or lifecycle flags "
+                "(--drafted/--applied/--withdrawn), not both.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        older_than_iso = _parse_older_than(older_than)
 
-        _render_rows(rows_with_audit, target_week)
-        typer.echo("")
-        _render_weekly_footer(conn, target_week or _iso_week_label(0))
-    finally:
-        conn.close()
+        conn = connect(cfg.paths.db_path)
+        try:
+            target_week = _iso_week_label(week) if week is not None else None
+            default_apply_targets = not (
+                target_week
+                or status is not None
+                or selected_statuses
+                or verdict is not None
+                or no_reply
+                or older_than_iso is not None
+            )
+            if default_apply_targets:
+                _render_action_board(conn, min_score or cfg.pipeline.min_score)
+            rows = _query(
+                conn,
+                week_label=target_week,
+                status=status,
+                selected_statuses=selected_statuses,
+                min_score=min_score,
+                source=source,
+                no_reply=no_reply,
+                applied_before=older_than_iso,
+                default_apply_targets=default_apply_targets,
+                # When filtering by verdict, take a generous buffer because verdict
+                # lives in audit.json (not SQL) and we filter post-fetch.
+                limit=limit if verdict is None else max(limit * 10, 200),
+            )
+            rows_with_audit = [(r, _load_audit_summary(cfg, r["id"])) for r in rows]
+            if verdict is not None:
+                rows_with_audit = [
+                    (r, a) for r, a in rows_with_audit if a.verdict == verdict
+                ]
+            # Default sort: ship-first then score-desc when no explicit "filter
+            # that already implies an order" is set. --week / --status keep the
+            # SQL ordering. --verdict implies the user wants verdict-grouped
+            # output and we re-sort here.
+            if verdict is not None or (week is None and status is None):
+                rows_with_audit.sort(
+                    key=lambda ra: (
+                        _VERDICT_PRIORITY.get(ra[1].verdict or "", 9),
+                        -(ra[0]["score"] or -1),
+                    )
+                )
+            rows_with_audit = rows_with_audit[:limit]
+
+            out["count"] = len(rows_with_audit)
+            out["jobs"] = [_job_json(r, a) for r, a in rows_with_audit]
+            _render_rows(rows_with_audit, target_week)
+            typer.echo("")
+            _render_weekly_footer(conn, target_week or _iso_week_label(0))
+        finally:
+            conn.close()
 
 
 def _parse_older_than(spec: str | None) -> str | None:
@@ -176,6 +189,19 @@ def _selected_flag_statuses(
     if withdrawn:
         selected.append("withdrawn")
     return tuple(selected)
+
+
+def _job_json(row: sqlite3.Row, audit: _AuditSummary) -> dict[str, object]:
+    """Named fields only: a row dump would carry the description, and the
+    caller may store what it reads."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "company": row["company"],
+        "score": row["score"],
+        "status": row["status"],
+        "verdict": audit.verdict,
+    }
 
 
 def _load_audit_summary(cfg: Config, job_id: str) -> _AuditSummary:
