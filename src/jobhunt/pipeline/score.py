@@ -19,16 +19,18 @@ from jobhunt.pipeline._keywords import peer_match, phrase_present
 from jobhunt.pipeline._profile import candidate_name, render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
 
-# Cap inputs to keep prompts within the 32768-token context the llama-server
-# router fixes for every model. The window is server-side, not per request: if
-# the router preset changes it, adjust these in step.
+# Cap inputs to keep prompts within 32768 tokens, by choice. The llama-server
+# router has served 131072 since 2026-10-30 (build 12009), but these caps were
+# measured against 32768, still fit, and jobhunt needs no more context. The
+# window is server-side, not per request: never raise these past what the
+# router serves.
 #
 # Do NOT size this by a chars/token rule of thumb. Measured prompt token counts
 # on the longest JD in the backlog run ~23% above a chars/4 estimate, because
 # dense JD text tokenizes worse than prose. At 16000 chars the tailor prompt
 # measured 12367 tokens on `lite` (2026-09-15); with max_tokens=4096 that is
-# 16463, which fits 32768 with 16305 to spare. To re-measure, POST the rendered
-# prompt to /v1/chat/completions with max_tokens=1 and read
+# 16463, which fits the chosen 32768 budget with 16305 to spare. To re-measure,
+# POST the rendered prompt to /v1/chat/completions with max_tokens=1 and read
 # `usage.prompt_tokens`. Overflow is loud: the router returns HTTP 400
 # `exceed_context_size_error`, which surfaces as a GatewayError for that job.
 #

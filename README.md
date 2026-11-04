@@ -185,7 +185,7 @@ sleep-idle-seconds = 600    ; unload after 10 idle minutes; the next request rel
 
 [lite]
 model = /path/to/qwen3.5-9b-mtp-q4_K_M.gguf
-ctx-size = 32768            ; the window MAX_DESC_CHARS is sized against
+ctx-size = 131072           ; served since 2026-10-30; MAX_DESC_CHARS is sized against 32768 by choice
 spec-type = draft-mtp       ; multi-token-prediction speculative decoding
 ```
 

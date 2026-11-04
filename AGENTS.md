@@ -1169,7 +1169,7 @@ Beyond the four pillars, these project docs are load-bearing:
   fit = off                   ; offload pinned per model, so runs are repeatable
   sleep-idle-seconds = 600    ; unload after 10 idle minutes; next request reloads (~1 s for lite)
   [lite]
-  ctx-size = 32768            ; the window MAX_DESC_CHARS is sized against
+  ctx-size = 131072           ; served since 2026-10-30 (build 12009); MAX_DESC_CHARS is sized against 32768 by choice
   spec-type = draft-mtp
   ```
   `--models-max 1` holds one resident model; a second on a 10 GB card would
@@ -1618,8 +1618,9 @@ missing. Fix the resume or the parser first.
    (`sleep-idle-seconds`). A reload takes about a second for `lite`, well
    inside the 240 s gateway timeout, so there is nothing to pre-warm. Do not
    reintroduce `keep_alive` or a warm-up call.
-4. **Context length is server-owned.** The router preset fixes `ctx-size =
-   32768` per model; it cannot be set per request, and the gateway sends no
+4. **Context length is server-owned.** The router preset fixes `ctx-size`
+   per model (131072 since 2026-10-30, build 12009). The input caps are
+   sized against 32768 by choice. The window cannot be set per request, and the gateway sends no
    context key. An oversized prompt returns HTTP 400
    `exceed_context_size_error`, which surfaces as a `GatewayError` naming that
    type — loud, not a silent truncation. The pipelines still truncate

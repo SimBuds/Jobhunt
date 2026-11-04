@@ -20,10 +20,11 @@ from jobhunt.errors import ConfigError, GatewayError, GatewayUnavailableError
 # neutral — the preset value governs instead (lite ships top-k 40, min-p 0.05,
 # repeat-penalty 1.05), so anything that matters is sent explicitly.
 #
-#   Context is NOT set here. The router fixes each model's window at 32768 and
-#   rejects an oversized prompt with HTTP 400 `exceed_context_size_error`, so
-#   overflow is loud rather than silently truncated. MAX_DESC_CHARS in
-#   `pipeline.score` is still sized to fit that window — see the note there.
+#   Context is NOT set here. The router fixes each model's window (131072 since
+#   2026-10-30, build 12009) and rejects an oversized prompt with HTTP 400
+#   `exceed_context_size_error`, so overflow is loud rather than silently
+#   truncated. MAX_DESC_CHARS in `pipeline.score` is sized against 32768 by
+#   choice — see the note there.
 #
 #   presence_penalty / repeat_penalty: both pinned off. Structured output has to
 #   repeat tokens — JSON field names, and the verbatim JD keywords the tailor

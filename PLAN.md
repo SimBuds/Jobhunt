@@ -73,7 +73,7 @@ re-cloned, not pulled. Commits in this repo use the GitHub noreply address.
 
 | Resource | Allocation |
 |---|---|
-| GPU VRAM (10 GB total) | Arch idles around 1.5 GB on the GPU. `lite` (Qwen3.5-9B-MTP Q4_K_M) resides at about 6.2 GB with a `q4_0` KV cache and flash attention, 100% GPU, one slot (`parallel = 1`). **Context is server-owned**: the router preset fixes `ctx-size = 32768` and rejects an oversized prompt with HTTP 400 `exceed_context_size_error` instead of truncating it. The router holds one model (`--models-max 1`), loads it on the first request, and unloads it after 600 s idle (`sleep-idle-seconds`); there is no warm-up or keep-alive. Thinking is disabled per request (`chat_template_kwargs.enable_thinking = false`) so structured calls don't blow past the timeout. |
+| GPU VRAM (10 GB total) | Arch idles around 1.5 GB on the GPU. `lite` (Qwen3.5-9B-MTP Q4_K_M) resides at about 6.2 GB with a `q4_0` KV cache and flash attention, 100% GPU, one slot (`parallel = 1`). **Context is server-owned**: the router preset fixes `ctx-size = 131072` (since 2026-10-30), the input caps are sized against 32768 by choice, and the router rejects an oversized prompt with HTTP 400 `exceed_context_size_error` instead of truncating it. The router holds one model (`--models-max 1`), loads it on the first request, and unloads it after 600 s idle (`sleep-idle-seconds`); there is no warm-up or keep-alive. Thinking is disabled per request (`chat_template_kwargs.enable_thinking = false`) so structured calls don't blow past the timeout. |
 | System RAM (32 GB) | Embeddings on CPU, SQLite cache, and Playwright when active. |
 | Disk | GGUF models in `~/models/gguf` (router presets in `~/.config/llama.cpp/models.ini`), project DB in `data/jobhunt.db`. |
 
