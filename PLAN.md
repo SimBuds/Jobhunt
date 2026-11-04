@@ -62,6 +62,13 @@ between every call. Set in config (`gateway.tasks`).
 
 **Knowledge base is markdown + JSON.** No model-specific syntax baked in.
 
+**Personal data stays out of the repo, history included.** The profile,
+database, resume and notes live in the XDG data directory, and tests use
+fake names. On 2026-11-04 the public history was rewritten with
+git-filter-repo to remove personal files, real employer and school names, and
+the commit email, then force-pushed. Any clone made before that date must be
+re-cloned, not pulled. Commits in this repo use the GitHub noreply address.
+
 ## Hardware budget
 
 | Resource | Allocation |
