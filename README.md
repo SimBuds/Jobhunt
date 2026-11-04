@@ -57,14 +57,14 @@ stage can be re-run without repeating the ones before it.
 ingest ──▶ discover ──▶ score ──▶ tailor ──▶ audit ──▶ autofill
 ```
 
-| Stage | Module | Responsibility |
-| --- | --- | --- |
-| `ingest` | `ingest/` | Nine ATS integrations plus generic RSS, over async httpx with per-host rate limiting |
-| `discover` | `discover/` | Deterministic URL → `(ats, slug, site, host)` parsing, async ATS probing, auto-appends new slugs to `config.toml` |
-| `score` | `pipeline/score.py` | Fit score against the verified resume snapshot |
-| `tailor` | `pipeline/tailor.py`, `cover.py`, `answer.py` | Per-role resume, cover letter, form answers |
-| `audit` | `pipeline/audit.py`, `cover_validate.py` | Deterministic. No LLM in the QA path. |
-| `autofill` | `browser/` | Per-ATS Playwright handlers + generic fallback. Fills; never clicks Submit. |
+| Stage        | Module                                              | Responsibility                                                                                                         |
+| ------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `ingest`   | `ingest/`                                         | Nine ATS integrations plus generic RSS, over async httpx with per-host rate limiting                                   |
+| `discover` | `discover/`                                       | Deterministic URL → `(ats, slug, site, host)` parsing, async ATS probing, auto-appends new slugs to `config.toml` |
+| `score`    | `pipeline/score.py`                               | Fit score against the verified resume snapshot                                                                         |
+| `tailor`   | `pipeline/tailor.py`, `cover.py`, `answer.py` | Per-role resume, cover letter, form answers                                                                            |
+| `audit`    | `pipeline/audit.py`, `cover_validate.py`        | Deterministic. No LLM in the QA path.                                                                                  |
+| `autofill` | `browser/`                                        | Per-ATS Playwright handlers + generic fallback. Fills; never clicks Submit.                                            |
 
 Cutting across all of them: **`gateway/` is the only place the model is
 reached.** Every LLM call goes through one `complete_json` entry point
@@ -142,7 +142,7 @@ confident output for it is a regression, not a success.
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` in router
   mode at `http://localhost:8080`, serving a model named `lite`
 - ~10 GB VRAM for the default model
-- Free Adzuna CA API key: <https://developer.adzuna.com/>
+- Free Adzuna CA API key: [https://developer.adzuna.com/](https://developer.adzuna.com/)
 
 ## Install
 
@@ -172,8 +172,7 @@ score = "lite"
 ### llama-server router settings
 
 The gateway is tuned to a specific server config: the router runs as a systemd
-user service (`llama-server --models-preset ~/.config/llama.cpp/models.ini
---models-max 1 --port 8080`). The settings that matter to jobhunt:
+user service (`llama-server --models-preset ~/.config/llama.cpp/models.ini --models-max 1 --port 8080`). The settings that matter to jobhunt:
 
 ```ini
 [*]
@@ -348,20 +347,20 @@ as a count, rather than counted as zero coverage.
 Use `jobhunt --help` for the top-level menu and `jobhunt <command> --help` for
 the full option list. The commands below are the ones you usually need.
 
-| Command | Use it for | Common forms |
-|---|---|---|
-| `setup` | First run and applicant defaults | `jobhunt setup` |
-| `scan` | Ingest, score, and auto-discover sources | `jobhunt scan`, `jobhunt scan --limit N` |
-| `list` | Find targets and inspect pipeline status | `jobhunt list`, `jobhunt list --applied`, `jobhunt list --week 0` |
-| `apply` | Tailor docs and open the browser autofill flow | `jobhunt apply <job-id>`, `jobhunt apply --best`, `jobhunt apply --url <URL>` |
-| `answer` | Draft a form-question response | `jobhunt answer "Question" --job <job-id>` |
-| `interview-prep` | Draft an interview prep note | `jobhunt interview-prep <job-id> --research` |
-| `resume` | Regenerate the lane base resumes for manual channels | `jobhunt resume`, `jobhunt resume --focus ai` |
-| `track` | Log + update applications made outside the pipeline (no LLM) | `jobhunt track applied --channel linkedin --paste`, `jobhunt track response <company>` |
-| `add` | Add an ATS source from a career URL | `jobhunt add <URL>` |
-| `analyze` | Run deterministic job-search reports | `jobhunt analyze certs`, `jobhunt analyze employers` |
-| `convert-resume` | Rebuild `<profile_dir>/` from the baseline resume | `jobhunt convert-resume` |
-| `discover slugs` | Legacy slug discovery over past scan rows | `jobhunt discover slugs` |
+| Command            | Use it for                                                   | Common forms                                                                               |
+| ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `setup`          | First run and applicant defaults                             | `jobhunt setup`                                                                          |
+| `scan`           | Ingest, score, and auto-discover sources                     | `jobhunt scan`, `jobhunt scan --limit N`                                               |
+| `list`           | Find targets and inspect pipeline status                     | `jobhunt list`, `jobhunt list --applied`, `jobhunt list --week 0`                    |
+| `apply`          | Tailor docs and open the browser autofill flow               | `jobhunt apply <job-id>`, `jobhunt apply --best`, `jobhunt apply --url <URL>`        |
+| `answer`         | Draft a form-question response                               | `jobhunt answer "Question" --job <job-id>`                                               |
+| `interview-prep` | Draft an interview prep note                                 | `jobhunt interview-prep <job-id> --research`                                             |
+| `resume`         | Regenerate the lane base resumes for manual channels         | `jobhunt resume`, `jobhunt resume --focus ai`                                          |
+| `track`          | Log + update applications made outside the pipeline (no LLM) | `jobhunt track applied --channel linkedin --paste`, `jobhunt track response <company>` |
+| `add`            | Add an ATS source from a career URL                          | `jobhunt add <URL>`                                                                      |
+| `analyze`        | Run deterministic job-search reports                         | `jobhunt analyze certs`, `jobhunt analyze employers`                                   |
+| `convert-resume` | Rebuild `<profile_dir>/` from the baseline resume          | `jobhunt convert-resume`                                                                 |
+| `discover slugs` | Legacy slug discovery over past scan rows                    | `jobhunt discover slugs`                                                                 |
 
 The `config` and `db` maintenance groups:
 
@@ -471,16 +470,16 @@ Commands the automation does not run can still exit 1 for an input or fetch
 problem: `convert-resume`, `answer`, `interview-prep`, `add`, `resume`,
 `track`, `db`, `config`, and `apply` with `--url` or a lifecycle flag.
 
-| Code | Meaning |
-|---|---|
-| 0 | Success, including nothing to do |
-| 1 | Unhandled bug (a traceback, worth reporting) |
-| 2 | Usage error: a bad option or argument |
-| 10 | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, private data inside the checkout |
-| 11 | Needs a person: a prompting command ran without a terminal. `setup` and `apply --best` always need one. `db reset`, `db gc --prune` and `config reprobe --prune` need one unless given `--force` |
-| 12 | A pipeline stage failed (ingest, scoring, tailoring, audit, render) |
-| 13 | The llama-server router is unreachable or could not load the model |
-| 14 | Reserved, not raised |
+| Code | Meaning                                                                                                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | Success, including nothing to do                                                                                                                                                                             |
+| 1    | Unhandled bug (a traceback, worth reporting)                                                                                                                                                                 |
+| 2    | Usage error: a bad option or argument                                                                                                                                                                        |
+| 10   | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, private data inside the checkout                             |
+| 11   | Needs a person: a prompting command ran without a terminal. `setup` and `apply --best` always need one. `db reset`, `db gc --prune` and `config reprobe --prune` need one unless given `--force` |
+| 12   | A pipeline stage failed (ingest, scoring, tailoring, audit, render)                                                                                                                                          |
+| 13   | The llama-server router is unreachable or could not load the model                                                                                                                                           |
+| 14   | Reserved, not raised                                                                                                                                                                                         |
 
 ### JSON output
 
@@ -507,8 +506,7 @@ cover and audit paths), `blocked` (id and the audit rule labels that fired),
 `skipped` (id and error class) and `counts`. Paths only: no document text.
 
 On a failure inside the command, `ok` is false, `exit_code` matches the
-process exit code, and `error` names only the class (`{"class":
-"InputError"}`), never the message. An error raised before the command starts
+process exit code, and `error` names only the class (`{"class": "InputError"}`), never the message. An error raised before the command starts
 (a broken `config.toml`, a usage error, the privacy or working directory
 check) prints no object: read the exit code and stderr.
 
@@ -692,26 +690,26 @@ adzuna_app_key = "..."
 
 ## Data layout
 
-| Path | What lives there |
-|---|---|
-| `<profile_dir>/*Resume*.docx` | Source-of-truth resume. Hand-edited, and the fact store everything else is generated from. Personal, so it lives in the profile directory, never the checkout. A name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`. |
-| `<profile_dir>/verified.json` | Structured facts emitted by `convert-resume`. |
-| `<profile_dir>/supplement.toml` | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement". |
-| `kb/policies/tailoring-rules.md` | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash. |
-| `kb/policies/authoring.md` | Agent-facing resume-authoring policy. Not injected. |
-| `<profile_dir>/verified-notes.md` | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only. |
-| `<profile_dir>/work-long-form.md` | Long-form work/project/education knowledge base. Gitignored, agent-reference only. |
-| `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter. |
-| `kb/lanes/*.md` | One pseudo-JD brief per lane, discovered at runtime. Currently full stack, AI automation and infrastructure, CMS and e-commerce, technical SEO. Briefs are generic postings with no personal claims, and they avoid fabrication-watchlist terms because the tailor echoes brief wording. |
-| `kb/seeds/gta-employers.toml` | Curated verified ATS slugs (imported by `config seed`). |
-| `~/.config/jobhunt/config.toml` | Sources, models, applicant profile, paths. |
-| `~/.config/jobhunt/secrets.toml` | API keys (Adzuna), mode 0600. |
-| `data/jobhunt.db` | SQLite: jobs, scores, applications, slug_probes. |
-| `data/applications/<job-id>/` | Tailored resume, cover letter, `audit.json`, `fill-plan.json`, `answers/`. |
-| `data/answers/<sha1>.md` | Standalone (non-job-scoped) answer artifacts. |
-| `data/resumes/` | Lane base resumes (`jobhunt resume`) + their tailored JSON. |
-| `data/interview-prep/<job-id>.md` | Interview prep docs. |
-| `data/cache/` | Cached raw HTTP responses (TTL-based). |
+| Path                                          | What lives there                                                                                                                                                                                                                                                                         |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<profile_dir>/*Resume*.docx`               | Source-of-truth resume. Hand-edited, and the fact store everything else is generated from. Personal, so it lives in the profile directory, never the checkout. A name containing "baseline" wins, then newest. Override with `convert-resume --docx <path>`.                           |
+| `<profile_dir>/verified.json`               | Structured facts emitted by `convert-resume`.                                                                                                                                                                                                                                          |
+| `<profile_dir>/supplement.toml`             | Hand-authored projects, employment type and Core moves, merged by `convert-resume`. Gitignored, mode 0600. See "The profile supplement".                                                                                                                                               |
+| `kb/policies/tailoring-rules.md`            | Hard rules (no fabrication, ATS-safe, auto-decline). Injected into prompts; feeds the score prompt hash.                                                                                                                                                                                 |
+| `kb/policies/authoring.md`                  | Agent-facing resume-authoring policy. Not injected.                                                                                                                                                                                                                                      |
+| `<profile_dir>/verified-notes.md`           | Long-form claimability notes: bucket placements, quantified outcomes, what the candidate has *not* done. Gitignored, agent-reference only.                                                                                                                                             |
+| `<profile_dir>/work-long-form.md`           | Long-form work/project/education knowledge base. Gitignored, agent-reference only.                                                                                                                                                                                                       |
+| `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter.                                                                                                                                                                                                                                                    |
+| `kb/lanes/*.md`                             | One pseudo-JD brief per lane, discovered at runtime. Currently full stack, AI automation and infrastructure, CMS and e-commerce, technical SEO. Briefs are generic postings with no personal claims, and they avoid fabrication-watchlist terms because the tailor echoes brief wording. |
+| `kb/seeds/gta-employers.toml`               | Curated verified ATS slugs (imported by `config seed`).                                                                                                                                                                                                                                |
+| `~/.config/jobhunt/config.toml`             | Sources, models, applicant profile, paths.                                                                                                                                                                                                                                               |
+| `~/.config/jobhunt/secrets.toml`            | API keys (Adzuna), mode 0600.                                                                                                                                                                                                                                                            |
+| `data/jobhunt.db`                           | SQLite: jobs, scores, applications, slug_probes.                                                                                                                                                                                                                                         |
+| `data/applications/<job-id>/`               | Tailored resume, cover letter, `audit.json`, `fill-plan.json`, `answers/`.                                                                                                                                                                                                         |
+| `data/answers/<sha1>.md`                    | Standalone (non-job-scoped) answer artifacts.                                                                                                                                                                                                                                            |
+| `data/resumes/`                             | Lane base resumes (`jobhunt resume`) + their tailored JSON.                                                                                                                                                                                                                            |
+| `data/interview-prep/<job-id>.md`           | Interview prep docs.                                                                                                                                                                                                                                                                     |
+| `data/cache/`                               | Cached raw HTTP responses (TTL-based).                                                                                                                                                                                                                                                   |
 
 `data/` is gitignored.
 
