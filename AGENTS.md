@@ -2033,9 +2033,16 @@ call to it without explicit discussion.
 7. **`config calibrate`** prints interview-rate per score band from
    `applications`. Use after 20+ applications to tune `pipeline.min_score`.
 8. **One-page guarantee.** `tailor._shrink_to_one_page` enforces a hard
-   single-page output via `render_docx.fits_one_page` (48-line budget,
-   wrap-aware). The ladder runs in this fixed order, and new content-density
-   features must respect it:
+   single-page output via `render_docx.fits_one_page` (wrap-aware estimate,
+   usable budget 50: `LINES_PER_PAGE` 52 minus a 2-line margin). The budget
+   was re-measured on 2026-11-10 for the design layout: 60 real-profile
+   variants through LibreOffice fit one page at every estimate up to 51,
+   split at 53, and always overflowed from 54. The old layout's measured
+   budget of 46 had the ladder cutting content the denser layout fits. A
+   full real profile (estimate 62) now shrinks to 50 and renders on one page,
+   keeping 4 bullets on the current role and all 4 projects. Re-measure after
+   any change to margins, spacing or font sizes. The ladder runs in this
+   fixed order, and new content-density features must respect it:
    1. Trim summary down to >= 3 sentences.
    2. Trim Familiar skills down to >= 4 items.
    3. Drop the last bullet of the role with the highest current line-cost (each
@@ -2057,8 +2064,8 @@ call to it without explicit discussion.
    Two of the three renders also carried no education line, because the model
    returned `education: []` against rule 5 of `kb/prompts/tailor.md` and
    folded the diploma into the summary instead. A hand pass fit
-   two bullets per role, two projects and the education line inside the same
-   46-line budget, so the content exists and what spends it is bullet length
+   two bullets per role, two projects and the education line inside the
+   then 46-line budget, so the content exists and what spends it is bullet length
    plus the order the model chose. Judge any change here against that
    comparison, not against whether the render still fits.
 9. **JD surface-form discipline** (`kb/prompts/tailor.md` rule 9). Tailored

@@ -389,12 +389,14 @@ def _add_rules(paragraph: Any, edges: tuple[str, ...], *, color: str, space: int
 
 # --- one-page heuristic check -------------------------------------------------
 
-# Conservative budget for 10.5pt Calibri on US Letter with 0.5"/0.75" margins.
-# The previous 52-line budget overshot — section headings, role headers, and
-# skill lines that wrap each cost more than the flat 1 line we counted.
-# 48 lines with wrap-aware skill/summary/bullet counts produces reliable
-# single-page output.
-LINES_PER_PAGE = 48
+# Budget for the design layout (0.65" sides, 1.08 spacing), re-measured
+# 2026-11-10 on 60 real-profile variants rendered through LibreOffice: every
+# estimate <= 51 fit one page, 53 was mixed, and >= 54 always overflowed. With
+# the 2-line margin below, the usable budget is 50. The old layout (0.75"
+# sides, 1.15 spacing) measured 46 usable; keeping that budget cut content the
+# denser layout fits. The width constants were left alone: the cut-off is
+# what the measurement pins, not each element's cost.
+LINES_PER_PAGE = 52
 # Two lines of headroom: the flat per-section estimates accumulate small
 # rounding errors, so a resume estimated close to LINES_PER_PAGE renders onto
 # a second page in practice (observed 2026-05-28 when a 6th skills category —
@@ -405,8 +407,8 @@ LINES_PER_PAGE = 48
 # Raised 1 -> 2 on 2026-09-10. A margin of 1 still let the boundary through: a
 # `jobhunt resume` CMS lane estimated at exactly 47 (== the budget, so
 # `fits_one_page` returned True and the ladder stopped) rendered its diploma
-# line onto page 2, while the AI lane at 46 fit. Measured against LibreOffice,
-# 46 fits and 47 does not, so the usable budget is 46. This mattered beyond one
+# line onto page 2, while the AI lane at 46 fit. Measured against LibreOffice
+# on the old layout, 46 fit and 47 did not. This mattered beyond one
 # stray page: the tailor samples at temperature 0.3, so output length varies
 # run to run and the same lane fit one day and overflowed the next — and every
 # `apply` resume goes through this same ladder.

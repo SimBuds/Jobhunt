@@ -432,3 +432,30 @@ def test_estimate_counts_project_and_credential_one_liners(tailored):
     assert estimate_lines(tailored) == base + 1 + 2  # PROJECTS heading + 2 wrapped lines
     tailored.certifications = ["c" * 150]
     assert estimate_lines(tailored) == base + 3 + 2
+
+
+# --- Phase 6d.1 (2026-11-10): page budget re-measured on the design layout ---
+#
+# 60 real-profile variants through LibreOffice: every estimate <= 51 fit one
+# page, 53 was mixed, >= 54 always overflowed. Budget 50 keeps a 2-line margin
+# below the first overflow (AGENTS.md audit rule 8).
+
+
+def _padded(target: int) -> TailoredResume:
+    t = TailoredResume(
+        summary="Shopify developer.",
+        skills_categories=[TailoredCategory("Core", ["JavaScript"])],
+        roles=[TailoredRole("Dev", "Acme", "2023 – Present", ["b"])],
+        certifications=[],
+        education=["Diploma"],
+        coursework=[],
+        model="x",
+    )
+    t.roles[0].bullets.extend(["padding bullet"] * (target - estimate_lines(t)))
+    assert estimate_lines(t) == target
+    return t
+
+
+def test_budget_accepts_estimate_50_and_rejects_51():
+    assert fits_one_page(_padded(50))
+    assert not fits_one_page(_padded(51))
