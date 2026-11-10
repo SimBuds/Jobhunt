@@ -247,6 +247,12 @@ def _violation_hint_line(
             "verified_facts.summary does not make. REMOVE the word and state "
             "what the verified work shows instead, without a proficiency label."
         )
+    if v.kind == "summary-identity":
+        return (
+            f"- The summary calls the candidate {v.detail!r}, a role identity "
+            "verified_facts.summary does not claim. REMOVE it and open with the "
+            "role label verified_facts.summary uses."
+        )
     if v.kind == "summary-culinary":
         return (
             "- The summary leads with culinary/kitchen content. Move any "
@@ -811,6 +817,11 @@ _FORBIDDEN_SENIORITY = ("senior", "sr", "staff", "lead", "principal", "architect
 # guarded. "specialist" is deliberately absent: it is a role noun ("CMS
 # specialist") that `_LABEL_GENERIC_TOKENS` allows in the role label.
 _FORBIDDEN_PROFICIENCY = ("expert", "guru")
+# Role identity, checked like seniority (2026-11-10): the 2026-11-09 profile
+# repositioned the candidate as a Shopify and WordPress developer, and "full"
+# and "stack" are generic label tokens below, so "Full-stack developer" passed
+# the label check. Any spelling counts, anywhere in the summary.
+_FORBIDDEN_IDENTITY_RE = re.compile(r"\bfull[\s-]?stack\b", re.IGNORECASE)
 _CULINARY_TERMS = ("culinary", "chef", "kitchen", "restaurant", "sous")
 
 # Generic role-label words that carry no tech identity of their own. Used by
@@ -838,7 +849,8 @@ class FabricationViolation:
     """
 
     # unverified-skill | familiar-promoted | role-divergence |
-    # summary-seniority | summary-culinary | summary-label-ungrounded |
+    # summary-seniority | summary-identity | summary-culinary |
+    # summary-label-ungrounded |
     # unverified-project | project-url-divergence
     kind: str
     detail: str
@@ -886,6 +898,11 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
             raise FabricationError(
                 [FabricationViolation("summary-proficiency", token)], msg
             )
+    identity = _FORBIDDEN_IDENTITY_RE.search(summary)
+    if identity and not _FORBIDDEN_IDENTITY_RE.search(verified_summary):
+        term = identity.group(0).lower()
+        msg = f"summary claims {term!r} identity not present in verified.summary"
+        raise FabricationError([FabricationViolation("summary-identity", term)], msg)
     first_sentence = re.split(r"(?<=[.!?])\s+", summary.strip(), maxsplit=1)[0].lower()
     if any(_has_word(first_sentence, term) for term in _CULINARY_TERMS):
         msg = "summary leads with culinary/kitchen content; it must come last, not first"

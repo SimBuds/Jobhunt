@@ -714,3 +714,64 @@ def test_proficiency_hint_names_the_word():
     assert "Unspecified violation" not in line
     assert "'expert'" in line
     assert "remove" in line.lower()
+
+
+# --- 2026-11-10: no full-stack identity unless the verified summary has one --
+#
+# The 2026-11-09 profile repositioned the candidate as a Shopify and WordPress
+# developer, and the label guard treated "full" and "stack" as generic words,
+# so "Full-stack developer building Shopify sites" passed against it.
+
+REPOSITIONED = {
+    **VERIFIED,
+    "summary": "Shopify, WordPress and HubSpot developer since 2022 who builds "
+    "and migrates e-commerce and CMS sites.",
+    "skills_core": ["JavaScript", "HTML/CSS", "Python"],
+    "skills_cms": ["Shopify (Liquid)", "WordPress", "HubSpot (HubL)"],
+    "skills_familiar": ["React", "TypeScript"],
+}
+REPOSITIONED_SKILLS = [
+    TailoredCategory("CMS & E-commerce", ["Shopify (Liquid)", "WordPress"]),
+    TailoredCategory("Familiar", ["React", "TypeScript"]),
+]
+
+
+@pytest.mark.parametrize(
+    ("summary", "detail"),
+    [
+        ("Full-stack developer building Shopify and WordPress sites since 2022.", "full-stack"),
+        ("Shopify developer since 2022. Ships full stack features end to end.", "full stack"),
+        ("Fullstack developer building Shopify sites since 2022.", "fullstack"),
+    ],
+)
+def test_rejects_full_stack_identity_absent_from_verified_summary(summary, detail):
+    from jobhunt.pipeline.tailor import FabricationError
+
+    with pytest.raises(FabricationError) as exc:
+        _enforce_no_fabrication(
+            _make(summary=summary, skills_categories=REPOSITIONED_SKILLS), REPOSITIONED
+        )
+    [violation] = exc.value.violations
+    assert (violation.kind, violation.detail) == ("summary-identity", detail)
+
+
+def test_repositioned_summary_without_full_stack_passes():
+    ok = _make(
+        summary="Shopify and WordPress developer since 2022 building CMS sites.",
+        skills_categories=REPOSITIONED_SKILLS,
+    )
+    _enforce_no_fabrication(ok, REPOSITIONED)
+
+
+def test_full_stack_allowed_when_the_verified_summary_says_it():
+    # VERIFIED's own summary opens "Full-stack JavaScript developer".
+    _enforce_no_fabrication(_make(summary="Full stack JavaScript developer, 2+ years."), VERIFIED)
+
+
+def test_identity_hint_names_the_term():
+    from jobhunt.pipeline.tailor import FabricationViolation, _violation_hint_line
+
+    line = _violation_hint_line(FabricationViolation("summary-identity", "full-stack"))
+    assert "Unspecified violation" not in line
+    assert "'full-stack'" in line
+    assert "remove" in line.lower()
