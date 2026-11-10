@@ -88,6 +88,10 @@ def _canonical_section(text: str) -> str | None:
     return _SECTION_ALIASES.get(text.strip().lower())
 
 
+# Experience headings whose roles are earlier career, not current tech work.
+_EARLIER_CAREER_HEADINGS = frozenset({"additional experience", "other experience"})
+
+
 @dataclass
 class Role:
     title: str
@@ -97,6 +101,9 @@ class Role:
     # From `supplement.toml`, never from the resume, and never rendered on a
     # resume: it answers application-form questions, it is not a claim.
     employment_type: str | None = None
+    # True for a role listed under an earlier-career heading ("Additional
+    # Experience"). The renderer moves it out of Work Experience (2026-11-10).
+    earlier_career: bool = False
 
 
 @dataclass
@@ -558,14 +565,21 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     ).strip()
 
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
+    # Indexes into sections["PROFESSIONAL EXPERIENCE"] that sit under an
+    # earlier-career heading, so their roles can be flagged below.
+    earlier_rows: set[int] = set()
+    in_earlier = False
     current: str | None = None
     for style, text in paras[2:]:
         canon = _canonical_section(text)
         if canon is not None:
             current = canon
+            in_earlier = text.strip().lower() in _EARLIER_CAREER_HEADINGS
             continue
         if current is None:
             continue
+        if current == "PROFESSIONAL EXPERIENCE" and in_earlier:
+            earlier_rows.add(len(sections[current]))
         sections[current].append((style, text))
 
     summary = " ".join(t for _, t in sections["SUMMARY"]).strip()
@@ -618,7 +632,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     work_history: list[Role] = []
     current_role: Role | None = None
     awaiting_employer = False
-    for style, text in sections["PROFESSIONAL EXPERIENCE"]:
+    for row, (style, text) in enumerate(sections["PROFESSIONAL EXPERIENCE"]):
         parsed = _parse_role_header(text)
         if current_role is not None and awaiting_employer:
             awaiting_employer = False
@@ -652,7 +666,9 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
         if current_role is not None:
             work_history.append(current_role)
         title, employer, dates = parsed
-        current_role = Role(title=title, employer=employer, dates=dates)
+        current_role = Role(
+            title=title, employer=employer, dates=dates, earlier_career=row in earlier_rows
+        )
         awaiting_employer = employer == ""
     if current_role is not None:
         if awaiting_employer:

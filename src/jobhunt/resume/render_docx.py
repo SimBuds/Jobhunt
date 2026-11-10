@@ -43,6 +43,14 @@ RESUME_LINE_SPACING = 1.08  # w:line 259
 RESUME_SIDE_MARGIN = Inches(0.65)
 RESUME_TOP_MARGIN = Twips(700)  # 0.486"
 CONTACT_SEPARATOR = "  |  "
+SKILL_SEPARATOR = "  •  "
+ROLE_GAP_PT = 5.5
+BULLET_LEFT = Twips(540)  # 0.375"
+BULLET_HANGING = Twips(240)  # 0.167"
+BULLET_AFTER = Pt(0.75)
+# A bullet's lead clause is bold through its first comma when that comma
+# falls within this many characters (ledger 2026-11-10); otherwise no bold.
+LEAD_CLAUSE_MAX_CHARS = 70
 
 
 def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Path) -> Path:
@@ -65,38 +73,33 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
     _add_paragraph(doc, tailored.summary)
 
     _add_section_heading(doc, "CORE EXPERTISE")
-    for cat in tailored.skills_categories:
-        if not cat.items:
-            continue
+    core, familiar = _split_skills(tailored)
+    if core:
         p = doc.add_paragraph()
-        run_label = p.add_run(f"{cat.name}: ")
-        run_label.bold = True
-        run_label.font.name = BODY_FONT
-        run_label.font.size = BODY_SIZE
-        run_items = p.add_run(", ".join(cat.items))
-        run_items.font.name = BODY_FONT
-        run_items.font.size = BODY_SIZE
+        _styled_run(p, SKILL_SEPARATOR.join(core), color=GREY)
+        _tighten_resume(p)
+    if familiar:
+        # Familiar renders apart from Core Expertise (ledger 2026-11-10), with
+        # the label the baseline resume uses.
+        p = doc.add_paragraph()
+        _styled_run(p, "Exposure: ", color=DARK, bold=True)
+        _styled_run(p, ", ".join(familiar), color=GREY)
         _tighten_resume(p)
 
     _add_section_heading(doc, "WORK EXPERIENCE")
-    for role in tailored.roles:
-        p = doc.add_paragraph()
-        run_t = p.add_run(f"{role.title} | {role.employer}")
-        run_t.bold = True
-        run_t.font.name = BODY_FONT
-        run_t.font.size = BODY_SIZE
-        # Right-align dates via tab + tab-stop at the right margin.
-        run_d = p.add_run(f"\t{role.dates}")
-        run_d.font.name = BODY_FONT
-        run_d.font.size = BODY_SIZE
-        _add_right_tab_stop(p)
-        _tighten_resume(p)
+    for i, role in enumerate(tailored.roles):
+        title = doc.add_paragraph()
+        _styled_run(title, role.title, color=DARK, bold=True, size=HEADING_SIZE)
+        _tighten_resume(title, before=0 if i == 0 else ROLE_GAP_PT, after=0)
+        title.paragraph_format.keep_with_next = True
+        meta = doc.add_paragraph()
+        _styled_run(
+            meta, f"{role.employer}{CONTACT_SEPARATOR}{role.dates}", color=GREY, italic=True
+        )
+        _tighten_resume(meta, after=2)
+        meta.paragraph_format.keep_with_next = True
         for bullet in role.bullets:
-            bp = doc.add_paragraph(style="List Bullet")
-            br = bp.add_run(bullet)
-            br.font.name = BODY_FONT
-            br.font.size = BODY_SIZE
-            _tighten_resume(bp)
+            _add_role_bullet(doc, bullet)
 
     if tailored.projects:
         _add_section_heading(doc, "PROJECTS")
@@ -191,6 +194,57 @@ def _set_default_font(doc: Any) -> None:
         rpr.append(rfonts)
     rfonts.set(qn("w:ascii"), BODY_FONT)
     rfonts.set(qn("w:hAnsi"), BODY_FONT)
+
+
+def _split_skills(tailored: TailoredResume) -> tuple[list[str], list[str]]:
+    """(Core Expertise items in category order, Familiar items)."""
+    core: list[str] = []
+    familiar: list[str] = []
+    for cat in tailored.skills_categories:
+        (familiar if cat.name.strip().lower() == "familiar" else core).extend(cat.items)
+    return core, familiar
+
+
+def _styled_run(
+    paragraph: Any,
+    text: str,
+    *,
+    color: RGBColor,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    size: Length = BODY_SIZE,
+) -> Any:
+    r = paragraph.add_run(text)
+    r.font.name = BODY_FONT
+    r.font.size = size
+    r.font.color.rgb = color
+    if bold is not None:
+        r.bold = bold
+    if italic is not None:
+        r.italic = italic
+    return r
+
+
+def _lead_clause(bullet: str) -> tuple[str, str]:
+    """(bold lead through the first comma, remainder), or ('', bullet)."""
+    comma = bullet.find(",")
+    if 0 <= comma < LEAD_CLAUSE_MAX_CHARS:
+        return bullet[: comma + 1], bullet[comma + 1 :]
+    return "", bullet
+
+
+def _add_role_bullet(doc: Any, bullet: str) -> None:
+    p = doc.add_paragraph(style="List Bullet")
+    lead, rest = _lead_clause(bullet)
+    if lead:
+        _styled_run(p, lead, color=DARK, bold=True)
+    if rest:
+        _styled_run(p, rest, color=GREY)
+    _tighten_resume(p)
+    pf = p.paragraph_format
+    pf.left_indent = BULLET_LEFT
+    pf.first_line_indent = -BULLET_HANGING
+    pf.space_after = BULLET_AFTER
 
 
 def _split_contact(contact_line: str) -> tuple[str, list[str]]:
@@ -295,7 +349,7 @@ def _add_paragraph(doc: Any, text: str) -> None:
 
 
 def _tighten(
-    paragraph: Any, *, before: int = 0, after: int = 2, line_spacing: float = 1.15
+    paragraph: Any, *, before: float = 0, after: float = 2, line_spacing: float = 1.15
 ) -> None:
     pf = paragraph.paragraph_format
     pf.space_before = Pt(before)
@@ -303,7 +357,7 @@ def _tighten(
     pf.line_spacing = line_spacing
 
 
-def _tighten_resume(paragraph: Any, *, before: int = 0, after: int = 2) -> None:
+def _tighten_resume(paragraph: Any, *, before: float = 0, after: float = 2) -> None:
     _tighten(paragraph, before=before, after=after, line_spacing=RESUME_LINE_SPACING)
 
 
@@ -367,15 +421,15 @@ def _wrapped_lines(text: str, width: int) -> int:
 def estimate_lines(tailored: TailoredResume) -> int:
     lines = 5  # name + tagline + contact + spacing (re-measured in Phase 6d)
     lines += _wrapped_lines(tailored.summary, SUMMARY_CHARS_PER_LINE)  # unheaded
-    lines += 1
-    for cat in tailored.skills_categories:
-        if not cat.items:
-            continue
-        line_text = f"{cat.name}: " + ", ".join(cat.items)
-        lines += _wrapped_lines(line_text, SKILL_CHARS_PER_LINE)
-    lines += 1
+    lines += 1  # CORE EXPERTISE heading
+    core, familiar = _split_skills(tailored)
+    if core:
+        lines += _wrapped_lines(SKILL_SEPARATOR.join(core), SKILL_CHARS_PER_LINE)
+    if familiar:
+        lines += _wrapped_lines("Exposure: " + ", ".join(familiar), SKILL_CHARS_PER_LINE)
+    lines += 1  # WORK EXPERIENCE heading
     for role in tailored.roles:
-        lines += 1
+        lines += 2  # title line + employer/dates line
         for b in role.bullets:
             lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
     if tailored.projects:

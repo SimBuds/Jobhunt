@@ -55,7 +55,7 @@ def test_render_writes_valid_docx(tailored: TailoredResume, tmp_path: Path):
     assert "CASEY HSU" in text
     assert "CORE EXPERTISE" in text
     assert "WORK EXPERIENCE" in text
-    assert "Familiar" in text
+    assert "Exposure: Java, Python" in text
     assert "Custom Jewelry Brand" in text
 
 
@@ -245,3 +245,76 @@ def test_margins_and_line_spacing_match_design(tailored, tmp_path):
     margins = (s.left_margin, s.right_margin, s.top_margin, s.bottom_margin)
     assert [round(m.inches, 2) for m in margins] == [0.65, 0.65, 0.49, 0.5]
     assert doc.paragraphs[3].paragraph_format.line_spacing == pytest.approx(1.08, abs=0.005)
+
+
+# --- Phase 6b (2026-11-10): skills line, role header, bold lead clause ------
+
+
+def _para(doc, startswith: str):
+    return next(p for p in doc.paragraphs if p.text.startswith(startswith))
+
+
+def test_skills_render_as_one_flat_line_plus_exposure(tailored, tmp_path):
+    doc = _doc(tailored, tmp_path)
+    texts = [p.text for p in doc.paragraphs]
+    i = texts.index("CORE EXPERTISE")
+    assert texts[i + 1] == "  •  ".join(
+        ["JavaScript", "TypeScript", "React", "Next.js", "Shopify (Liquid)", "HubSpot CMS"]
+    )
+    assert texts[i + 2] == "Exposure: Java, Python"
+    assert texts[i + 3] == "WORK EXPERIENCE"
+    r = doc.paragraphs[i + 1].runs[0]
+    assert (r.font.size.pt, r.font.color.rgb) == (10.5, RGBColor(0x59, 0x59, 0x59))
+
+
+def test_no_familiar_category_means_no_exposure_line(tailored, tmp_path):
+    tailored.skills_categories = [
+        TailoredCategory("Core", ["JavaScript"]),
+        TailoredCategory("Empty", []),
+    ]
+    texts = [p.text for p in _doc(tailored, tmp_path).paragraphs]
+    i = texts.index("CORE EXPERTISE")
+    assert texts[i + 1 : i + 3] == ["JavaScript", "WORK EXPERIENCE"]
+
+
+def test_role_header_is_title_line_then_italic_meta_line(tailored, tmp_path):
+    doc = _doc(tailored, tmp_path)
+    title = _para(doc, "Web Developer (Contract)")
+    assert title.text == "Web Developer (Contract)"
+    t = title.runs[0]
+    assert (t.bold, t.font.size.pt, t.font.color.rgb) == (True, 11.0, RGBColor(0x1F, 0x1F, 0x1F))
+    meta = _para(doc, "Custom Jewelry Brand")
+    assert meta.text == "Custom Jewelry Brand (NDA)  |  2023 – Present"
+    m = meta.runs[0]
+    assert (m.italic, m.font.size.pt, m.font.color.rgb) == (True, 10.5, RGBColor(0x59, 0x59, 0x59))
+
+
+def test_bullet_lead_is_bold_through_first_comma(tailored, tmp_path):
+    tailored.roles[0].bullets = [
+        "Moved average Google position from 38 to 13 in 16 months, ranking 44 terms.",
+        "Built the pipeline in 20 hours after 100 hours of manual entry and more words "
+        "past seventy characters, then handed it over.",
+        "Shipped ring builder.",
+    ]
+    doc = _doc(tailored, tmp_path)
+    lead = _para(doc, "Moved average")
+    assert [(r.text, r.bold) for r in lead.runs] == [
+        ("Moved average Google position from 38 to 13 in 16 months,", True),
+        (" ranking 44 terms.", None),
+    ]
+    assert lead.runs[0].font.color.rgb == RGBColor(0x1F, 0x1F, 0x1F)
+    assert lead.runs[1].font.color.rgb == RGBColor(0x59, 0x59, 0x59)
+    far = _para(doc, "Built the pipeline")
+    assert [r.bold for r in far.runs] == [None]
+    plain = _para(doc, "Shipped ring builder")
+    assert [r.bold for r in plain.runs] == [None]
+    pf = lead.paragraph_format
+    assert round(pf.left_indent.inches, 3) == 0.375
+    assert round(-pf.first_line_indent.inches, 3) == 0.167
+    assert pf.space_after.pt == 0.75
+
+
+def test_estimate_counts_one_meta_line_per_role(tailored):
+    before = estimate_lines(tailored)
+    tailored.roles.append(TailoredRole("Dev", "Acme", "2020 – 2021", []))
+    assert estimate_lines(tailored) == before + 2

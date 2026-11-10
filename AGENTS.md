@@ -2102,7 +2102,16 @@ which stay:
   renders education verbatim.
 - **Employer verbatim** ("Atelier Dacko, Toronto, ON"). `employer` is half the
   guard's identity key.
-- **Role descriptors stay bullet 0** until Phase 6b decides otherwise.
+- **Role descriptors stay bullet 0.** They are bullet 0 in `verified.json`
+  and the tailor may rewrite them. Moving them onto the employer line needs a
+  parsed descriptor field (Casey, 2026-11-10).
+- **Familiar renders as an "Exposure:" line** under Core Expertise, the
+  label the baseline resume uses. The design drops React and TypeScript
+  entirely, which would hide a keyword postings ask for.
+- **Bold lead clause by rule, not by hand.** Bold runs through the first
+  comma when it falls within `LEAD_CLAUSE_MAX_CHARS` (70), otherwise none.
+  The design's leads were chosen by hand. On the verified bullets the rule
+  bolds 5 of 9, and it also bolds a descriptor with an early comma.
 - **Tagline is the verified headline only.** The design's second half ("CMS,
   E-commerce and AI Automation") is not in `verified.json`. Add it to the
   baseline resume's headline line to render it.

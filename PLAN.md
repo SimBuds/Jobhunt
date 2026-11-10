@@ -222,6 +222,10 @@ in eight places, not just the prompt:
 
 1. **Verified snapshot.** `convert-resume` emits `<profile_dir>/verified.json`.
    The tailoring prompt is constrained to only use facts from this file.
+   Each `work_history` role carries `earlier_career`, true when the resume
+   lists it under an "Additional Experience" or "Other Experience" heading
+   (2026-11-10). The renderer prints those roles under Education and Earlier
+   Career rather than Work Experience.
    All skill buckets (`skills_core`, `skills_cms`, `skills_data_devops`, `skills_ai`,
    `skills_projects`, `skills_familiar`) are **atomic lists** (one item per skill).
    `skills_projects` (Core-grade, demonstrated in Casey's shipped personal

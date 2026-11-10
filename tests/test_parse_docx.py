@@ -796,6 +796,41 @@ class TestTwoLineLayout:
         assert role.bullets == ["Ran the grill station."]
         assert len(facts.work_history) == 3
 
+    # Phase 6c.1 (2026-11-10): roles under an earlier-career heading carry a
+    # flag, so the renderer can move them out of Work Experience.
+    def test_additional_experience_role_is_flagged_earlier_career(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        assert [r.earlier_career for r in facts.work_history] == [False, False, True]
+
+    def test_other_experience_heading_also_flags(self, tmp_path: Path):
+        path = self._doc(tmp_path)
+        from docx import Document
+
+        doc = Document(str(path))
+        heading = next(p for p in doc.paragraphs if p.text == "Additional Experience")
+        heading.text = "Other Experience"
+        doc.save(path)
+        facts, _ = parse_baseline(path)
+        assert facts.work_history[-1].earlier_career is True
+
+    def test_no_earlier_heading_flags_nothing(self, tmp_path: Path):
+        path = self._doc(tmp_path)
+        from docx import Document
+
+        doc = Document(str(path))
+        heading = next(p for p in doc.paragraphs if p.text == "Additional Experience")
+        heading.text = "Experience"
+        doc.save(path)
+        facts, _ = parse_baseline(path)
+        assert not any(r.earlier_career for r in facts.work_history)
+
+    def test_earlier_career_flag_round_trips_through_verified_json(self, tmp_path: Path):
+        facts, _ = parse_baseline(self._doc(tmp_path))
+        out = tmp_path / "verified.json"
+        write_verified_json(facts, out)
+        roles = json.loads(out.read_text())["work_history"]
+        assert [r["earlier_career"] for r in roles] == [False, False, True]
+
     def test_combined_section_yields_one_degree_and_one_cert(self, tmp_path: Path):
         facts, warnings = parse_baseline(self._doc(tmp_path))
         assert facts.education == [
