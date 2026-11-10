@@ -1657,7 +1657,11 @@ missing. Fix the resume or the parser first.
    "Claude API" later in the summary shipped unchecked. Mastery words
    ("expert", "guru") are rejected like seniority words unless the verified
    summary has them (2026-11-02, after a lane render shipped "Expert in
-   AI/LLM tooling"). Any new tailoring
+   AI/LLM tooling"). "Full-stack" in any spelling is rejected the same way
+   (2026-11-10): the profile was repositioned as a Shopify and WordPress
+   developer, and "full" and "stack" are generic label tokens, so the label
+   check alone let it through. Covers and answers carry this as prompt
+   wording only, because they may name a posting's own title. Any new tailoring
    capability MUST keep these checks green.
    - **Deterministic retry on violation.** `_enforce_no_fabrication` raises
      `FabricationError` carrying structured `FabricationViolation(kind,

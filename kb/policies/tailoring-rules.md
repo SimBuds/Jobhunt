@@ -6,7 +6,7 @@ injected): `kb/policies/authoring.md`.
 
 ## Hard prohibitions (no fabrication)
 
-- Use **only** facts present in `kb/profile/verified.json`. If a JD asks for something
+- Use **only** facts present in `verified.json`. If a JD asks for something
   not there, name it as a gap — never invent.
 - Do not invent metrics, employers, dates, projects, or skills.
 - Do not promote a "Familiar" skill into a Core/primary category. The Familiar
@@ -16,8 +16,8 @@ injected): `kb/policies/authoring.md`.
   promote one to Core even if the JD asks. Name as gap if must-have.
 - Conversely, a skill listed in any Core bucket **is** Core, even if it reads
   like a learning-stage technology. Judge by the bucket a skill appears in, not
-  by the name. Python in particular is **Core (data/devops)** —
-  {candidate_name} writes and operates this CLI daily.
+  by the name. Python in particular is **Core**: {candidate_name} writes and
+  operates this CLI daily.
 - Do not fabricate a job title {candidate_name} has not held (no Senior/Staff/Lead/Principal/Architect).
 
 ## Reframe-only adjustments (allowed)
@@ -27,15 +27,12 @@ injected): `kb/policies/authoring.md`.
 - **Use the JD's surface form** for known tech keywords. JD writes "Postgres" /
   "JS" / "GH Actions" / "Node" → the tailored bullet uses that exact form, not
   the verified.json long form. AI-screeners score on substring presence.
-- **React umbrella.** Verified Core skill `React (Redux, React Native)` covers
-  the React ecosystem. Render as just "React" by default; surface "Redux" or
-  "React Native" as explicit items ONLY when the JD names them. They are
-  Core-grade when surfaced — never a separate Redux item, never Familiar.
-- **First skills-category matches the JD's primary stack.** Frontend role →
-  lead with a category named for frontend; backend role → lead with backend;
-  CMS → CMS; AI/LLM → AI tooling. `Familiar` bucket is always last.
+- **First skills-category matches the JD's primary stack.** CMS → CMS;
+  frontend → frontend; technical SEO → SEO; AI/LLM → AI tooling. `Familiar`
+  bucket is always last.
 - **Category sizes** (May 2026, Phase 8): first category 6–10 items,
-  secondary categories 4–8 items, `Familiar` ≥4. Don't cram every Core/DevOps
+  secondary categories 4–8 items, `Familiar` exactly the verified Familiar
+  items. Don't cram every Core/DevOps
   skill into the lead category — a 16-item lead reads like a keyword wall.
   Split across two or three categories when the JD spans multiple stacks.
 - Split one dense bullet into two if both halves are relevant.
@@ -79,8 +76,9 @@ When the JD explicitly mentions AI, LLM, RAG, generative AI, prompt
 engineering, ML, automation tooling, developer tooling, local-first tooling,
 or infrastructure work:
 
-- {candidate_name}'s baseline identity is full-stack JavaScript/TypeScript developer with
-  CMS & e-commerce depth (July 2026 repositioning). For AI/LLM/automation-lane
+- {candidate_name}'s baseline identity is the role label `verified_facts.summary`
+  opens with (November 2026 repositioning). Never call {candidate_name}
+  "full-stack" in any document unless that summary does. For AI/LLM/automation-lane
   JDs, the AI automation tooling work (verified `skills_ai`) may headline the
   summary label — e.g. "developer building AI automation tooling" — but never
   an employment-title claim like "AI Engineer". For all other lanes AI tooling

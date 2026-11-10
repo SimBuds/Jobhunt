@@ -62,7 +62,8 @@ A JD must-have counts as **matched** when verified_facts shows any of:
    - Containers: Docker ↔ Podman
    - Languages: TypeScript ↔ JavaScript (type-system fundamentals).
      Cross-language (July 2026 — typed-OO fundamentals; the candidate's
-     coursework covers Enterprise Java and PHP runs in his WordPress work):
+     coursework covers Enterprise Java, and PHP is a verified skill from the
+     WordPress work, so a PHP ask is an exact match, not a bridge):
      JavaScript/TypeScript ↔ Java ↔ C# ↔ PHP ↔ Python. ALWAYS annotate the
      verified bridge, e.g. `"C# (transferable: TypeScript)"`,
      `"Java (transferable: coursework — Enterprise Java)"`.
@@ -162,7 +163,7 @@ Use these sparingly.
   — decline with reason `"role's matched skills are all Familiar (academic/
   light use); not Core production experience"`. For **junior/intermediate
   titles**, do NOT decline on Familiar-only matches — coursework fundamentals
-  plus production JS/TS is a legitimate coachable-junior story. The
+  plus production JavaScript is a legitimate coachable-junior story. The
   deterministic post-filter enforces the senior decline, the junior ceiling,
   and the empty-bucket case either way.
 

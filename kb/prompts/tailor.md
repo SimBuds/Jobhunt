@@ -92,13 +92,15 @@ Hard rules (from kb/policies/tailoring-rules.md):
    coursework list mentioned in `policy`, only items that map to the JD.
 6. Summary: 3–5 sentences. Strict rules:
    a. Open with a truthful role label that matches the JD's primary lane and
-      {candidate_name}'s verified facts. The verified summary's own label ("Full-stack
-      JavaScript/TypeScript developer") is always safe. Lane-specific labels
-      are allowed when grounded in verified non-Familiar skills: CMS or
-      e-commerce roles may open "CMS & E-commerce Developer"; AI / LLM /
-      automation roles may open with an AI-automation label (e.g. "Full-stack
-      developer building AI automation tooling"); technical-SEO / site
-      performance roles may open "Technical SEO developer". NEVER prepend a seniority
+      {candidate_name}'s verified facts. The label `verified_facts.summary`
+      opens with is always safe. Lane-specific labels are allowed when
+      grounded in verified non-Familiar skills: CMS or e-commerce roles may
+      open "CMS & E-commerce Developer"; AI / LLM / automation roles may open
+      with an AI-automation label (e.g. "Developer building AI automation
+      tooling"); technical-SEO / site performance roles may open "Technical
+      SEO developer". NEVER describe {candidate_name} as "full-stack" (in any
+      spelling) unless `verified_facts.summary` does, even when the JD title
+      says it; this is rejected deterministically. NEVER prepend a seniority
       qualifier (Senior / Sr. / Staff / Lead / Principal / Architect) that is
       not literally present in `verified_facts.summary`. This rule is
       enforced deterministically: a label tech token with no backing in
@@ -143,36 +145,25 @@ Hard rules (from kb/policies/tailoring-rules.md):
 
    | JD writes... | Verified has... | Use in tailored output |
    |---|---|---|
-   | JS | JavaScript (ES6+) | "JS" |
-   | TS | TypeScript | "TS" |
-   | Postgres | PostgreSQL | "Postgres" |
-   | GH Actions | GitHub Actions CI/CD | "GH Actions" |
-   | CI/CD | GitHub Actions CI/CD | "CI/CD (GitHub Actions)" |
-   | Headless CMS | Contentful (Certified Professional) | "Headless CMS (Contentful)" |
-   | REST APIs | RESTful APIs | "REST APIs" |
-   | Node | Node.js | "Node" |
-   | Redux | React (Redux, React Native) | "Redux" |
-   | React Native | React (Redux, React Native) | "React Native" |
+   | JS | JavaScript | "JS" |
+   | GH Actions | GitHub Actions | "GH Actions" |
+   | CI/CD | GitHub Actions | "CI/CD (GitHub Actions)" |
+   | Headless CMS | Contentful | "Headless CMS (Contentful)" |
+   | Liquid | Shopify (Liquid) | "Liquid" |
+   | HubL | HubSpot (HubL) | "HubL" |
 
    Same fact; the JD's wording. This rule applies inside `bullets`, `summary`,
    and `skills_categories.items`. Do NOT invert it — do not use the JD form
    if `verified.json` has no underlying fact.
-
-   **React umbrella.** The verified Core skill `React (Redux, React Native)`
-   bundles the React ecosystem. By default render it as just **"React"** — do
-   NOT list "Redux" or "React Native" as separate skill items. Surface "Redux"
-   or "React Native" explicitly (in `skills_categories.items` or a bullet) ONLY
-   when the JD names that exact technology. They are Core-grade when surfaced
-   (never Familiar).
 10. **Skills-category priority and size.** The first category in
     `skills_categories` MUST be the one most relevant to the JD's primary
     stack. Examples:
-    - Frontend role → first category named e.g. `Frontend Engineering`,
-      `Frontend & UI`, or `JavaScript & React`.
-    - Backend role → first category named e.g. `Backend & APIs` or
-      `Node & Data`.
     - CMS role → first category named e.g. `CMS & E-commerce`.
+    - Frontend role → first category named e.g. `Frontend & UI`.
+    - Technical SEO role → first category named e.g. `SEO & Analytics`.
     - AI/LLM role → first category named e.g. `AI & LLM Tooling`.
+    Category names must not name a Familiar skill: a `Frontend & React`
+    category puts React outside `Familiar`.
     The `Familiar` bucket is ALWAYS last. Item order *within* the first
     category surfaces the JD's specific keywords first. This is what survives
     the AI-screener's first-200-token budget.
@@ -191,9 +182,9 @@ Hard rules (from kb/policies/tailoring-rules.md):
 
     When the JD spans multiple stacks, split skills across two or three
     categories rather than dumping them all in the lead. Example for a
-    full-stack role: `Frontend & React` (6–8 items) + `Backend & APIs`
-    (6–8 items) + `Data & DevOps` (4–6 items) + `AI & LLM Tooling` (3
-    items) + `Familiar` (all verified Familiar items).
+    Shopify or WordPress role: `CMS & E-commerce` (8–10 items) +
+    `SEO & Analytics` (4–6 items) + `Tools` (4–6 items) + `AI & LLM
+    Tooling` (3 items) + `Familiar` (all verified Familiar items).
 11. **Projects.** Output a `projects` array containing the projects from
     `verified_facts.projects` that are most relevant to this JD. Rules:
     - Each project's `name` and `url` MUST match `verified_facts.projects`

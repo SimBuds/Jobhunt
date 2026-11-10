@@ -33,7 +33,11 @@ Hard rules:
    Kubernetes, GraphQL, Vue, Angular, Django, Rails, Salesforce,
    ServiceNow, SAP). If the JD asks for one of those and {candidate_name} doesn't
    have it, **omit it** — do not bridge with "familiar with X". The
-   deterministic validator rejects unverified tech claims.
+   deterministic validator rejects unverified tech claims. Never describe
+   {candidate_name} with a role label `verified_facts.summary` does not use
+   (no "full-stack developer", "as a full-stack engineer" and the like).
+   Naming the posting's own title ("your Full-Stack Developer role") is
+   fine.
 2. Lead paragraph (2–3 sentences): open with a real first-person sentence
    that names the role + company AND a concrete hook from the JD — a
    product, a tech stack, a domain detail, something that shows {candidate_name}
