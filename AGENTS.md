@@ -1129,8 +1129,9 @@ Beyond the four pillars, these project docs are load-bearing:
   promote a Familiar one (2026-11-01). See README "The profile supplement".
 - `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
   `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
-  on disk (currently full stack, AI automation and infrastructure, CMS and
-  e-commerce, technical SEO, 2026-11-02) and is
+  on disk (currently CMS and e-commerce covering Shopify, WordPress and
+  HubSpot, AI automation and infrastructure, technical SEO, 2026-11-10; the
+  full-stack lane was deleted when the profile was repositioned) and is
   never hardcoded. Adding a brief adds its `--focus` key and brings it under
   `scripts/audit_lane_resumes.py`.
 - `kb/README.md` — what lives under `kb/` and how each subdirectory is
@@ -1382,7 +1383,7 @@ jobhunt apply --url <URL>    # ad-hoc: fetch one JD, score, tailor
 jobhunt add <URL>            # parse URL -> write ATS slug to config.toml
 jobhunt answer "<q>" [--job <id>] [--recall] [--max-words N] [--no-save]
 jobhunt interview-prep <id> [--stage ...] [--research] [--recruiter-type ...]
-jobhunt resume [--focus <lane key>|all]   # keys: ai, cms, full, seo
+jobhunt resume [--focus <lane key>|all]   # keys: ai, cms, seo
 jobhunt list [--applied|--drafted|--withdrawn] [--week N] [--verdict ...]
              [--no-reply] [--older-than 14d] [--limit N]
 jobhunt track applied <ref> --channel linkedin|indeed|referral|recruiter|...
