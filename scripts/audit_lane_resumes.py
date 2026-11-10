@@ -54,15 +54,15 @@ from jobhunt.pipeline.tailor import (
     TailoredRole,
     _enforce_no_fabrication,
 )
+from jobhunt.resume.render_docx import CONTACT_SEPARATOR, SKILL_SEPARATOR
 
 REPO = Path(__file__).resolve().parent.parent
 HEADINGS = frozenset(
     {
-        "SUMMARY",
-        "TECHNICAL SKILLS",
-        "PROFESSIONAL EXPERIENCE",
+        "CORE EXPERTISE",
+        "WORK EXPERIENCE",
         "PROJECTS",
-        "CERTIFICATIONS & EDUCATION",
+        "EDUCATION AND EARLIER CAREER",
     }
 )
 _VERDICT_RANK = {"ship": 0, "revise": 1, "block": 2}
@@ -88,52 +88,73 @@ def _split_skills(items: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def parse_rendered(path: Path) -> TailoredResume:
+def parse_rendered(path: Path, verified: dict) -> TailoredResume:
     """Rebuild a TailoredResume from what the rendered document actually says.
 
-    Keyed to `render_docx.render`'s structure: bold "Title | Employer" plus a
-    tab-separated date, bullets carrying the "List Bullet" style, and a
-    "Stack: " row under each project name.
+    Keyed to `render_docx.render`'s design layout (2026-11-10): an unheaded
+    summary just above CORE EXPERTISE, one bullet-joined skills line plus an
+    "Exposure:" line, each role as a title line then "Employer  |  Dates" with
+    "List Bullet" bullets, one "Name (stack): sentence" bullet per project,
+    and "a  |  b  |  c" one-liners in the last section. Project URLs are not on
+    the page and come back empty, which the fabrication guard accepts. An
+    earlier-career one-liner has the same shape as an education line, so it is
+    recognised by a verified `(employer, dates)` pair, the guard's own key.
     """
+    paras = [p for p in Document(str(path)).paragraphs if p.text.strip()]
+    texts = [p.text.strip() for p in paras]
+    first_heading = next((i for i, t in enumerate(texts) if t in HEADINGS), len(texts))
+    summary = texts[first_heading - 1] if first_heading > 1 else ""
+
+    role_keys = {(r["employer"], r["dates"]) for r in verified.get("work_history", [])}
     section: str | None = None
-    summary = ""
     cats: list[TailoredCategory] = []
     roles: list[TailoredRole] = []
     projects: list[TailoredProject] = []
     certs: list[str] = []
     education: list[str] = []
+    awaiting_meta = False
 
-    for para in Document(str(path)).paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
+    for para, text in zip(paras[first_heading:], texts[first_heading:], strict=True):
         if text in HEADINGS:
             section = text
             continue
         is_bullet = para.style.name == "List Bullet"
 
-        if section == "SUMMARY":
-            summary = text
-        elif section == "TECHNICAL SKILLS" and ":" in text:
-            label, items = text.split(":", 1)
-            cats.append(TailoredCategory(label.strip(), _split_skills(items)))
-        elif section == "PROFESSIONAL EXPERIENCE":
+        if section == "CORE EXPERTISE":
+            if text.startswith("Exposure:"):
+                cats.append(TailoredCategory("Familiar", _split_skills(text.split(":", 1)[1])))
+            else:
+                cats.append(TailoredCategory("Core Expertise", text.split(SKILL_SEPARATOR)))
+        elif section == "WORK EXPERIENCE":
             if is_bullet and roles:
                 roles[-1].bullets.append(text)
-            elif not is_bullet:
-                head, _, dates = text.partition("\t")
-                title, _, employer = head.partition(" | ")
-                roles.append(TailoredRole(title.strip(), employer.strip(), dates.strip(), []))
-        elif section == "PROJECTS":
-            if is_bullet and projects:
-                projects[-1].bullets.append(text)
-            elif text.startswith("Stack:") and projects:
-                projects[-1].stack.extend(_split_skills(text.split(":", 1)[1]))
-            elif not is_bullet:
-                name, _, url = text.partition("\t")
-                projects.append(TailoredProject(name.strip(), url.strip(), [], []))
-        elif section == "CERTIFICATIONS & EDUCATION":
-            (certs if "Certified" in text else education).append(text)
+            elif awaiting_meta:
+                employer, _, dates = text.rpartition(CONTACT_SEPARATOR.strip())
+                roles[-1].employer, roles[-1].dates = employer.strip(), dates.strip()
+                awaiting_meta = False
+            else:
+                roles.append(TailoredRole(text, "", "", []))
+                awaiting_meta = True
+        elif section == "PROJECTS" and is_bullet:
+            lead, sep, sentence = text.partition(": ")
+            lead = lead.rstrip(":") if sep else text
+            name, _, stack = lead.partition(" (")
+            projects.append(
+                TailoredProject(
+                    name.strip(),
+                    "",
+                    _split_skills(stack.rstrip(")")) if stack else [],
+                    [sentence.strip()] if sep else [],
+                )
+            )
+        elif section == "EDUCATION AND EARLIER CAREER":
+            cells = [c.strip() for c in text.split("|")]
+            if len(cells) >= 3 and (cells[1], cells[2]) in role_keys:
+                roles.append(
+                    TailoredRole(cells[0], cells[1], cells[2], cells[3:4], earlier_career=True)
+                )
+            else:
+                (certs if "Certified" in text else education).append(text)
 
     return TailoredResume(
         summary=summary,
@@ -155,7 +176,7 @@ def _lane_title(jd: str) -> str | None:
 
 
 def audit_lane(path: Path, lane_path: Path, verified: dict) -> str:
-    tailored = parse_rendered(path)
+    tailored = parse_rendered(path, verified)
     jd = lane_path.read_text(encoding="utf-8")
 
     label = f"{path.name}   vs   {lane_path.relative_to(REPO)}"

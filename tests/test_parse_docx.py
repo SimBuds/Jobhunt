@@ -60,24 +60,34 @@ def test_contact_block_spans_multiple_paragraphs(tmp_path: Path):
     assert facts.summary == "A developer."  # contact block didn't swallow the summary
 
 
+def _header_paragraphs(docx_path: Path) -> list[str]:
+    """Non-empty paragraphs between the name and the first section heading."""
+    from docx import Document
+
+    from jobhunt.resume.parse_docx import _canonical_section
+
+    texts = [p.text.strip() for p in Document(str(docx_path)).paragraphs if p.text.strip()]
+    end = next((i for i in range(1, len(texts)) if _canonical_section(texts[i])), len(texts))
+    return texts[1:end]
+
+
 def test_parse_baseline_round_trip(tmp_path: Path, live_resume: Path):
     facts, warnings = parse_baseline(live_resume)
     _assert_projects_parsed_if_heading(live_resume, facts)
     assert warnings == []  # the curated master parses cleanly (RP1 regression guard)
     assert facts.name
-    assert "Toronto" in facts.contact_line
-    # The master wraps contact info onto a second paragraph (links on line 2);
-    # the whole block must be captured, not just the first line.
-    assert "github.com/SimBuds" in facts.contact_line
-    assert "caseyhsu.com" in facts.contact_line
-    assert len(facts.work_history) == 4
+    # Structural, not pinned (2026-11-10): personal strings and a role count
+    # turned every resume rewrite into a false parser failure. The master can
+    # wrap its contact block over several paragraphs (headline, then links), so
+    # every header paragraph between the name and the first section heading
+    # must land in contact_line, not just the first.
+    for line in _header_paragraphs(live_resume):
+        assert line in facts.contact_line, f"contact line dropped {line!r}"
+    assert facts.work_history, "no roles parsed"
+    for r in facts.work_history:
+        assert r.employer and r.dates, f"role missing employer or dates: {r!r}"
 
     employers = {r.employer for r in facts.work_history}
-    # Substring, not equality: the employer cell carries whatever detail the
-    # current resume puts beside the name (a descriptor in one draft, a location
-    # in the next). Pinning the exact string makes an intentional resume edit
-    # look like a parser regression — see IMPLEMENT.md Phase A12.
-    assert any("Harbour Loom" in e for e in employers)
     # Every employer cell must be clean of stray separators: `employer` is half
     # the identity key the fabrication guard compares on.
     for e in employers:
