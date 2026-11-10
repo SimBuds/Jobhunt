@@ -142,10 +142,14 @@ def lane_job(brief: LaneBrief) -> Job:
 
 
 def _name_and_contact(cfg: Config, verified: dict[str, object]) -> tuple[str, str]:
-    """Mirror apply_cmd._render_artifacts' applicant-config header, falling
-    back to verified.json when `jobhunt setup` hasn't populated applicant."""
+    """Mirror apply_cmd._render_artifacts' resume header: verified.json's
+    contact_line first (it carries the headline and city the renderer turns
+    into the tagline), then the applicant-config line."""
     name = cfg.applicant.full_name or str(verified.get("name") or "")
-    if cfg.applicant.email:
+    verified_contact = str(verified.get("contact_line") or "")
+    if verified_contact:
+        contact = verified_contact
+    elif cfg.applicant.email:
         contact = (
             cfg.applicant.email
             + ("  |  " + cfg.applicant.phone if cfg.applicant.phone else "")
@@ -153,7 +157,7 @@ def _name_and_contact(cfg: Config, verified: dict[str, object]) -> tuple[str, st
             + cfg.applicant.github_url
         )
     else:
-        contact = str(verified.get("contact_line") or "")
+        contact = ""
     return name, contact
 
 

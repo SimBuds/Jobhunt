@@ -44,9 +44,9 @@ injected): `kb/policies/authoring.md`.
 
 ## ATS-safe output (§5)
 
-- Single column. Calibri/Arial/Helvetica, 10–11pt body, 14–16pt name.
-- Standard headings: Summary, Technical Skills, Professional Experience,
-  Certifications & Education.
+- Single column. Calibri, 10–11pt body, 20pt name.
+- Headings: Core Expertise, Work Experience, Projects, Education and Earlier
+  Career. The summary sits unheaded under the contact row.
 - Real list bullets (not typed `*` or `-`).
 - One page. No tables-for-layout, no graphics, no header/footer text, no icons.
 - No first-person pronouns. No "References available upon request." No Objective.

@@ -418,3 +418,58 @@ def test_drafted_by_usage_errors_exit_2(argv: list[str], reason: str) -> None:
     result = CliRunner().invoke(app, argv)
     assert result.exit_code == 2, result.output
     assert reason in result.output
+
+
+# --- Phase 6a.2 (2026-11-10): resume header from verified.json -------------
+#
+# The resume renders verified.json's contact_line (headline, city, links); the
+# cover letter keeps the config.toml line (AGENTS.md "Resume render vs design").
+
+VERIFIED_CONTACT = "Shopify and WordPress Developer  Toronto, ON | 416 | x@y.com"
+
+
+def _capture_contacts(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    seen: dict[str, str] = {}
+
+    def fake_render(*args: Any, **kwargs: Any) -> None:
+        seen["resume"] = kwargs["contact_line"]
+        kwargs["out_path"].write_bytes(b"fake-docx")
+
+    def fake_render_cover(*args: Any, **kwargs: Any) -> None:
+        seen["cover"] = kwargs["contact_line"]
+        kwargs["out_path"].write_bytes(b"fake-docx")
+
+    monkeypatch.setattr(apply_cmd, "render", fake_render)
+    monkeypatch.setattr(apply_cmd, "render_cover", fake_render_cover)
+    return seen
+
+
+def _profile_with(cfg: Config, tmp_path: Path, payload: dict[str, Any]) -> None:
+    import json
+
+    cfg.paths.profile_dir = tmp_path / "profile"
+    cfg.paths.profile_dir.mkdir()
+    (cfg.paths.profile_dir / "verified.json").write_text(json.dumps(payload))
+    cfg.applicant.email = "x@y.com"
+
+
+def test_resume_uses_verified_contact_and_cover_keeps_config(
+    cfg: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    seen = _capture_contacts(monkeypatch)
+    _profile_with(cfg, tmp_path, {"contact_line": VERIFIED_CONTACT})
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+    assert seen["resume"] == VERIFIED_CONTACT
+    assert seen["cover"].startswith("x@y.com")
+
+
+def test_resume_falls_back_to_config_contact(
+    cfg: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    seen = _capture_contacts(monkeypatch)
+    _profile_with(cfg, tmp_path, {"name": "Casey Hsu"})
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+    assert seen["resume"] == seen["cover"]
+    assert seen["resume"].startswith("x@y.com")

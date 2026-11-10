@@ -1171,12 +1171,21 @@ def _render_artifacts(
         + f"  |  {cfg.applicant.portfolio_url}  |  {cfg.applicant.linkedin_url}  |  "
         + cfg.applicant.github_url
     )
+    # The resume header renders verified.json's contact_line (headline, city,
+    # links); config.toml has neither headline nor city, so it is the fallback.
+    # The cover letter keeps the config line (AGENTS.md "Resume render vs
+    # design").
+    resume_contact = contact_line
+    verified_path = cfg.paths.profile_dir / "verified.json"
+    if verified_path.is_file():
+        verified = _json.loads(verified_path.read_text(encoding="utf-8"))
+        resume_contact = str(verified.get("contact_line") or "") or contact_line
     name_slug = "_".join(cfg.applicant.full_name.split()) if cfg.applicant.full_name else ""
     prefix = f"{name_slug}_" if name_slug else ""
     resume_path = out_dir / f"{prefix}Resume.docx"
     render(
         tailored,
-        contact_line=contact_line,
+        contact_line=resume_contact,
         name=cfg.applicant.full_name,
         out_path=resume_path,
     )

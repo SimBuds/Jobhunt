@@ -188,3 +188,41 @@ def test_renders_docx_for_one_lane(
     assert (out_dir / "Casey_Hsu_Resume_AI_Automation.docx").is_file()
     tailored_json = json.loads((out_dir / "tailored-ai-automation.json").read_text())
     assert tailored_json["summary"].startswith("Full-stack")
+
+
+# --- Phase 6a.2 (2026-11-10): the resume header comes from verified.json ----
+#
+# The renderer turns verified.json's contact_line ("Headline  City | phone |
+# ...") into the tagline and contact row. config.toml has no headline or city,
+# so it is only the fallback (AGENTS.md "Resume render vs design").
+
+VERIFIED_CONTACT = "Shopify and WordPress Developer  Toronto, ON | 416 | x@y.com"
+
+
+def _cfg_with_email():
+    from jobhunt.config import Config
+
+    cfg = Config()
+    cfg.applicant.full_name = "Casey Hsu"
+    cfg.applicant.email = "x@y.com"
+    cfg.applicant.portfolio_url = "https://site.com"
+    return cfg
+
+
+def test_contact_prefers_verified_contact_line() -> None:
+    name, contact = resume_cmd._name_and_contact(
+        _cfg_with_email(), {"name": "Casey Hsu", "contact_line": VERIFIED_CONTACT}
+    )
+    assert (name, contact) == ("Casey Hsu", VERIFIED_CONTACT)
+
+
+def test_contact_falls_back_to_config_without_verified_line() -> None:
+    _, contact = resume_cmd._name_and_contact(_cfg_with_email(), {"name": "Casey Hsu"})
+    assert contact.startswith("x@y.com  |  ")
+    assert "https://site.com" in contact
+
+
+def test_contact_is_empty_when_neither_source_has_one() -> None:
+    from jobhunt.config import Config
+
+    assert resume_cmd._name_and_contact(Config(), {}) == ("", "")

@@ -2,43 +2,69 @@
 
 ATS rules enforced (`kb/policies/tailoring-rules.md`, "ATS-safe output"):
 - Single column. No tables for layout. No graphics, headers, or footers.
-- Calibri 10–11pt body, 14–16pt name.
+- Calibri 10–11pt body, 20pt name.
 - Real bullet list style (not typed asterisks).
-- US Letter, 0.5"–0.75" margins.
+- US Letter, 0.65" side margins.
+
+The resume layout follows the 2026-11-09 design resume, with the divergences
+AGENTS.md records under "Resume render vs design". The cover letter shares
+`NAME_SIZE`, `_set_margins` and `_tighten` and keeps their defaults.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from docx import Document
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Length, Pt, RGBColor, Twips
 
 from jobhunt.pipeline.tailor import TailoredResume
 
 BODY_FONT = "Calibri"
 BODY_SIZE = Pt(10.5)
-NAME_SIZE = Pt(16)
+NAME_SIZE = Pt(16)  # cover letter
 HEADING_SIZE = Pt(11)
-HEADING_COLOR = RGBColor(0x33, 0x33, 0x33)
+
+# Design resume values (Casey_Hsu_Design_2026-11-09.docx, ledger 2026-11-10).
+RESUME_NAME_SIZE = Pt(20)
+TAGLINE_SIZE = Pt(10)
+CONTACT_SIZE = Pt(9)
+SEPARATOR_SIZE = Pt(10)
+DARK = RGBColor(0x1F, 0x1F, 0x1F)
+MID = RGBColor(0x40, 0x40, 0x40)
+GREY = RGBColor(0x59, 0x59, 0x59)
+LINK = RGBColor(0x11, 0x55, 0xCC)
+RULE_COLOR = "BFBFBF"
+RESUME_LINE_SPACING = 1.08  # w:line 259
+RESUME_SIDE_MARGIN = Inches(0.65)
+RESUME_TOP_MARGIN = Twips(700)  # 0.486"
+CONTACT_SEPARATOR = "  |  "
 
 
 def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Path) -> Path:
+    """Render the resume. `contact_line` is the verified.json form, whose
+    optional headline prefix ("Headline  City | phone | ...") becomes the
+    tagline; a line without one renders no tagline."""
     doc = Document()
-    _set_margins(doc)
+    _set_margins(doc, side=RESUME_SIDE_MARGIN, top=RESUME_TOP_MARGIN)
     _set_default_font(doc)
     _scrub_metadata(doc, name)
 
+    headline, contact_items = _split_contact(contact_line)
     _add_name(doc, name)
-    _add_contact(doc, contact_line)
+    if headline:
+        _add_tagline(doc, headline)
+    if contact_items:
+        _add_contact(doc, contact_items)
 
-    _add_section_heading(doc, "SUMMARY")
+    # Unheaded summary under the contact row (ledger divergence A).
     _add_paragraph(doc, tailored.summary)
 
-    _add_section_heading(doc, "TECHNICAL SKILLS")
+    _add_section_heading(doc, "CORE EXPERTISE")
     for cat in tailored.skills_categories:
         if not cat.items:
             continue
@@ -50,9 +76,9 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         run_items = p.add_run(", ".join(cat.items))
         run_items.font.name = BODY_FONT
         run_items.font.size = BODY_SIZE
-        _tighten(p)
+        _tighten_resume(p)
 
-    _add_section_heading(doc, "PROFESSIONAL EXPERIENCE")
+    _add_section_heading(doc, "WORK EXPERIENCE")
     for role in tailored.roles:
         p = doc.add_paragraph()
         run_t = p.add_run(f"{role.title} | {role.employer}")
@@ -64,13 +90,13 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         run_d.font.name = BODY_FONT
         run_d.font.size = BODY_SIZE
         _add_right_tab_stop(p)
-        _tighten(p)
+        _tighten_resume(p)
         for bullet in role.bullets:
             bp = doc.add_paragraph(style="List Bullet")
             br = bp.add_run(bullet)
             br.font.name = BODY_FONT
             br.font.size = BODY_SIZE
-            _tighten(bp)
+            _tighten_resume(bp)
 
     if tailored.projects:
         _add_section_heading(doc, "PROJECTS")
@@ -85,7 +111,7 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
                 run_u.font.name = BODY_FONT
                 run_u.font.size = BODY_SIZE
                 _add_right_tab_stop(p)
-            _tighten(p)
+            _tighten_resume(p)
             if proj.stack:
                 sp = doc.add_paragraph()
                 r_lbl = sp.add_run("Stack: ")
@@ -95,15 +121,15 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
                 r_items = sp.add_run(", ".join(proj.stack))
                 r_items.font.name = BODY_FONT
                 r_items.font.size = BODY_SIZE
-                _tighten(sp)
+                _tighten_resume(sp)
             for bullet in proj.bullets:
                 bp = doc.add_paragraph(style="List Bullet")
                 br = bp.add_run(bullet)
                 br.font.name = BODY_FONT
                 br.font.size = BODY_SIZE
-                _tighten(bp)
+                _tighten_resume(bp)
 
-    _add_section_heading(doc, "CERTIFICATIONS & EDUCATION")
+    _add_section_heading(doc, "EDUCATION AND EARLIER CAREER")
     for line in tailored.certifications:
         _add_paragraph(doc, line)
     for line in tailored.education:
@@ -117,7 +143,7 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         r2 = p.add_run("Coursework: " + ", ".join(tailored.coursework) + ".")
         r2.font.name = BODY_FONT
         r2.font.size = BODY_SIZE
-        _tighten(p)
+        _tighten_resume(p)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
@@ -144,12 +170,12 @@ def _scrub_metadata(doc: Any, name: str) -> None:
     cp.modified = now
 
 
-def _set_margins(doc: Any) -> None:
+def _set_margins(doc: Any, *, side: Length = Inches(0.75), top: Length = Inches(0.5)) -> None:
     for section in doc.sections:
-        section.top_margin = Inches(0.5)
+        section.top_margin = top
         section.bottom_margin = Inches(0.5)
-        section.left_margin = Inches(0.75)
-        section.right_margin = Inches(0.75)
+        section.left_margin = side
+        section.right_margin = side
 
 
 def _set_default_font(doc: Any) -> None:
@@ -167,23 +193,86 @@ def _set_default_font(doc: Any) -> None:
     rfonts.set(qn("w:hAnsi"), BODY_FONT)
 
 
+def _split_contact(contact_line: str) -> tuple[str, list[str]]:
+    """('Headline', ['City', 'phone', ...]) from a verified contact line.
+
+    `parse_docx` joins the resume's header lines with two spaces, so a
+    headline sits before the first item separated by 2+ spaces. A line
+    without that prefix has no headline."""
+    items = [part.strip() for part in contact_line.split("|") if part.strip()]
+    if not items:
+        return "", []
+    first = re.split(r"\s{2,}", items[0], maxsplit=1)
+    if len(first) == 2:
+        items[0] = first[1]
+        return first[0], items
+    return "", items
+
+
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", re.IGNORECASE)
+_DOMAIN_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?", re.IGNORECASE)
+
+
+def _contact_link(item: str) -> tuple[str, str | None]:
+    """Display text (scheme and 'www.' stripped) and link target, if any."""
+    text = re.sub(r"^https?://", "", item.strip(), flags=re.IGNORECASE)
+    text = re.sub(r"^www\.", "", text, flags=re.IGNORECASE)
+    if _EMAIL_RE.fullmatch(text):
+        return text, f"mailto:{text}"
+    if _DOMAIN_RE.fullmatch(text):
+        return text, f"https://{text}"
+    return text, None
+
+
 def _add_name(doc: Any, name: str) -> None:
     p = doc.add_paragraph()
-    p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    r = p.add_run(name)
+    r = p.add_run(name.upper())
     r.bold = True
     r.font.name = BODY_FONT
-    r.font.size = NAME_SIZE
-    _tighten(p, after=2)
+    r.font.size = RESUME_NAME_SIZE
+    r.font.color.rgb = DARK
+    _tighten_resume(p, after=0)
 
 
-def _add_contact(doc: Any, contact_line: str) -> None:
+def _add_tagline(doc: Any, headline: str) -> None:
     p = doc.add_paragraph()
-    p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    r = p.add_run(contact_line)
+    r = p.add_run(headline.upper())
     r.font.name = BODY_FONT
-    r.font.size = BODY_SIZE
-    _tighten(p, after=6)
+    r.font.size = TAGLINE_SIZE
+    r.font.color.rgb = MID
+    _tighten_resume(p, after=5)
+
+
+def _add_contact(doc: Any, items: list[str]) -> None:
+    p = doc.add_paragraph()
+    for i, item in enumerate(items):
+        if i:
+            sep = p.add_run(CONTACT_SEPARATOR)
+            sep.font.name = BODY_FONT
+            sep.font.size = SEPARATOR_SIZE
+            sep.font.color.rgb = MID
+        text, target = _contact_link(item)
+        r = p.add_run(text)
+        r.font.name = BODY_FONT
+        r.font.size = CONTACT_SIZE
+        if target is None:
+            r.font.color.rgb = GREY
+            continue
+        r.font.color.rgb = LINK
+        r.font.underline = True
+        _wrap_in_hyperlink(p, r, target)
+    _tighten_resume(p, after=3)
+    _add_rules(p, ("top", "bottom"), color=RULE_COLOR, space=7)
+
+
+def _wrap_in_hyperlink(paragraph: Any, run: Any, url: str) -> None:
+    from docx.oxml import OxmlElement
+
+    r_id = paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), r_id)
+    run._r.addprevious(link)
+    link.append(run._r)
 
 
 def _add_section_heading(doc: Any, text: str) -> None:
@@ -192,9 +281,9 @@ def _add_section_heading(doc: Any, text: str) -> None:
     r.bold = True
     r.font.name = BODY_FONT
     r.font.size = HEADING_SIZE
-    r.font.color.rgb = HEADING_COLOR
-    _tighten(p, before=6, after=2)
-    _add_bottom_border(p)
+    r.font.color.rgb = DARK
+    _tighten_resume(p, before=10, after=3)
+    p.paragraph_format.keep_with_next = True
 
 
 def _add_paragraph(doc: Any, text: str) -> None:
@@ -202,14 +291,20 @@ def _add_paragraph(doc: Any, text: str) -> None:
     r = p.add_run(text)
     r.font.name = BODY_FONT
     r.font.size = BODY_SIZE
-    _tighten(p)
+    _tighten_resume(p)
 
 
-def _tighten(paragraph: Any, *, before: int = 0, after: int = 2) -> None:
+def _tighten(
+    paragraph: Any, *, before: int = 0, after: int = 2, line_spacing: float = 1.15
+) -> None:
     pf = paragraph.paragraph_format
     pf.space_before = Pt(before)
     pf.space_after = Pt(after)
-    pf.line_spacing = 1.15
+    pf.line_spacing = line_spacing
+
+
+def _tighten_resume(paragraph: Any, *, before: int = 0, after: int = 2) -> None:
+    _tighten(paragraph, before=before, after=after, line_spacing=RESUME_LINE_SPACING)
 
 
 def _add_right_tab_stop(paragraph: Any) -> None:
@@ -218,17 +313,18 @@ def _add_right_tab_stop(paragraph: Any) -> None:
     paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(7.0), WD_TAB_ALIGNMENT.RIGHT)
 
 
-def _add_bottom_border(paragraph: Any) -> None:
+def _add_rules(paragraph: Any, edges: tuple[str, ...], *, color: str, space: int) -> None:
     from docx.oxml import OxmlElement
 
     p_pr = paragraph._p.get_or_add_pPr()
     pbdr = OxmlElement("w:pBdr")
-    bottom = OxmlElement("w:bottom")
-    bottom.set(qn("w:val"), "single")
-    bottom.set(qn("w:sz"), "4")
-    bottom.set(qn("w:space"), "1")
-    bottom.set(qn("w:color"), "888888")
-    pbdr.append(bottom)
+    for edge in edges:
+        el = OxmlElement(f"w:{edge}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), "4")
+        el.set(qn("w:space"), str(space))
+        el.set(qn("w:color"), color)
+        pbdr.append(el)
     p_pr.append(pbdr)
 
 
@@ -269,8 +365,8 @@ def _wrapped_lines(text: str, width: int) -> int:
 
 
 def estimate_lines(tailored: TailoredResume) -> int:
-    lines = 4  # name + contact + spacing
-    lines += 1 + _wrapped_lines(tailored.summary, SUMMARY_CHARS_PER_LINE)
+    lines = 5  # name + tagline + contact + spacing (re-measured in Phase 6d)
+    lines += _wrapped_lines(tailored.summary, SUMMARY_CHARS_PER_LINE)  # unheaded
     lines += 1
     for cat in tailored.skills_categories:
         if not cat.items:

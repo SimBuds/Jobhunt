@@ -2087,6 +2087,33 @@ call to it without explicit discussion.
    most same-bucket siblings. Honest by construction — it only ever re-adds
    skills already in `verified.json`. It recovered that artifact to 100%.
 
+### Resume render vs design (2026-11-10)
+
+`render_docx.render` follows `Casey_Hsu_Design_2026-11-09.docx` (kept in the
+profile directory, outside the repo). Values were pulled from its XML and the
+fidelity ledger was signed off by Casey on 2026-11-10. Approved divergences,
+which stay:
+
+- **Summary kept, unheaded, under the contact row.** The design has none. It
+  is where lane keywords and the AI hook surface for screeners.
+- **Dates verbatim from `verified.json`** ("Apr 2023 – Present",
+  "Sep 2021 – Apr 2024"), not the design's "April 2023" or year-only. The
+  fabrication guard compares `(employer, dates)` exactly, and tailor rule 5
+  renders education verbatim.
+- **Employer verbatim** ("Atelier Dacko, Toronto, ON"). `employer` is half the
+  guard's identity key.
+- **Role descriptors stay bullet 0** until Phase 6b decides otherwise.
+- **Tagline is the verified headline only.** The design's second half ("CMS,
+  E-commerce and AI Automation") is not in `verified.json`. Add it to the
+  baseline resume's headline line to render it.
+- **Contact items in resume order** (city first), from `verified.json`
+  `contact_line`, not the design's phone-first order.
+- **Links use https**, where the design file has http.
+- **The cover letter keeps its own layout.** It shares `NAME_SIZE`,
+  `_set_margins` and `_tighten` at their defaults, so resume values are
+  passed explicitly (`RESUME_*`, `_tighten_resume`), never by changing the
+  shared defaults.
+
 ### Testing
 
 - `pytest -q` is the gate. **No live HTTP or model calls in the test suite.**
