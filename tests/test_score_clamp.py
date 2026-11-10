@@ -838,9 +838,11 @@ async def test_score_job_does_not_cap_when_core_skill_also_matched(
         _extraction(["TypeScript", "Java", "Kubernetes"]),  # mixed Core + Familiar
     )
     result = await score_job(_cfg(kb_dir), _full_jd_job())
-    # 2 of 3 verified is 30 + 60*(2/3) = 70. The Familiar-only cap would have
-    # pulled this to 58, so landing above that is the assertion that matters.
-    assert result.score == 70
+    # TypeScript (Core) earns 1.0 and Java (Familiar) the transferable 0.7
+    # since 2026-11-10, so 30 + 60*(1.7/3) = 64. The Familiar-only cap would
+    # have pulled this to 58, so landing above that is the assertion that
+    # matters.
+    assert result.score == 64
     assert result.decline_reason is None
 
 

@@ -226,3 +226,27 @@ def test_ollama_ask_credits_llama_cpp_and_back() -> None:
     assert peer_match("llama.cpp", "experience with ollama")
     family = peer_family_of("llama.cpp")
     assert family is not None and "ollama" in family
+
+
+# --- 2026-11-10: a shorter technology name inside a longer one --------------
+#
+# Matching is substring-based, so "Java" was found inside "JavaScript" and a
+# Java posting earned full credit from a JavaScript-only profile.
+
+
+def test_java_is_not_found_inside_javascript() -> None:
+    assert not phrase_present("Java", '["javascript", "html/css"]')
+
+
+def test_java_matches_when_listed() -> None:
+    assert phrase_present("Java", '["javascript", "java"]')
+
+
+def test_javascript_still_matches_itself() -> None:
+    assert phrase_present("JavaScript", '["javascript"]')
+    assert phrase_present("JavaScript (ES6+)", '["javascript"]')
+
+
+def test_java_and_javascript_needs_both() -> None:
+    assert not phrase_present("Java and JavaScript", '["javascript"]')
+    assert phrase_present("Java and JavaScript", '["javascript", "java"]')

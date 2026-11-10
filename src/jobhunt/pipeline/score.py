@@ -258,13 +258,19 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # hallucinated match becomes a gap and lowers the score instead of raising
     # it. `seen` is shared so a phrase repeated across tiers counts once.
     weights = ScoreWeights.from_config(cfg)
-    blob = verified.lower()
+    # Familiar skills are scored apart from the rest of the profile
+    # (2026-11-10): an exact Familiar hit earns the transferable weight, not
+    # 1.0, and no peer or bridge may reach the profile through one.
+    evidence = json.loads(verified)
+    familiar = evidence.pop("skills_familiar", None) or []
+    blob = json.dumps(evidence, ensure_ascii=False).lower()
+    familiar_blob = "\n".join(str(s) for s in familiar).lower()
     tier1_phrases, tier2_phrases = _collapse_bridge_duplicates(
-        tier1_phrases, tier2_phrases, blob, weights
+        tier1_phrases, tier2_phrases, blob, weights, familiar_blob=familiar_blob
     )
     seen: set[str] = set()
-    tier1 = _verify_tier(tier1_phrases, blob, seen, weights)
-    tier2 = _verify_tier(tier2_phrases, blob, seen, weights)
+    tier1 = _verify_tier(tier1_phrases, blob, seen, weights, familiar_blob=familiar_blob)
+    tier2 = _verify_tier(tier2_phrases, blob, seen, weights, familiar_blob=familiar_blob)
 
     matched = tier1.matched + tier2.matched
     gaps = tier1.gaps + tier2.gaps
@@ -637,7 +643,11 @@ def _bridge_of(phrase: str) -> str | None:
 
 
 def _phrase_credit(
-    phrase: str, blob: str, weights: ScoreWeights = DEFAULT_WEIGHTS
+    phrase: str,
+    blob: str,
+    weights: ScoreWeights = DEFAULT_WEIGHTS,
+    *,
+    familiar_blob: str = "",
 ) -> float:
     """Graded evidence that the profile satisfies one JD requirement.
 
@@ -646,6 +656,11 @@ def _phrase_credit(
     fixed order, fail-closed on bogus bridges (the named tech must itself
     verify), returning strength rather than a boolean so an exact stack match
     can outrank a bridged one.
+
+    `blob` is the profile without its Familiar skills, which arrive separately
+    in `familiar_blob`. A literal Familiar hit earns the transferable weight.
+    Peers and bridges are checked against `blob` only, so a requirement that
+    reaches the profile only through a Familiar skill earns nothing.
     """
     if phrase_present(phrase, blob):
         return 1.0
@@ -653,6 +668,8 @@ def _phrase_credit(
         return weights.transferable_credit
     bridge = _bridge_of(phrase)
     if bridge is not None and phrase_present(bridge, blob):
+        return weights.transferable_credit
+    if familiar_blob and phrase_present(phrase, familiar_blob):
         return weights.transferable_credit
     return 0.0
 
@@ -672,6 +689,8 @@ def _collapse_bridge_duplicates(
     tier2: list[str],
     blob: str,
     weights: ScoreWeights = DEFAULT_WEIGHTS,
+    *,
+    familiar_blob: str = "",
 ) -> tuple[list[str], list[str]]:
     """Count a requirement once when the model lists it both bare and bridged.
 
@@ -694,7 +713,7 @@ def _collapse_bridge_duplicates(
             identity = _requirement_identity(phrase)
             if not identity:
                 continue
-            credit = _phrase_credit(phrase, blob, weights)
+            credit = _phrase_credit(phrase, blob, weights, familiar_blob=familiar_blob)
             if identity not in slots:
                 slots[identity] = (tier_idx, len(tiers[tier_idx]), credit)
                 tiers[tier_idx].append(phrase)
@@ -731,6 +750,8 @@ def _verify_tier(
     blob: str,
     seen: set[str],
     weights: ScoreWeights = DEFAULT_WEIGHTS,
+    *,
+    familiar_blob: str = "",
 ) -> _TierResult:
     """Partition one tier's phrases into matched/gaps with graded credit.
 
@@ -747,7 +768,7 @@ def _verify_tier(
         if not key or key in seen:
             continue
         seen.add(key)
-        c = _phrase_credit(phrase, blob, weights)
+        c = _phrase_credit(phrase, blob, weights, familiar_blob=familiar_blob)
         if c > 0:
             matched.append(phrase)
             credit += c

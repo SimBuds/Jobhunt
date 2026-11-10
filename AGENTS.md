@@ -1824,6 +1824,25 @@ Boot/Express, Java/C#/PHP/TS) live ONLY in the score prompt, deliberately NOT
 in `PEER_FAMILIES`, so audit coverage and tailor surface-forms stay strict and
 a resume can never claim Spring Boot on the strength of Express experience.
 
+**Familiar skills are scored apart (2026-11-10).** `score_job` verifies
+phrases against the profile with `skills_familiar` removed, and passes the
+Familiar items separately. A literal Familiar hit earns
+`score_transferable_credit`, never 1.0, and peers and bridges are checked
+against the non-Familiar profile only, so a requirement that reaches the
+profile only through a Familiar skill (Vue via Familiar React) earns 0. A
+skill listed in both Familiar and a Core bucket earns 1.0. This came with the
+2026-11-09 profile, where React and TypeScript moved to Familiar but still
+earned full credit.
+
+**Distinct technologies inside longer names (2026-11-10).** Matching is by
+substring, so `phrase_present("Java", ...)` used to match "JavaScript".
+`_keywords._DISTINCT_SUPERSTRINGS` masks the longer name out of the blob
+unless the text being matched names it too. It holds only java/javascript.
+Add an entry when a real case appears. A blanket word-boundary rule was
+rejected because it breaks "SQL" against SQLite, "LLM" against LLMs and "API"
+against APIs. `peer_match` does not use the mask yet (see IMPLEMENT.md
+Deferred).
+
 **`pipeline.min_score` defaults to 55.** The 55-59 band is the "stretch,
 tailor required" zone where a strong AI/LLM cover hook can break through.
 Raise it in `config.toml` if the list gets noisy. `--min-score` overrides per

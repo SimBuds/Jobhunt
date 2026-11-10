@@ -253,3 +253,105 @@ class TestPromptHashCoversScoreModel:
         assert prompt_hash(self._with_tasks({"score": "lite", "cover": "lite"})) == prompt_hash(
             self._with_tasks({"score": "lite", "cover": "gemma"})
         )
+
+
+
+# --- 2026-11-10: Familiar-only evidence earns transferable credit ----------
+#
+# React and TypeScript moved to Familiar in the 2026-11-09 profile, but the
+# scoring blob was the whole profile, so a React requirement earned the same
+# 1.0 as a Core skill. Exercised through `score_job`, which owns the split.
+
+
+def _familiar_kb(tmp_path: Path, familiar: list[str], core: list[str]) -> Path:
+    kb = tmp_path / "kb"
+    (kb / "profile").mkdir(parents=True)
+    (kb / "policies").mkdir()
+    (kb / "prompts").mkdir()
+    (kb / "profile" / "verified.json").write_text(
+        json.dumps({"skills_core": core, "skills_familiar": familiar})
+    )
+    (kb / "policies" / "tailoring-rules.md").write_text("policy")
+    (kb / "prompts" / "score.md").write_text(
+        "---\ntask: score\ntemperature: 0.0\nschema:\n  type: object\n---\n"
+        "## SYSTEM\nScore.\n## USER\n{{title}} {{description}}\n"
+    )
+    return kb
+
+
+async def _breakdown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    must: list[str],
+    *,
+    familiar: list[str],
+    core: list[str],
+) -> dict:
+    from jobhunt.models import Job
+    from jobhunt.pipeline import score as score_mod
+
+    async def fake(**_: object) -> dict:
+        return {
+            "must_haves": must,
+            "nice_to_haves": [],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake)
+    kb = _familiar_kb(tmp_path, familiar, core)
+    cfg = Config(
+        paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
+        gateway=GatewayConfig(tasks={"score": "test"}),
+    )
+    job = Job(
+        id="t:1",
+        source="t",
+        external_id="1",
+        title="Web Developer",
+        description="A posting. " * 100,
+    )
+    result = await score_mod.score_job(cfg, job)
+    assert result.breakdown is not None
+    return json.loads(result.breakdown.to_json())["tier1"]
+
+
+@pytest.mark.asyncio
+async def test_familiar_only_hit_earns_transferable_credit(tmp_path, monkeypatch) -> None:
+    t1 = await _breakdown(tmp_path, monkeypatch, ["React"], familiar=["React"], core=["JavaScript"])
+    assert t1["credit"] == pytest.approx(SCORE_TRANSFERABLE_CREDIT)
+    assert t1["matched"] == 1
+
+
+@pytest.mark.asyncio
+async def test_skill_in_both_familiar_and_core_earns_full_credit(tmp_path, monkeypatch) -> None:
+    t1 = await _breakdown(tmp_path, monkeypatch, ["React"], familiar=["React"], core=["React"])
+    assert t1["credit"] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_empty_familiar_bucket_is_unchanged(tmp_path, monkeypatch) -> None:
+    t1 = await _breakdown(
+        tmp_path, monkeypatch, ["JavaScript", "Kubernetes"], familiar=[], core=["JavaScript"]
+    )
+    assert t1["credit"] == pytest.approx(1.0)
+    assert t1["matched"] == 1
+    assert t1["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_peer_through_familiar_earns_nothing(tmp_path, monkeypatch) -> None:
+    t1 = await _breakdown(
+        tmp_path,
+        monkeypatch,
+        ["Vue", "Vue (transferable: React)"],
+        familiar=["React"],
+        core=["JavaScript"],
+    )
+    assert t1["credit"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_peer_through_core_still_earns_transferable(tmp_path, monkeypatch) -> None:
+    t1 = await _breakdown(tmp_path, monkeypatch, ["Vue"], familiar=[], core=["React"])
+    assert t1["credit"] == pytest.approx(SCORE_TRANSFERABLE_CREDIT)

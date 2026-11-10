@@ -377,6 +377,12 @@ in eight places, not just the prompt:
    strict: the score can credit a bridge the resume is never allowed to
    claim.
 
+   **Familiar evidence (November 2026):** the score verifies against the
+   profile without `skills_familiar`. A literal Familiar hit earns the
+   transferable weight, and no peer or bridge may reach the profile through a
+   Familiar skill, so exposure-level skills cannot carry a posting the way
+   production skills do.
+
    The May 2026 tiny-denominator carve-out retired with the coverage clamp it
    guarded. Signal-poor postings are handled by the thin-JD ceiling below,
    which is gated on description length rather than on how many phrases the

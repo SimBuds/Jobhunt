@@ -187,6 +187,24 @@ def _surface_variants(token: str) -> tuple[str, ...]:
     return (token, base, f"{base}.js", f"{base}js")
 
 
+# Distinct technologies whose name contains a shorter one. Matching is by
+# substring, so a "Java" requirement was found inside "JavaScript" and a
+# JavaScript-only profile earned full credit for Java postings (2026-11-10).
+# The longer name is masked out of the blob unless the text being matched
+# names it too. A blanket word-boundary rule was rejected: it breaks real
+# matches such as "SQL" against SQLite, "LLM" against LLMs, "API" against APIs.
+_DISTINCT_SUPERSTRINGS: dict[str, tuple[str, ...]] = {"java": ("javascript",)}
+
+
+def _mask_distinct_superstrings(text: str, blob: str) -> str:
+    for short, longs in _DISTINCT_SUPERSTRINGS.items():
+        if short in text:
+            for long in longs:
+                if long not in text:
+                    blob = blob.replace(long, " ")
+    return blob
+
+
 def _token_present(token: str, blob: str) -> bool:
     """Substring presence with '/'-compound handling: a token like
     'css3/sass' names alternatives, but a resume lists the parts as separate
@@ -194,6 +212,7 @@ def _token_present(token: str, blob: str) -> bool:
     present. Shorter parts ('ci/cd') keep whole-token semantics.
 
     `.js`/`js` spelling variants are folded first via `_surface_variants`."""
+    blob = _mask_distinct_superstrings(token, blob)
     if any(v in blob for v in _surface_variants(token)):
         return True
     if "/" in token:
@@ -219,14 +238,14 @@ def phrase_present(phrase: str, blob: str) -> bool:
     p = phrase.lower().strip()
     if not p:
         return False
-    if p in blob:
+    if p in _mask_distinct_superstrings(p, blob):
         return True
     p = _strip_parenthetical(p)
-    if p in blob or _all_tokens_present(p, blob):
+    if p in _mask_distinct_superstrings(p, blob) or _all_tokens_present(p, blob):
         return True
     if "/" in p:
         return any(
-            alt in blob or _all_tokens_present(alt, blob)
+            alt in _mask_distinct_superstrings(alt, blob) or _all_tokens_present(alt, blob)
             for alt in (a.strip() for a in p.split("/"))
             if len(alt) >= _MIN_ALT_LEN
         )
