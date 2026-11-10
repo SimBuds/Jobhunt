@@ -1538,10 +1538,17 @@ missing. Fix the resume or the parser first.
 8. **Adzuna queries auto-derive from `verified.json`** when
    `cfg.ingest.adzuna.queries` is empty.
    `ingest._query_planner.derive_adzuna_queries` walks the skill buckets plus
-   work-history bullets and emits up to 10 role-suffixed queries (capped to
-   keep budget near 30 API calls per scan at `pages=3`). A populated `queries`
-   list bypasses the planner. Adding a new skill bucket to `verified.json`
-   requires extending `_SKILL_QUERIES` or `_CATEGORY_TRIGGERS` to surface it.
+   work-history bullets and emits up to 12 role-suffixed queries (capped to
+   keep the API budget bounded at `pages=3`). Order is category umbrellas
+   (cms, solutions, `ai automation`, technical SEO), then `skills_cms`
+   platforms, then `skills_core` languages, then `skills_data_devops`, so the
+   cap cuts languages before platforms. `skills_familiar` is never queried,
+   and there is no baseline query, so an empty profile makes no Adzuna calls
+   (2026-11-10: the "full stack developer" default was removed with the
+   repositioning, and Familiar Java had been excluded only by the cap). A
+   populated `queries` list bypasses the planner. Adding a new skill bucket to
+   `verified.json` requires extending `_SKILL_QUERIES` or `_CATEGORY_TRIGGERS`
+   to surface it.
 9. **Pre-score chokepoint filters** run in `scan_cmd._ingest_all`'s drain loop,
    after dedupe and before `upsert_job`. All are pure and adapter-agnostic, and
    each reports its drop count in the per-scan summary:

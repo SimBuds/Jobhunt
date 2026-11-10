@@ -36,8 +36,8 @@ def _normalize_skill(s: str) -> str:
 
 # Direct skill→query mapping. Keys must match `_normalize_skill(...)` output.
 # Pruned of close subsets (typescript→javascript, next.js→react,
-# express→node.js) so high-signal umbrella queries (cms/ai/seo, full stack)
-# survive the cap=10 truncation.
+# express→node.js) so high-signal umbrella queries (cms/ai/seo) survive the
+# cap truncation.
 _SKILL_QUERIES: dict[str, list[str]] = {
     # Languages
     "javascript": ["javascript developer"],
@@ -52,6 +52,8 @@ _SKILL_QUERIES: dict[str, list[str]] = {
     # fires whenever skills_cms is non-empty.
     "shopify": ["shopify developer"],
     "hubspot cms": ["hubspot developer"],
+    # "HubSpot (HubL)" normalizes to "hubspot" (2026-11-09 profile).
+    "hubspot": ["hubspot developer"],
     "wordpress": ["wordpress developer"],
     "contentful": ["contentful developer"],
 }
@@ -85,15 +87,15 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     # non-engineering-title drop + score-prompt YoE auto-declines gate any
     # pre-sales/SE roles that aren't a fit, so surfacing them is safe.
     (lambda v: bool(v.get("skills_cms")), ["solutions engineer", "implementation specialist"]),
-    (_has_ai_signal,                       ["ai engineer"]),
+    # "ai automation", not "ai engineer" (2026-11-10): the AI lane is LLM
+    # automation, and "ai engineer" pulled ML research and training roles.
+    (_has_ai_signal,                       ["ai automation"]),
     # The candidate's SEO experience is technical (audits + security hardening), not
     # marketing/content. `seo specialist` returned 5/5 declines on the first
     # auto-derived scan — all non-IC marketing or content roles. Narrowing
     # the query to "technical seo developer" filters to engineering postings.
     (_has_seo_signal,                      ["technical seo developer"]),
 ]
-
-_BASELINE_QUERIES = ["full stack developer"]
 
 # Phase 6 (reverted): a " Toronto" suffix was added to every derived query
 # under the theory that Adzuna's `where=Toronto&distance=100&country=ca`
@@ -113,13 +115,16 @@ def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 12) -> list[st
     Order is tuned so the cap doesn't truncate high-signal queries:
       1. Category umbrellas (cms / ai / seo) — these are what the user
          explicitly asked to surface and they cover the platform tail.
-      2. Baseline "full stack developer" — load-bearing default.
-      3. Direct skill matches from `skills_core` and `skills_cms`.
-      4. Direct skill matches from `skills_familiar` / `skills_data_devops`.
+      2. Direct skill matches from `skills_cms` (platforms lead the target
+         lanes, so they precede languages).
+      3. Direct skill matches from `skills_core`, then `skills_data_devops`.
 
-    Dedupe is insertion-ordered (case-insensitive); platform-specific
-    queries (wordpress/contentful) may fall off the end at cap=12 but
-    are absorbed by the broader "cms developer".
+    `skills_familiar` is never queried: searching Familiar tech surfaces
+    roles the scorer would decline. There is no baseline query, so an empty
+    profile yields no queries and `scan` makes no Adzuna calls (2026-11-10,
+    when the "full stack developer" default was removed).
+
+    Dedupe is insertion-ordered (case-insensitive).
     """
     out: list[str] = []
 
@@ -127,9 +132,7 @@ def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 12) -> list[st
         if predicate(verified):
             out.extend(queries)
 
-    out.extend(_BASELINE_QUERIES)
-
-    for bucket in ("skills_core", "skills_cms", "skills_familiar", "skills_data_devops"):
+    for bucket in ("skills_cms", "skills_core", "skills_data_devops"):
         for raw in verified.get(bucket, []) or []:
             key = _normalize_skill(str(raw))
             for q in _SKILL_QUERIES.get(key, []):

@@ -47,18 +47,61 @@ def test_derive_from_fixture_profile() -> None:
         "cms developer",
         "solutions engineer",
         "implementation specialist",
-        "ai engineer",
+        "ai automation",
+        "shopify developer",
+        "hubspot developer",
+        "wordpress developer",
         "javascript developer",
         "react developer",
         "node.js developer",
-        "shopify developer",
-        "full stack developer",
     ):
         assert required in qs, f"missing required query: {required!r} in {qs}"
 
     # Familiar-only tech must never become a search query.
     assert "java developer" not in qs
     assert "angular developer" not in qs
+
+
+def test_familiar_is_never_queried_even_below_the_cap() -> None:
+    """The fixture's Familiar Java used to be excluded only because the cap cut
+    it off: uncapped, the planner emitted 'java developer' (2026-11-10)."""
+    verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
+    qs = derive_adzuna_queries(verified, cap=99)
+    assert "java developer" not in qs
+    assert not derive_adzuna_queries({"skills_familiar": ["React", "TypeScript"]}, cap=99)
+
+
+def test_no_full_stack_query_for_any_profile() -> None:
+    """Full stack is no longer a default search (2026-11-10 repositioning)."""
+    verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
+    for v in ({}, verified, {"skills_core": ["JavaScript"]}):
+        assert "full stack developer" not in derive_adzuna_queries(v, cap=99)
+
+
+def test_platform_queries_precede_language_queries() -> None:
+    """CMS platforms lead the target lanes, so the cap must cut languages first."""
+    v = {
+        "skills_core": ["JavaScript", "HTML/CSS", "Python"],
+        "skills_cms": ["Shopify (Liquid)", "WordPress", "HubSpot (HubL)", "Contentful"],
+    }
+    qs = derive_adzuna_queries(v, cap=99)
+    platforms = [
+        qs.index(q)
+        for q in (
+            "shopify developer",
+            "wordpress developer",
+            "hubspot developer",
+            "contentful developer",
+        )
+    ]
+    languages = [qs.index(q) for q in ("javascript developer", "python developer")]
+    assert max(platforms) < min(languages), qs
+
+
+def test_hubspot_skill_without_cms_suffix_maps_to_a_query() -> None:
+    """The 2026-11-09 profile lists 'HubSpot (HubL)', which normalizes to
+    'hubspot', and the table only keyed 'hubspot cms'."""
+    assert "hubspot developer" in derive_adzuna_queries({"skills_cms": ["HubSpot (HubL)"]})
 
 
 def test_seo_query_is_gated_on_work_history_evidence() -> None:
@@ -101,9 +144,9 @@ def test_dedupes_collisions() -> None:
     assert qs.count("java developer") == 1
 
 
-def test_empty_skills_returns_only_baseline() -> None:
-    qs = derive_adzuna_queries({})
-    assert qs == ["full stack developer"]
+def test_empty_profile_returns_no_queries() -> None:
+    """No baseline query since 2026-11-10: an empty list means no Adzuna calls."""
+    assert derive_adzuna_queries({}) == []
 
 
 def test_seo_trigger_requires_bullet_mention() -> None:
@@ -114,6 +157,13 @@ def test_seo_trigger_requires_bullet_mention() -> None:
         "work_history": [{"bullets": ["Ran technical SEO audits."]}],
     }
     assert "technical seo developer" in derive_adzuna_queries(base_with_seo)
+
+
+def test_ai_query_is_ai_automation_not_ai_engineer() -> None:
+    """'ai engineer' pulled ML research roles; the lane is AI automation."""
+    qs = derive_adzuna_queries({"skills_ai": ["llama.cpp", "local LLMs"]})
+    assert "ai automation" in qs
+    assert "ai engineer" not in qs
 
 
 def test_ai_trigger_via_skills_ai_or_familiar() -> None:
