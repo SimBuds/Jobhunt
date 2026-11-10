@@ -353,3 +353,46 @@ def test_fabrication_error_subclasses_pipeline_error() -> None:
     )
     assert isinstance(e, PipelineError)
     assert "not in verified facts" in str(e)
+
+
+
+# --- Phase 6c.3 (2026-11-10): one bullet per project -------------------------
+#
+# Projects render as one line, and the audit reads the tailored data, so the
+# tailor keeps only the lead bullet: the page and the audit see the same text.
+
+
+@pytest.mark.asyncio
+async def test_tailor_keeps_only_each_projects_first_bullet(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    verified = {
+        **VERIFIED,
+        "projects": [
+            {
+                "name": "Jobhunt",
+                "url": "github.com/SimBuds/Jobhunt",
+                "stack": ["Python"],
+                "bullets": ["a", "b"],
+            },
+            {"name": "Empty", "url": "example.com", "stack": [], "bullets": []},
+        ],
+    }
+    (kb_dir / "profile" / "verified.json").write_text(json.dumps(verified))
+    payload = _clean_payload()
+    payload["projects"] = [
+        {
+            "name": "Jobhunt",
+            "url": "github.com/SimBuds/Jobhunt",
+            "stack": ["Python"],
+            "bullets": ["Scores postings with a local LLM.", "Fills forms with Playwright."],
+        },
+        {"name": "Empty", "url": "example.com", "stack": [], "bullets": []},
+    ]
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return payload
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    tailored, _, _ = await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=1)
+    assert [p.bullets for p in tailored.projects] == [["Scores postings with a local LLM."], []]

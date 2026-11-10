@@ -22,7 +22,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.shared import Inches, Length, Pt, RGBColor, Twips
 
-from jobhunt.pipeline.tailor import TailoredResume
+from jobhunt.pipeline.tailor import TailoredProject, TailoredResume, TailoredRole
 
 BODY_FONT = "Calibri"
 BODY_SIZE = Pt(10.5)
@@ -87,7 +87,8 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         _tighten_resume(p)
 
     _add_section_heading(doc, "WORK EXPERIENCE")
-    for i, role in enumerate(tailored.roles):
+    work = [r for r in tailored.roles if not r.earlier_career]
+    for i, role in enumerate(work):
         title = doc.add_paragraph()
         _styled_run(title, role.title, color=DARK, bold=True, size=HEADING_SIZE)
         _tighten_resume(title, before=0 if i == 0 else ROLE_GAP_PT, after=0)
@@ -99,44 +100,21 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         _tighten_resume(meta, after=2)
         meta.paragraph_format.keep_with_next = True
         for bullet in role.bullets:
-            _add_role_bullet(doc, bullet)
+            _add_bullet(doc, *_lead_clause(bullet))
 
     if tailored.projects:
         _add_section_heading(doc, "PROJECTS")
         for proj in tailored.projects:
-            p = doc.add_paragraph()
-            run_n = p.add_run(proj.name)
-            run_n.bold = True
-            run_n.font.name = BODY_FONT
-            run_n.font.size = BODY_SIZE
-            if proj.url:
-                run_u = p.add_run(f"\t{proj.url}")
-                run_u.font.name = BODY_FONT
-                run_u.font.size = BODY_SIZE
-                _add_right_tab_stop(p)
-            _tighten_resume(p)
-            if proj.stack:
-                sp = doc.add_paragraph()
-                r_lbl = sp.add_run("Stack: ")
-                r_lbl.bold = True
-                r_lbl.font.name = BODY_FONT
-                r_lbl.font.size = BODY_SIZE
-                r_items = sp.add_run(", ".join(proj.stack))
-                r_items.font.name = BODY_FONT
-                r_items.font.size = BODY_SIZE
-                _tighten_resume(sp)
-            for bullet in proj.bullets:
-                bp = doc.add_paragraph(style="List Bullet")
-                br = bp.add_run(bullet)
-                br.font.name = BODY_FONT
-                br.font.size = BODY_SIZE
-                _tighten_resume(bp)
+            _add_bullet(doc, *_project_line(proj))
 
     _add_section_heading(doc, "EDUCATION AND EARLIER CAREER")
-    for line in tailored.certifications:
-        _add_paragraph(doc, line)
-    for line in tailored.education:
-        _add_paragraph(doc, line)
+    # Education before certifications, as in the design.
+    for line in [*tailored.education, *tailored.certifications]:
+        cells = [c.strip() for c in line.split("|") if c.strip()]
+        if len(cells) > 1:
+            _add_one_liner(doc, cells[0], "".join(CONTACT_SEPARATOR + c for c in cells[1:]))
+        else:
+            _add_one_liner(doc, "", line.strip())
     if tailored.coursework:
         p = doc.add_paragraph()
         r1 = p.add_run("Dean's List (all terms). ")
@@ -147,6 +125,9 @@ def render(tailored: TailoredResume, contact_line: str, name: str, out_path: Pat
         r2.font.name = BODY_FONT
         r2.font.size = BODY_SIZE
         _tighten_resume(p)
+    for role in tailored.roles:
+        if role.earlier_career:
+            _add_one_liner(doc, role.title, _earlier_career_tail(role))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
@@ -225,6 +206,15 @@ def _styled_run(
     return r
 
 
+def _earlier_career_tail(role: TailoredRole) -> str:
+    """'  |  Employer  |  Dates  |  first bullet' for an earlier-career one-liner,
+    the bullet's trailing period dropped as in the design."""
+    cells = [role.employer, role.dates]
+    if role.bullets:
+        cells.append(role.bullets[0].rstrip().rstrip("."))
+    return "".join(CONTACT_SEPARATOR + c for c in cells)
+
+
 def _lead_clause(bullet: str) -> tuple[str, str]:
     """(bold lead through the first comma, remainder), or ('', bullet)."""
     comma = bullet.find(",")
@@ -233,9 +223,30 @@ def _lead_clause(bullet: str) -> tuple[str, str]:
     return "", bullet
 
 
-def _add_role_bullet(doc: Any, bullet: str) -> None:
+def _project_line(proj: TailoredProject) -> tuple[str, str]:
+    """('Name (stack):', ' first bullet') for a one-line project entry. The
+    URL is not rendered (Casey, 2026-11-10): the GitHub link in the contact row
+    leads to the repos."""
+    lead = f"{proj.name} ({', '.join(proj.stack)})" if proj.stack else proj.name
+    if not proj.bullets:
+        return lead, ""
+    return f"{lead}:", f" {proj.bullets[0]}"
+
+
+def _add_one_liner(doc: Any, bold: str, rest: str) -> None:
+    """A grey line with an optional bold lead: credentials and earlier-career
+    roles in the last section."""
+    p = doc.add_paragraph()
+    if bold:
+        _styled_run(p, bold, color=GREY, bold=True)
+    if rest:
+        _styled_run(p, rest, color=GREY)
+    _tighten_resume(p)
+
+
+def _add_bullet(doc: Any, lead: str, rest: str) -> None:
+    """A design bullet: bold dark lead (may be empty), grey remainder."""
     p = doc.add_paragraph(style="List Bullet")
-    lead, rest = _lead_clause(bullet)
     if lead:
         _styled_run(p, lead, color=DARK, bold=True)
     if rest:
@@ -361,12 +372,6 @@ def _tighten_resume(paragraph: Any, *, before: float = 0, after: float = 2) -> N
     _tighten(paragraph, before=before, after=after, line_spacing=RESUME_LINE_SPACING)
 
 
-def _add_right_tab_stop(paragraph: Any) -> None:
-    from docx.enum.text import WD_TAB_ALIGNMENT
-
-    paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(7.0), WD_TAB_ALIGNMENT.RIGHT)
-
-
 def _add_rules(paragraph: Any, edges: tuple[str, ...], *, color: str, space: int) -> None:
     from docx.oxml import OxmlElement
 
@@ -429,19 +434,20 @@ def estimate_lines(tailored: TailoredResume) -> int:
         lines += _wrapped_lines("Exposure: " + ", ".join(familiar), SKILL_CHARS_PER_LINE)
     lines += 1  # WORK EXPERIENCE heading
     for role in tailored.roles:
+        if role.earlier_career:
+            # One line in the last section (title + tail), instead of a block.
+            lines += _wrapped_lines(role.title + _earlier_career_tail(role), BULLET_CHARS_PER_LINE)
+            continue
         lines += 2  # title line + employer/dates line
         for b in role.bullets:
             lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
     if tailored.projects:
         lines += 1  # PROJECTS heading
         for proj in tailored.projects:
-            lines += 1  # name + url header
-            if proj.stack:
-                stack_text = "Stack: " + ", ".join(proj.stack)
-                lines += _wrapped_lines(stack_text, SKILL_CHARS_PER_LINE)
-            for b in proj.bullets:
-                lines += _wrapped_lines(b, BULLET_CHARS_PER_LINE)
-    lines += 1 + len(tailored.certifications) + len(tailored.education)
+            lines += _wrapped_lines("".join(_project_line(proj)), BULLET_CHARS_PER_LINE)
+    lines += 1  # EDUCATION AND EARLIER CAREER heading
+    for line in [*tailored.education, *tailored.certifications]:
+        lines += _wrapped_lines(line, BULLET_CHARS_PER_LINE)
     if tailored.coursework:
         deans_text = _DEANS_PREFIX + ", ".join(tailored.coursework) + "."
         lines += _wrapped_lines(deans_text, SKILL_CHARS_PER_LINE)

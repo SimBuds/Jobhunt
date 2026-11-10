@@ -2118,6 +2118,10 @@ which stay:
 - **Contact items in resume order** (city first), from `verified.json`
   `contact_line`, not the design's phone-first order.
 - **Links use https**, where the design file has http.
+- **Projects carry no URL and one bullet** (Casey, 2026-11-10). The GitHub
+  link in the contact row leads to the repos. `tailor._keep_lead_project_bullet`
+  trims each tailored project to its first bullet, because the audit reads
+  the tailored data and would otherwise credit keywords no reader sees.
 - **The cover letter keeps its own layout.** It shares `NAME_SIZE`,
   `_set_margins` and `_tighten` at their defaults, so resume values are
   passed explicitly (`RESUME_*`, `_tighten_resume`), never by changing the

@@ -31,6 +31,9 @@ class TailoredRole:
     employer: str
     dates: str
     bullets: list[str]
+    # Copied from verified.json by `_mark_earlier_career`, never from the
+    # model. The renderer moves these roles out of Work Experience.
+    earlier_career: bool = False
 
 
 @dataclass
@@ -125,12 +128,14 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     )
     tailored = _parse(raw, model)
     _enforce_no_fabrication(tailored, verified)
+    _mark_earlier_career(tailored, verified)
     _dedupe_education(tailored)
     _ensure_education(tailored, verified)
     _complete_familiar_bucket(tailored, verified)
     _ensure_jd_required_skills(tailored, verified, job)
     _cap_lead_category_size(tailored)
     _order_bullets_by_jd(tailored, job, verified)
+    _keep_lead_project_bullet(tailored)
     _shrink_to_one_page(tailored)
     return tailored
 
@@ -285,6 +290,32 @@ def _violation_hint_line(
             "verified_facts.projects for that project; do not alter or invent it."
         )
     return f"- Unspecified violation ({v.kind}): {v.detail}"
+
+
+def _keep_lead_project_bullet(tailored: TailoredResume) -> None:
+    """Keep each project's first bullet only (Casey, 2026-11-10).
+
+    A project renders as one line, and the audit reads this data rather than
+    the page, so a bullet past the first would earn keyword coverage for text
+    no reader sees. The model leads with the JD-relevant outcome (tailor.md
+    rule 11)."""
+    for project in tailored.projects:
+        del project.bullets[1:]
+
+
+def _mark_earlier_career(tailored: TailoredResume, verified: dict[str, Any]) -> None:
+    """Copy each verified role's `earlier_career` flag onto its tailored role.
+
+    Keyed on `(employer, dates)`, the pair `_enforce_no_fabrication` has
+    already required to match, so every tailored role has exactly one source.
+    A profile written before the flag existed has no key and reads as False.
+    """
+    flags = {
+        (r["employer"], r["dates"]): bool(r.get("earlier_career"))
+        for r in verified.get("work_history", [])
+    }
+    for role in tailored.roles:
+        role.earlier_career = flags.get((role.employer, role.dates), False)
 
 
 def _complete_familiar_bucket(tailored: TailoredResume, verified: dict[str, Any]) -> None:

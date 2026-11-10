@@ -550,7 +550,9 @@ def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
             f"proj{i}", f"github.com/x/proj{i}", ["Python", "Docker"],
             [long_bullet, long_bullet, long_bullet],
         )
-        for i in range(8)
+        # 20, not 8, since 6c.3: a project now costs one rendered line, so 8
+        # fit the page and the overflow precondition no longer held.
+        for i in range(20)
     ]
     t = TailoredResume(
         summary="Full-stack developer. Builds things end to end. Ships production code.",
@@ -559,10 +561,10 @@ def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
         certifications=[], education=[], coursework=[], model="test",
         projects=projects,
     )
-    assert not fits_one_page(t)  # 8 projects x 3 long bullets overflow
+    assert not fits_one_page(t)  # 20 one-line projects overflow
     _shrink_to_one_page(t)
     assert fits_one_page(t)
-    assert sum(len(p.bullets) for p in t.projects) < 8 * 3  # trimmed
+    assert sum(len(p.bullets) for p in t.projects) < 20 * 3  # trimmed
     assert all(len(p.bullets) >= 1 for p in t.projects)  # survivors keep a lead
 
 
@@ -775,3 +777,30 @@ def test_identity_hint_names_the_term():
     assert "Unspecified violation" not in line
     assert "'full-stack'" in line
     assert "remove" in line.lower()
+
+
+# --- Phase 6c.2 (2026-11-10): earlier-career flag copied from verified.json --
+
+
+def test_earlier_career_flag_is_copied_by_employer_and_dates():
+    from jobhunt.pipeline.tailor import _mark_earlier_career
+
+    verified = {
+        **VERIFIED,
+        "work_history": [
+            {"employer": "Acme", "dates": "2023 – Present", "title": "Dev"},
+            {"employer": "BetaCo", "dates": "2021 – 2023", "title": "Cook",
+             "earlier_career": True},
+        ],
+    }
+    t = _make()
+    _mark_earlier_career(t, verified)
+    assert [r.earlier_career for r in t.roles] == [False, True]
+
+
+def test_earlier_career_defaults_false_without_the_key():
+    from jobhunt.pipeline.tailor import _mark_earlier_career
+
+    t = _make()
+    _mark_earlier_career(t, VERIFIED)
+    assert [r.earlier_career for r in t.roles] == [False, False]

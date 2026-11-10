@@ -103,7 +103,7 @@ def test_render_emits_single_deans_list_paragraph(tailored: TailoredResume, tmp_
 
 def test_render_includes_projects_section(tailored: TailoredResume, tmp_path: Path):
     """PB4b: a tailored resume with projects renders a PROJECTS section with the
-    project name, url, stack, and bullets."""
+    project name, stack and lead bullet (no url since 6c.3)."""
     tailored.projects = [
         TailoredProject(
             name="jobhunt",
@@ -120,10 +120,11 @@ def test_render_includes_projects_section(tailored: TailoredResume, tmp_path: Pa
     )
     text = "\n".join(p.text for p in Document(str(out)).paragraphs)
     assert "PROJECTS" in text
-    assert "jobhunt" in text
-    assert "github.com/SimBuds/Jobhunt" in text
-    assert "Stack: Python, Ollama, SQLite" in text
-    assert "local-first ATS CLI" in text
+    # One line per project since 6c.3: stack in parentheses, no URL, no
+    # separate Stack row (ledger fix 11, Casey 2026-11-10).
+    assert "jobhunt (Python, Ollama, SQLite): Built a local-first ATS CLI" in text
+    assert "github.com/SimBuds/Jobhunt" not in text
+    assert "Stack:" not in text
 
 
 def test_render_omits_projects_section_when_empty(tailored: TailoredResume, tmp_path: Path):
@@ -318,3 +319,116 @@ def test_estimate_counts_one_meta_line_per_role(tailored):
     before = estimate_lines(tailored)
     tailored.roles.append(TailoredRole("Dev", "Acme", "2020 – 2021", []))
     assert estimate_lines(tailored) == before + 2
+
+
+# --- Phase 6c.2 (2026-11-10): earlier-career roles move to the last section --
+
+
+def _with_kitchen(tailored, bullets=("Led teams of up to 20 and managed kitchen operations.",)):
+    tailored.roles.append(
+        TailoredRole(
+            "Night Sous Chef",
+            "JOEY and other restaurants",
+            "Feb 2014 – Nov 2024",
+            list(bullets),
+            earlier_career=True,
+        )
+    )
+    return tailored
+
+
+def test_earlier_career_role_renders_as_one_liner_in_last_section(tailored, tmp_path):
+    texts = [p.text for p in _doc(_with_kitchen(tailored), tmp_path).paragraphs]
+    work = texts[texts.index("WORK EXPERIENCE") : texts.index("EDUCATION AND EARLIER CAREER")]
+    assert not any("Sous Chef" in t or "JOEY" in t for t in work)
+    assert texts[-1] == (
+        "Night Sous Chef  |  JOEY and other restaurants  |  Feb 2014 – Nov 2024"
+        "  |  Led teams of up to 20 and managed kitchen operations"
+    )
+
+
+def test_earlier_career_title_is_bold(tailored, tmp_path):
+    doc = _doc(_with_kitchen(tailored), tmp_path)
+    line = doc.paragraphs[-1]
+    assert (line.runs[0].text, line.runs[0].bold) == ("Night Sous Chef", True)
+    assert line.runs[1].bold is None
+
+
+def test_earlier_career_role_without_bullets(tailored, tmp_path):
+    doc = _doc(_with_kitchen(tailored, bullets=()), tmp_path)
+    assert doc.paragraphs[-1].text == (
+        "Night Sous Chef  |  JOEY and other restaurants  |  Feb 2014 – Nov 2024"
+    )
+
+
+def test_estimate_counts_earlier_career_role_as_its_wrapped_one_liner(tailored):
+    """One line in the last section, wrapped like a bullet, never the title,
+    meta line and bullets of a Work Experience block."""
+    before = estimate_lines(tailored)
+    assert estimate_lines(_with_kitchen(tailored, bullets=("Led teams.",))) == before + 1
+    tailored.roles.pop()
+    # The real one-liner is 127 characters, two lines at BULLET_CHARS_PER_LINE.
+    assert estimate_lines(_with_kitchen(tailored)) == before + 2
+
+
+# --- Phase 6c.3 (2026-11-10): one-line projects and credentials -------------
+
+
+def _project(stack=("Python", "SQLite"), bullets=("Built a local-first CLI.",)):
+    return TailoredProject("Jobhunt", "github.com/SimBuds/Jobhunt", list(stack), list(bullets))
+
+
+def _section(doc, heading, next_heading=None):
+    texts = [p.text for p in doc.paragraphs]
+    start = texts.index(heading) + 1
+    end = texts.index(next_heading) if next_heading else len(texts)
+    return doc.paragraphs[start:end]
+
+
+def test_project_is_one_bold_led_line_without_url_or_stack_row(tailored, tmp_path):
+    tailored.projects = [_project()]
+    doc = _doc(tailored, tmp_path)
+    [line] = _section(doc, "PROJECTS", "EDUCATION AND EARLIER CAREER")
+    assert line.text == "Jobhunt (Python, SQLite): Built a local-first CLI."
+    assert [(r.text, r.bold) for r in line.runs] == [
+        ("Jobhunt (Python, SQLite):", True),
+        (" Built a local-first CLI.", None),
+    ]
+    assert "github.com/SimBuds/Jobhunt" not in "\n".join(p.text for p in doc.paragraphs)
+
+
+def test_project_without_stack_or_bullet(tailored, tmp_path):
+    tailored.projects = [_project(stack=()), _project(bullets=())]
+    lines = _section(_doc(tailored, tmp_path), "PROJECTS", "EDUCATION AND EARLIER CAREER")
+    assert [p.text for p in lines] == [
+        "Jobhunt: Built a local-first CLI.",
+        "Jobhunt (Python, SQLite)",
+    ]
+
+
+def test_education_precedes_certifications_with_bold_first_cell(tailored, tmp_path):
+    tailored.education = ["Advanced Diploma, Computer Programming | Sep 2021 – Apr 2024 | GBC"]
+    tailored.certifications = ["Contentful Certified Professional  |  Oct 2025", "Plain cert"]
+    tailored.coursework = []
+    lines = _section(_doc(tailored, tmp_path), "EDUCATION AND EARLIER CAREER")
+    assert [p.text for p in lines] == [
+        "Advanced Diploma, Computer Programming  |  Sep 2021 – Apr 2024  |  GBC",
+        "Contentful Certified Professional  |  Oct 2025",
+        "Plain cert",
+    ]
+    assert [(r.text, r.bold) for r in lines[0].runs][0] == (
+        "Advanced Diploma, Computer Programming",
+        True,
+    )
+    assert [r.bold for r in lines[2].runs] == [None]
+
+
+def test_estimate_counts_project_and_credential_one_liners(tailored):
+    tailored.coursework = []
+    tailored.education = []
+    tailored.certifications = []
+    base = estimate_lines(tailored)
+    tailored.projects = [_project(bullets=("x" * 150,))]
+    assert estimate_lines(tailored) == base + 1 + 2  # PROJECTS heading + 2 wrapped lines
+    tailored.certifications = ["c" * 150]
+    assert estimate_lines(tailored) == base + 3 + 2
