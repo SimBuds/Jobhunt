@@ -83,8 +83,8 @@ Hard rules (from kb/policies/tailoring-rules.md):
 4. Skill categories: keep "Familiar" as a separate category whose items are
    exactly the items in verified_facts.skills_familiar (you may reorder).
 5. Education: include EXACTLY ONE entry — the highest credential in
-   `verified_facts.education`, rendered verbatim from that entry (shape:
-   "<program> (<credential>), <institution>, <city> (<completion date>)").
+   `verified_facts.education`, copied character for character. Do not
+   reorder its parts, add a city, or reformat its dates.
    Do NOT add an academic-honours or "Coursework: …"
    entry to `education` — those are rendered separately from `coursework` and
    adding them here produces a duplicated block on the resume. Coursework:

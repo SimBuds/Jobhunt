@@ -526,6 +526,24 @@ async def _ingest_all(
                         ),
                     )
                 )
+                if cfg.ingest.adzuna.remote_pages:
+                    adapters.append(
+                        (
+                            "adzuna_ca",
+                            f"{query} (remote, Canada)",
+                            adzuna_ca.fetch(
+                                client,
+                                limiter,
+                                app_id=secrets.adzuna_app_id,
+                                app_key=secrets.adzuna_app_key,
+                                query=query,
+                                where="",
+                                pages=cfg.ingest.adzuna.remote_pages,
+                                results_per_page=cfg.ingest.adzuna.results_per_page,
+                                remote=True,
+                            ),
+                        )
+                    )
         elif adzuna_queries:
             print(
                 "  ! adzuna: skipped — set adzuna_app_id/adzuna_app_key in secrets.toml",

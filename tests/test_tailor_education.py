@@ -57,24 +57,43 @@ def test_backfills_the_credential_when_the_model_returned_none() -> None:
     assert "Elm Ridge Polytechnic" in resume.education[0]
 
 
-def test_backfilled_line_survives_the_dedupe_pass() -> None:
-    """The honours clause is dropped, so `_dedupe_education` cannot strip the
-    line back out and leave the resume degreeless again."""
+def test_honours_stay_when_no_coursework_paragraph_renders() -> None:
+    """Phase D1 (2026-11-11): with no coursework, nothing else prints the
+    honours clause, so the verbatim line keeps it."""
     resume = _resume([])
-    _ensure_education(resume, VERIFIED)
     _dedupe_education(resume)
+    _ensure_education(resume, VERIFIED)
+    assert resume.education == [DIPLOMA]
+
+
+def test_honours_drop_when_the_coursework_paragraph_prints_them() -> None:
+    """`render_docx` composes "Dean's List (all terms). Coursework: ..." when
+    coursework is set, so the education line would repeat it."""
+    resume = _resume([])
+    resume.coursework = ["Data Structures & Algorithms"]
+    _ensure_education(resume, VERIFIED)
     assert len(resume.education) == 1
     assert "dean" not in resume.education[0].lower()
+    assert resume.education[0].startswith("Advanced Diploma, Computer Programming")
 
 
-def test_leaves_a_model_supplied_entry_untouched() -> None:
+def test_a_model_rewrite_is_replaced_by_the_verbatim_line() -> None:
+    """Phase D1 (2026-11-11): rule 5's old template carried a <city> slot,
+    and the AI lane rewrote the diploma with a city the profile does not
+    hold. The verified entry always wins."""
     model_line = (
         "Advanced Diploma, Computer Programming & Analysis (Diploma), "
         "Elm Ridge, Toronto (Apr 2024)"
     )
     resume = _resume([model_line])
     _ensure_education(resume, VERIFIED)
-    assert resume.education == [model_line]
+    assert resume.education == [DIPLOMA]
+
+
+def test_no_verified_credential_leaves_the_model_entry() -> None:
+    resume = _resume(["Diploma, Somewhere"])
+    _ensure_education(resume, {"education": []})
+    assert resume.education == ["Diploma, Somewhere"]
 
 
 def test_no_verified_education_is_not_an_error() -> None:

@@ -1,0 +1,41 @@
+{
+  "count": 4,
+  "results": [
+    {
+      "id": "5001",
+      "title": "Shopify Developer",
+      "company": {"display_name": "Acme Commerce"},
+      "location": {"display_name": "Toronto, Ontario", "area": ["Canada", "Ontario", "Toronto"]},
+      "description": "Build Shopify themes in Liquid for our Toronto team.",
+      "redirect_url": "https://www.adzuna.ca/details/5001?utm_medium=api&utm_source=fixture",
+      "created": "2026-11-10T12:00:00Z"
+    },
+    {
+      "id": "5002",
+      "title": "WordPress Developer (Remote)",
+      "company": {"display_name": "Northern Web Co"},
+      "location": {"display_name": "Vancouver, British Columbia", "area": ["Canada", "British Columbia", "Vancouver"]},
+      "description": "Fully remote role anywhere in Canada. PHP, ACF and Elementor.",
+      "redirect_url": "https://www.adzuna.ca/details/5002?utm_medium=api&utm_source=fixture",
+      "created": "2026-11-10T12:00:00Z"
+    },
+    {
+      "id": "5003",
+      "title": "HubSpot Developer",
+      "company": {"display_name": "Prairie Digital"},
+      "location": {"display_name": "Calgary, Alberta", "area": ["Canada", "Alberta", "Calgary"]},
+      "description": "On-site in our Calgary office, five days a week.",
+      "redirect_url": "https://www.adzuna.ca/details/5003?utm_medium=api&utm_source=fixture",
+      "created": "2026-11-10T12:00:00Z"
+    },
+    {
+      "id": "5004",
+      "title": "CMS Developer",
+      "company": {"display_name": "Harbour Agency"},
+      "location": {"display_name": "Halifax, Nova Scotia", "area": ["Canada", "Nova Scotia", "Halifax"]},
+      "description": "Hybrid: two days a week in our Halifax office, remote the rest.",
+      "redirect_url": "https://www.adzuna.ca/details/5004?utm_medium=api&utm_source=fixture",
+      "created": "2026-11-10T12:00:00Z"
+    }
+  ]
+}

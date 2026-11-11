@@ -1524,7 +1524,15 @@ missing. Fix the resume or the parser first.
    the string has no non-Canada anchor. Board-side search terms come from
    `_filter.location_search_terms` against `cfg.applicant`, never a hardcoded
    tuple. Adzuna uses `where=<applicant.city>&distance=100&country=ca` and
-   raises on a blank city rather than defaulting to Toronto.
+   raises on a blank city rather than defaulting to Toronto. A second Adzuna
+   pass per query (2026-11-11) searches "<query> remote" Canada-wide, with no
+   `where` or `distance`, and keeps a posting only when
+   `classify_remote_type` on its location, title and description says
+   remote. Adzuna locations are always a city, so a remote role based
+   outside the GTA was otherwise invisible. `[ingest.adzuna] remote_pages`
+   (default 1, 0 turns it off) sets its pages: one page adds one API call
+   per query, 33 to 44 per scan at today's 11 queries. The first live run
+   added 3 remote jobs located "Canada" that the radius pass could not see.
 3. **No LinkedIn, no Indeed, no Glassdoor scraping**, ever. Even if asked.
    Push back and explain. (The LinkedIn *paste* path is the human pasting a
    page they are already viewing, not a scraper.)

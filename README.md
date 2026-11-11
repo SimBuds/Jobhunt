@@ -601,6 +601,9 @@ drop_non_engineering_titles = true
 queries          = []
 pages            = 3
 results_per_page = 50
+# Canada-wide remote pass: pages per query of "<query> remote" with no
+# location limit, kept only when the posting says remote. 0 turns it off.
+remote_pages     = 1
 
 [gateway]
 base_url = "http://localhost:8080/v1"

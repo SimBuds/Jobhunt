@@ -587,31 +587,32 @@ def _order_bullets_by_jd(
 
 
 def _ensure_education(tailored: TailoredResume, verified: dict[str, Any]) -> None:
-    """Re-insert the credential when the model returned no education entry.
+    """Set the education line to the verified credential, copied verbatim.
 
-    `kb/prompts/tailor.md` rule 5 requires exactly one entry, but the model can
-    skip the field and fold the credential into the summary instead: the
-    2026-09-22 AI-automation lane shipped `education: []`, and two of three
-    lane renders reached the .docx with no degree line. Mirrors
-    `_ensure_jd_required_skills` — deterministic, and honest by construction
-    because the line is copied from `verified.json`, never composed.
+    The model is never trusted with this line. It skipped it (the 2026-09-22
+    AI-automation lane shipped `education: []`) and it rewrote it: rule 5's
+    old template carried a `<city>` slot, and a 2026-11-10 lane render added
+    "Toronto, ON", which the profile does not hold (Phase D1, 2026-11-11).
+    Honest by construction: the line is copied from `verified.json`, never
+    composed. With no verified credential the model's entry is left as is.
 
-    Only a degree-bearing entry is eligible. `verified.education` also holds the
-    'Coursework: …' and 'Capstone: …' lines, which `render_docx` renders from
-    their own fields. The honours clause is dropped from the copy, since
-    `_dedupe_education` strips any education line naming Dean's List (the
-    rendered coursework paragraph already carries it).
+    Only a degree-bearing entry is eligible. `verified.education` also holds
+    'Coursework: …' and 'Capstone: …' lines, which render from their own
+    fields. The honours clause stays, because nothing else prints it, unless
+    `tailored.coursework` is set: `render_docx` then composes "Dean's List
+    (all terms). Coursework: …" and the line would repeat it.
     """
-    if tailored.education:
-        return
     for entry in verified.get("education", []) or []:
         if not isinstance(entry, str) or not entry.strip():
             continue
         low = entry.strip().lower()
         if low.startswith("coursework") or low.startswith("capstone"):
             continue
-        parts = [p.strip() for p in entry.split("|") if "dean" not in p.lower()]
-        line = " | ".join(p for p in parts if p)
+        if tailored.coursework:
+            parts = [p.strip() for p in entry.split("|") if "dean" not in p.lower()]
+            line = " | ".join(p for p in parts if p)
+        else:
+            line = entry.strip()
         if line:
             tailored.education = [line]
         return

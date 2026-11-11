@@ -68,6 +68,11 @@ class AdzunaConfig(BaseModel):
     queries: list[str] = Field(default_factory=list)
     pages: int = 3
     results_per_page: int = 50
+    # Pages of the Canada-wide remote pass per query (2026-11-11). The main
+    # pass only searches 100 km around applicant.city, so a remote role based
+    # elsewhere in Canada never appeared. 0 turns the pass off; 1 adds one
+    # API call per query.
+    remote_pages: int = Field(default=1, ge=0)
 
 
 class IngestConfig(BaseModel):
