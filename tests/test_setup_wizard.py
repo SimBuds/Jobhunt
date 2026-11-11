@@ -1,4 +1,5 @@
 """Tests for `jobhunt setup` — the first-run guided wizard."""
+
 from __future__ import annotations
 
 import tomllib
@@ -33,8 +34,8 @@ def _seed_minimal_config(config_dir: Path) -> Path:
         "[ingest]\n"
         "greenhouse = []\n"
         "[applicant]\n"
-        "full_name = \"Test User\"\n"
-        "email = \"test@example.com\"\n"
+        'full_name = "Test User"\n'
+        'email = "test@example.com"\n'
     )
     # Pre-create the verified profile so the wizard's "re-parse?" branch
     # treats it as up-to-date.
@@ -61,6 +62,7 @@ def test_setup_wizard_writes_applicant_fields(
     # skipped (and convert_resume_cmd.run is never called even if mocked).
     verified = tmp_config_dir / "kb" / "profile" / "verified.json"
     import os
+
     now = resume.stat().st_mtime
     os.utime(verified, (now + 10, now + 10))
 

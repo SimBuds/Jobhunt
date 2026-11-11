@@ -50,8 +50,14 @@ def _seed(cfg: Config, job: Job, *, scored: bool = True) -> None:
         upsert_job(conn, job)
         if scored:
             write_score(
-                conn, job_id=job.id, score=70, reasons=[], red_flags=[],
-                must_clarify=[], model="test", prompt_hash="x",
+                conn,
+                job_id=job.id,
+                score=70,
+                reasons=[],
+                red_flags=[],
+                must_clarify=[],
+                model="test",
+                prompt_hash="x",
             )
     conn.close()
 

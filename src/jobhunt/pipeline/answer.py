@@ -89,9 +89,7 @@ async def write_answer(
     # same offending phrase across attempts).
     temperature = 0.0 if revisions else prompt.temperature
 
-    model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get(
-        "cover", "lite"
-    )
+    model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get("cover", "lite")
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
@@ -103,8 +101,7 @@ async def write_answer(
     text = raw.get("answer")
     if not isinstance(text, str) or not text.strip():
         raise PipelineError(
-            f"answer returned malformed shape (missing 'answer' string); "
-            f"keys={sorted(raw.keys())}"
+            f"answer returned malformed shape (missing 'answer' string); keys={sorted(raw.keys())}"
         )
     return Answer(text=text.strip(), model=model)
 
@@ -122,9 +119,7 @@ _BANNED_ANSWER_OPENERS: tuple[str, ...] = (
 )
 
 _WORD_RE = re.compile(r"\b\w+\b")
-_LEADING_FILLER_RE = re.compile(
-    r"^(?:hello,?\s*|hi,?\s*|dear[^,\.]*,?\s*)+", re.IGNORECASE
-)
+_LEADING_FILLER_RE = re.compile(r"^(?:hello,?\s*|hi,?\s*|dear[^,\.]*,?\s*)+", re.IGNORECASE)
 # Institution names come from the verified profile via `_recap.recap_tokens`;
 # "coursework:" is this validator's own marker (the resume's literal label).
 _RECAP_EXTRA = ("coursework:",)

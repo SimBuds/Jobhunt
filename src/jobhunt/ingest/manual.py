@@ -39,14 +39,40 @@ MIN_BODY_CHARS = 400
 # `<form id="form1" runat="server">`, so skipping it would drop 100 % of the
 # JD body. The cost of including stray field labels on application pages is
 # small compared to the benefit of WebForms content actually landing.
-_SKIP_TAGS: frozenset[str] = frozenset({
-    "script", "style", "nav", "header", "footer", "aside", "noscript",
-    "button", "svg",
-})
-_BLOCK_TAGS: frozenset[str] = frozenset({
-    "p", "div", "section", "article", "li", "ul", "ol", "br", "h1", "h2",
-    "h3", "h4", "h5", "h6", "tr", "td", "th",
-})
+_SKIP_TAGS: frozenset[str] = frozenset(
+    {
+        "script",
+        "style",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "noscript",
+        "button",
+        "svg",
+    }
+)
+_BLOCK_TAGS: frozenset[str] = frozenset(
+    {
+        "p",
+        "div",
+        "section",
+        "article",
+        "li",
+        "ul",
+        "ol",
+        "br",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "tr",
+        "td",
+        "th",
+    }
+)
 
 _WHITESPACE_RE = re.compile(r"[ \t]+")
 _BLANK_LINE_RUN_RE = re.compile(r"\n{3,}")
@@ -330,12 +356,12 @@ def robots_allowed(url: str, user_agent: str) -> bool:
 # wait for ANY of these to appear before grabbing HTML so lazy-rendered
 # content has time to land. Order doesn't matter — Playwright races them.
 _JD_CONTENT_SELECTORS: tuple[str, ...] = (
-    "[data-ph-id*='job-description']",                # Phenom People
+    "[data-ph-id*='job-description']",  # Phenom People
     "[data-ph-id*='jobDescription']",
-    "[data-automation-id='jobPostingDescription']",   # Workday
-    ".job-description",                               # generic
-    ".jobDescriptionText",                            # iCIMS / common
-    "[itemprop='description']",                       # microdata fallback
+    "[data-automation-id='jobPostingDescription']",  # Workday
+    ".job-description",  # generic
+    ".jobDescriptionText",  # iCIMS / common
+    "[itemprop='description']",  # microdata fallback
     "section[class*='description']",
     "div[class*='description']",
     "article",
@@ -400,6 +426,7 @@ async def _fetch_rendered_html(
                     last_len = -1
                     stable_since = 0.0
                     import time as _time
+
                     start = _time.monotonic()
                     while _time.monotonic() - start < 5.0:
                         cur = await page.content()
@@ -454,9 +481,7 @@ async def fetch_url_as_job(
     """
     html, final_url = await _fetch_rendered_html(url, user_agent=user_agent)
 
-    extracted_title, extracted_company, description, jsonld_location = (
-        _parse_html_for_job(html)
-    )
+    extracted_title, extracted_company, description, jsonld_location = _parse_html_for_job(html)
     title = title_override or extracted_title
     company = company_override or extracted_company
 
@@ -636,5 +661,3 @@ def build_job_from_text(
         description=description,
         url=url,
     )
-
-

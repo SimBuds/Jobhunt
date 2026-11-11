@@ -118,9 +118,7 @@ def run(
     set_outcome: str | None = typer.Option(
         None,
         "--set-outcome",
-        help=(
-            "Record terminal outcome: offer, rejected, withdrawn, or ghosted."
-        ),
+        help=("Record terminal outcome: offer, rejected, withdrawn, or ghosted."),
     ),
     recruiter_type: str | None = typer.Option(
         None,
@@ -134,26 +132,30 @@ def run(
         None, "--url", help="Fetch one JD from a URL, score it, then apply."
     ),
     title: str | None = typer.Option(
-        None, "--title",
+        None,
+        "--title",
         help="Override the auto-detected job title (with --url).",
     ),
     company: str | None = typer.Option(
-        None, "--company",
+        None,
+        "--company",
         help="Override the auto-detected company name (with --url).",
     ),
     no_score: bool = typer.Option(
-        False, "--no-score",
+        False,
+        "--no-score",
         help="Skip the score pass for ad-hoc jobs. Audit falls back to title/JD-only must-haves.",
     ),
     force_robots: bool = typer.Option(
-        False, "--force-robots",
+        False,
+        "--force-robots",
         help="Fetch a URL even if robots.txt disallows. Personal-use override only.",
     ),
     description_from_stdin: bool = typer.Option(
-        False, "--stdin", "--description-from-stdin",
-        help=(
-            "Read JD body from stdin. Requires --url, --title, and --company."
-        ),
+        False,
+        "--stdin",
+        "--description-from-stdin",
+        help=("Read JD body from stdin. Requires --url, --title, and --company."),
     ),
     drafted_by: str | None = typer.Option(
         None,
@@ -166,14 +168,16 @@ def run(
         ),
     ),
     as_json: bool = typer.Option(
-        False, "--json",
+        False,
+        "--json",
         help=(
             "Print one JSON object on stdout, human output on stderr. Runs only "
             "with --top N --no-browser."
         ),
     ),
     include_borderline: bool = typer.Option(
-        False, "--include-borderline",
+        False,
+        "--include-borderline",
         help=(
             "With --best: also surface up to 10 stretch jobs in the "
             "[min_score-10, min_score) band, labelled `stretch`. Lets you "
@@ -259,15 +263,26 @@ def run(
     )
     with envelope as out:
         out.update(
-            drafted=[], blocked=[], skipped=[],
+            drafted=[],
+            blocked=[],
+            skipped=[],
             counts={"drafted": 0, "blocked": 0, "skipped": 0},
         )
         _run_apply(
-            job_id=job_id, top=top, best=best, url=url, title=title, company=company,
-            no_score=no_score, force_robots=force_robots,
-            description_from_stdin=description_from_stdin, min_score=min_score,
-            include_borderline=include_borderline, no_browser=no_browser,
-            drafted_by=drafted_by, manual_mode=manual_mode,
+            job_id=job_id,
+            top=top,
+            best=best,
+            url=url,
+            title=title,
+            company=company,
+            no_score=no_score,
+            force_robots=force_robots,
+            description_from_stdin=description_from_stdin,
+            min_score=min_score,
+            include_borderline=include_borderline,
+            no_browser=no_browser,
+            drafted_by=drafted_by,
+            manual_mode=manual_mode,
             out=out if as_json else None,
             verbose=bool((ctx.obj or {}).get("verbose")),
         )
@@ -344,9 +359,7 @@ def _run_apply(
 
     _print_selected(jobs, verbose=verbose)
 
-    asyncio.run(
-        _apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by, out=out)
-    )
+    asyncio.run(_apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by, out=out))
 
     if manual_mode and url is not None:
         _maybe_suggest_add(cfg, url)
@@ -451,9 +464,7 @@ def _run_lifecycle(
 
         effective_status = set_status or row["status"]
         if effective_status == "interviewing" or mark_interview is not None:
-            prep_path = (
-                cfg.paths.data_dir / "interview-prep" / f"{_safe_id(job_id)}.md"
-            )
+            prep_path = cfg.paths.data_dir / "interview-prep" / f"{_safe_id(job_id)}.md"
             if prep_path.is_file():
                 typer.echo(f"  prep doc exists: {prep_path}")
             else:
@@ -522,9 +533,7 @@ async def _resolve_manual(
                         must_clarify=result.gaps,
                         model=result.model,
                         prompt_hash=ph,
-                        breakdown=(
-                            result.breakdown.to_json() if result.breakdown else None
-                        ),
+                        breakdown=(result.breakdown.to_json() if result.breakdown else None),
                     )
                     set_decline_reason(conn, job.id, result.decline_reason)
                 tag = (
@@ -600,8 +609,11 @@ def _print_selected(jobs: list[Any], *, verbose: bool = False) -> None:
     width = shutil.get_terminal_size((100, 24)).columns - len(_PICK_BULLET)
     for j in jobs:
         line = job_line(
-            title=j["title"], company=j["company"], score=j["score"],
-            location=j["location"], width=width,
+            title=j["title"],
+            company=j["company"],
+            score=j["score"],
+            location=j["location"],
+            width=width,
         )
         typer.echo(_PICK_BULLET + line)
         if verbose and str(j["source"]) != "manual":
@@ -675,8 +687,12 @@ def _resolve_interactive(
 
     def pick_line(i: int, r: sqlite3.Row, tags: str = "") -> None:
         line = job_line(
-            title=r["title"], company=r["company"], score=r["score"],
-            location=r["location"], tags=tags, width=width,
+            title=r["title"],
+            company=r["company"],
+            score=r["score"],
+            location=r["location"],
+            tags=tags,
+            width=width,
         )
         typer.echo(f"  [{i:>2}] {line}")
         if verbose:
@@ -689,8 +705,7 @@ def _resolve_interactive(
     if borderline:
         offset = len(rows)
         typer.echo(
-            f"\nstretch ({max(0, min_score - 10)}–{min_score - 1}) — "
-            f"{len(borderline)} job(s):\n"
+            f"\nstretch ({max(0, min_score - 10)}–{min_score - 1}) — {len(borderline)} job(s):\n"
         )
         for i, r in enumerate(borderline, start=offset + 1):
             pick_line(i, r, "stretch")
@@ -861,6 +876,7 @@ async def _apply_each(
 class _Skipped:
     """`_apply_llm_phase` could not draft this job (tailor, cover or audit
     failed). Carries the error class, never the message, for `--json`."""
+
     error_class: str
 
 
@@ -871,6 +887,7 @@ class _LLMPhaseResult:
     `_apply_llm_phase` and consumed by `_apply_io_phase`, with an asyncio
     task between them so the next job's LLM can overlap the current job's
     user-review/browser time."""
+
     out_dir: Path
     tailored: TailoredResume
     cover: CoverLetter
@@ -881,17 +898,14 @@ class _LLMPhaseResult:
     early_exit: bool
 
 
-def _drafted_json(
-    cfg: Config, row: sqlite3.Row, verdict: str, audit_path: Path
-) -> dict[str, Any]:
+def _drafted_json(cfg: Config, row: sqlite3.Row, verdict: str, audit_path: Path) -> dict[str, Any]:
     """One `--json` drafted entry, read back from the `applications` row so it
     reports what was recorded, including a row the write-time backstop left
     alone. Paths only, never document text."""
     conn = connect(cfg.paths.db_path)
     try:
         app_row = conn.execute(
-            "SELECT status, resume_path, cover_path, drafted_by "
-            "FROM applications WHERE job_id = ?",
+            "SELECT status, resume_path, cover_path, drafted_by FROM applications WHERE job_id = ?",
             (row["id"],),
         ).fetchone()
     finally:
@@ -939,7 +953,9 @@ async def _apply_llm_phase(
     echo("    … tailoring resume (LLM, ~30–60s)")
     try:
         tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
-            cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
+            cfg,
+            job,
+            max_attempts=cfg.pipeline.tailor_retry_attempts,
             on_retry=lambda a, t, v: echo(retry_line(a, t, v)),
         )
     except JobHuntError as e:
@@ -955,8 +971,10 @@ async def _apply_llm_phase(
     echo("    … writing cover letter (LLM, ~30s)")
     try:
         cover, cover_violations, cover_attempts = await write_cover_with_retry(
-            cfg, job,
-            verified=verified, company=job.company,
+            cfg,
+            job,
+            verified=verified,
+            company=job.company,
             max_words=cfg.pipeline.cover_max_words,
             max_attempts=cfg.pipeline.cover_retry_attempts,
         )
@@ -973,9 +991,14 @@ async def _apply_llm_phase(
     score_result = _load_score(cfg, job.id)
     try:
         audit_result = audit(
-            tailored=tailored, cover=cover, score=score_result, verified=verified,
-            company=job.company, cover_max_words=cfg.pipeline.cover_max_words,
-            job_description=job.description, job_title=job.title,
+            tailored=tailored,
+            cover=cover,
+            score=score_result,
+            verified=verified,
+            company=job.company,
+            cover_max_words=cfg.pipeline.cover_max_words,
+            job_description=job.description,
+            job_title=job.title,
         )
     except PipelineError as e:
         echo(f"    ! audit failed: {e}", err=True)
@@ -985,8 +1008,11 @@ async def _apply_llm_phase(
     diff_path = out_dir / "tailor-diff.md"
     diff_path.write_text(
         build_tailor_diff(
-            verified=verified, tailored=tailored, score=score_result,
-            job_title=job.title, job_company=job.company,
+            verified=verified,
+            tailored=tailored,
+            score=score_result,
+            job_title=job.title,
+            job_company=job.company,
         ),
         encoding="utf-8",
     )
@@ -1035,8 +1061,7 @@ async def _deepen_thin_adzuna(
     assert url is not None  # guarded above; resolve never drops it
     if not robots_allowed(url, cfg.ingest.user_agent):
         echo(
-            "    thin JD: robots.txt disallows fetching the employer page; "
-            "keeping the snippet",
+            "    thin JD: robots.txt disallows fetching the employer page; keeping the snippet",
             err=True,
         )
         return job
@@ -1112,7 +1137,8 @@ async def _apply_io_phase(
             preview = audit_result.missing_must_haves[:5]
             tail = (
                 f" (+{len(audit_result.missing_must_haves) - 5} more)"
-                if len(audit_result.missing_must_haves) > 5 else ""
+                if len(audit_result.missing_must_haves) > 5
+                else ""
             )
             pct = audit_result.keyword_coverage_pct
             low = f" (coverage {pct}% < 70%)" if pct is not None and pct < 70 else ""
@@ -1142,8 +1168,12 @@ async def _apply_io_phase(
     )
 
     plan_path = await _run_browser_step(
-        cfg, job, resume_path=resume_path, cover_path=cover_docx_path,
-        out_dir=phase.out_dir, no_browser=no_browser,
+        cfg,
+        job,
+        resume_path=resume_path,
+        cover_path=cover_docx_path,
+        out_dir=phase.out_dir,
+        no_browser=no_browser,
     )
     status = _confirm_submission_status(
         plan_path, browser_attempted=not no_browser and bool(job.url)
@@ -1186,11 +1216,7 @@ async def _apply_one(
         return None, []
     if phase.early_exit:
         return phase.audit_result.verdict, phase.topics
-    return await _apply_io_phase(
-        cfg, job, phase, no_browser=no_browser, drafted_by=drafted_by
-    )
-
-
+    return await _apply_io_phase(cfg, job, phase, no_browser=no_browser, drafted_by=drafted_by)
 
 
 def _audit_topics(audit_result: AuditResult) -> list[str]:
@@ -1207,10 +1233,7 @@ def _audit_topics(audit_result: AuditResult) -> list[str]:
         topics.append("specificity")
     if audit_result.cover_letter_violations:
         topics.append("cover-violation")
-    if (
-        audit_result.keyword_coverage_pct is not None
-        and audit_result.keyword_coverage_pct < 70
-    ):
+    if audit_result.keyword_coverage_pct is not None and audit_result.keyword_coverage_pct < 70:
         topics.append("coverage")
     if audit_result.alignment_flags:
         topics.append("alignment")
@@ -1281,6 +1304,7 @@ async def _run_browser_step(
         typer.echo("    ! no URL on this job — browser skipped", err=True)
         return None
     import sys as _sys
+
     while True:
         typer.echo("    … launching browser autofill")
         try:
@@ -1317,8 +1341,7 @@ async def _prompt_continue(next_job: Job) -> bool:
     default to yes — the loop is opt-out, not opt-in.
     """
     prompt = (
-        f"\nnext: {next_job.title or '?'} @ {next_job.company or '?'}\n"
-        f"    continue? [Y]es / [n]o: "
+        f"\nnext: {next_job.title or '?'} @ {next_job.company or '?'}\n    continue? [Y]es / [n]o: "
     )
     try:
         raw = await asyncio.to_thread(input, prompt)
@@ -1327,15 +1350,14 @@ async def _prompt_continue(next_job: Job) -> bool:
     return raw.strip().lower() not in ("n", "no")
 
 
-def _confirm_submission_status(
-    plan_path: Path | None, *, browser_attempted: bool = False
-) -> str:
+def _confirm_submission_status(plan_path: Path | None, *, browser_attempted: bool = False) -> str:
     # Skip the prompt entirely when --no-browser was passed (plan_path is None
     # and the browser was never launched). The user will submit manually later
     # and can update with `apply --set-status applied <id>`.
     if not browser_attempted and plan_path is None:
         return "drafted"
     import sys as _sys
+
     if not _sys.stdin.isatty():
         typer.echo("    (non-interactive — status set to drafted; update with --set-status)")
         return "drafted"
@@ -1418,8 +1440,7 @@ def _load_score(cfg: Config, job_id: str) -> ScoreResult | None:
     conn = connect(cfg.paths.db_path)
     try:
         row = conn.execute(
-            "SELECT score, reasons, red_flags, must_clarify, model "
-            "FROM scores WHERE job_id = ?",
+            "SELECT score, reasons, red_flags, must_clarify, model FROM scores WHERE job_id = ?",
             (job_id,),
         ).fetchone()
     finally:

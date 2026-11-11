@@ -51,9 +51,7 @@ def _build_skill_index(verified: dict[str, Any]) -> dict[str, str]:
     return index
 
 
-def _skills_diff(
-    tailored: list[TailoredCategory], skill_index: dict[str, str]
-) -> list[str]:
+def _skills_diff(tailored: list[TailoredCategory], skill_index: dict[str, str]) -> list[str]:
     """Per-category lines describing tailor decisions: category position,
     items, and where each item originated in verified.json."""
     lines: list[str] = ["## Skills"]
@@ -79,9 +77,7 @@ def _skills_diff(
     return lines
 
 
-def _roles_diff(
-    tailored: TailoredResume, verified: dict[str, Any]
-) -> list[str]:
+def _roles_diff(tailored: TailoredResume, verified: dict[str, Any]) -> list[str]:
     """Compare bullet ordering and wording vs verified.json baseline."""
     lines: list[str] = ["## Roles"]
     baseline_by_employer: dict[str, dict[str, Any]] = {
@@ -94,9 +90,7 @@ def _roles_diff(
             lines.append("- *(role not in baseline — should have been blocked)*")
             continue
         base_bullets = list(base.get("bullets") or [])
-        lines.append(
-            f"- {len(role.bullets)} of {len(base_bullets)} baseline bullets kept"
-        )
+        lines.append(f"- {len(role.bullets)} of {len(base_bullets)} baseline bullets kept")
         for i, bullet in enumerate(role.bullets):
             # Exact substring match against the verified bullet identifies
             # "kept verbatim". Anything else is a reword (still required to
@@ -114,9 +108,7 @@ def _roles_diff(
     return lines
 
 
-def _coursework_diff(
-    tailored_coursework: list[str], verified: dict[str, Any]
-) -> list[str]:
+def _coursework_diff(tailored_coursework: list[str], verified: dict[str, Any]) -> list[str]:
     lines: list[str] = ["## Coursework"]
     baseline = verified.get("coursework_baseline") or []
     if not tailored_coursework:

@@ -108,8 +108,12 @@ async def test_returns_first_attempt_when_clean(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=3,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=3,
     )
     assert calls["n"] == 1
     assert attempts == 1
@@ -134,8 +138,12 @@ async def test_retries_until_clean(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=3,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=3,
     )
     assert calls["n"] == 2
     assert attempts == 2
@@ -148,9 +156,7 @@ async def test_retries_until_clean(
 
 
 @pytest.mark.asyncio
-async def test_falls_back_after_max_attempts(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_falls_back_after_max_attempts(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
 
     async def fake(**_: Any) -> dict[str, Any]:
@@ -159,8 +165,12 @@ async def test_falls_back_after_max_attempts(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=3,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=3,
     )
     assert calls["n"] == 3
     assert attempts == 3
@@ -197,8 +207,12 @@ async def test_company_name_deterministic_patch(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=3,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=3,
     )
     assert attempts == 3  # all three model attempts were used
     # The patch dropped the company-name violation.
@@ -234,8 +248,12 @@ async def test_company_name_patch_chained_with_unhandled_violation(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=3,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=3,
     )
     # Company-missing got patched; 'direct match' is on BANNED_PHRASES but
     # not in _PHRASE_SUBSTITUTIONS, so it still surfaces.
@@ -256,8 +274,12 @@ async def test_phrase_patcher_strips_aligns_with(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, attempts = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=2,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=2,
     )
     assert attempts == 2
     # Phrase-patcher dropped the 'aligns with' violation entirely.
@@ -274,9 +296,7 @@ def _dirty_payload_with_aligns() -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_phrase_patcher_preserves_case(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_phrase_patcher_preserves_case(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Sentence-initial 'Aligns with' becomes 'Matches' (capitalized), not
     'matches' lowercased."""
     payload = _clean_payload()
@@ -287,8 +307,12 @@ async def test_phrase_patcher_preserves_case(
 
     monkeypatch.setattr(cover_mod, "complete_json", fake)
     cover, violations, _ = await write_cover_with_retry(
-        _cfg(kb_dir), _job(), verified=VERIFIED, company="Acme",
-        max_words=280, max_attempts=1,
+        _cfg(kb_dir),
+        _job(),
+        verified=VERIFIED,
+        company="Acme",
+        max_words=280,
+        max_attempts=1,
     )
     assert cover.body[1].startswith("Matches")
     assert not violations

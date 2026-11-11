@@ -181,9 +181,7 @@ async def test_returns_first_attempt_when_clean(
 
 
 @pytest.mark.asyncio
-async def test_retries_until_clean(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     responses = [_banned_payload(), _clean_payload()]
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
@@ -198,9 +196,7 @@ async def test_retries_until_clean(
 
 
 @pytest.mark.asyncio
-async def test_falls_back_after_max_attempts(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_falls_back_after_max_attempts(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return _banned_payload()
 
@@ -213,9 +209,7 @@ async def test_falls_back_after_max_attempts(
 
 
 @pytest.mark.asyncio
-async def test_retry_uses_temperature_zero(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_retry_uses_temperature_zero(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     temps: list[float] = []
     responses = [_banned_payload(), _clean_payload()]
 
@@ -224,11 +218,9 @@ async def test_retry_uses_temperature_zero(
         return responses.pop(0)
 
     monkeypatch.setattr(ip_mod, "complete_json", fake_complete_json)
-    await draft_prep_with_retry(
-        _cfg(kb_dir), ctx=_ctx(), verified=VERIFIED, max_attempts=3
-    )
-    assert temps[0] == 0.3   # frontmatter
-    assert temps[1] == 0.0   # retry forced to 0
+    await draft_prep_with_retry(_cfg(kb_dir), ctx=_ctx(), verified=VERIFIED, max_attempts=3)
+    assert temps[0] == 0.3  # frontmatter
+    assert temps[1] == 0.0  # retry forced to 0
 
 
 # --- validator --------------------------------------------------------------
@@ -462,10 +454,7 @@ def test_validator_catches_gap_reframe_that_mirrors_unverified_jd_phrase() -> No
     v = validate_prep_sections(
         sections,
         verified=VERIFIED,
-        job_description=(
-            "Design and build automated content upload systems across CMS "
-            "platforms."
-        ),
+        job_description=("Design and build automated content upload systems across CMS platforms."),
     )
     assert any("mirrors unverified jd phrase" in s.lower() for s in v)
 
@@ -579,12 +568,12 @@ def test_blocking_violations_include_unusable_or_unsafe_output() -> None:
     assert has_blocking_prep_violations(["interview-prep education recap: 'coursework'"])
     assert has_blocking_prep_violations(["unverified availability claim: immediate start"])
     assert has_blocking_prep_violations(["honest gap 1 reframe lacks verified trace"])
-    assert has_blocking_prep_violations([
-        "honest gap 1 reframe mirrors unverified JD phrase: 'full automation'"
-    ])
-    assert has_blocking_prep_violations([
-        "candidate claim mirrors unverified JD phrase: 'zero errors'"
-    ])
+    assert has_blocking_prep_violations(
+        ["honest gap 1 reframe mirrors unverified JD phrase: 'full automation'"]
+    )
+    assert has_blocking_prep_violations(
+        ["candidate claim mirrors unverified JD phrase: 'zero errors'"]
+    )
     assert has_blocking_prep_violations(["unverified anchor: 'Kubernetes'"])
     assert not has_blocking_prep_violations(["banned phrase: 'spearheaded'"])
 
@@ -934,6 +923,7 @@ def test_set_status_interviewing_prints_nudge(
             class R:
                 def __getitem__(self, k: str) -> str:
                     return {"id": 1, "status": "applied", "title": "Dev", "company": "Acme"}[k]
+
             return _Cursor(R())
 
         def __enter__(self) -> FakeConn:
@@ -987,14 +977,23 @@ def test_set_status_applied_no_nudge(
             class R:
                 def __getitem__(self, k: str) -> str:
                     return {"id": 1, "status": "drafted", "title": "Dev", "company": "Acme"}[k]
+
             class _C:
                 _row = R()
+
                 def fetchone(self) -> Any:
                     return self._row
+
             return _C()
-        def __enter__(self) -> FakeConn: return self
-        def __exit__(self, *_: Any) -> None: pass
-        def close(self) -> None: pass
+
+        def __enter__(self) -> FakeConn:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
 
     monkeypatch.setattr(apply_cmd, "connect", lambda _p: FakeConn())
     monkeypatch.setattr(apply_cmd, "upsert_application", lambda *a, **kw: None)
@@ -1029,8 +1028,12 @@ def test_patch_table_inserts_no_claims() -> None:
     )
     vocab: set[str] = set(_FABRICATION_WATCHLIST)
     for key in (
-        "skills_core", "skills_cms", "skills_data_devops",
-        "skills_ai", "skills_projects", "skills_familiar",
+        "skills_core",
+        "skills_cms",
+        "skills_data_devops",
+        "skills_ai",
+        "skills_projects",
+        "skills_familiar",
     ):
         for skill in fixture.get(key, []):
             name = re.sub(r"\s*\(.*?\)", "", skill).strip()
@@ -1040,8 +1043,15 @@ def test_patch_table_inserts_no_claims() -> None:
                 vocab.add(head.lower())
     vocab |= {r["employer"].split(",")[0].lower() for r in fixture["work_history"]}
     vocab |= {"college", "university", "polytechnic", "institute"}
-    vocab |= {"authorization", "authorized", "citizen", "citizenship", "canadian",
-              "visa", "sponsorship"}
+    vocab |= {
+        "authorization",
+        "authorized",
+        "citizen",
+        "citizenship",
+        "canadian",
+        "visa",
+        "sponsorship",
+    }
 
     inserted = [_COURSEWORK_REPLACEMENT] + [new for _, new in _CLAIM_PATCHES]
     hits = sorted(

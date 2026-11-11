@@ -56,12 +56,16 @@ def _mkdir(cfg: Config, name: str, *, files: dict[str, str]) -> Path:
 
 def _seed(cfg: Config) -> None:
     # adoptable: rendered docs, no row
-    _mkdir(cfg, "adzuna_ca_1", files={
-        "audit.json": json.dumps({"verdict": "ship"}),
-        "Casey_Hsu_Resume.docx": "x",
-        "Casey_Hsu_Cover_Letter.docx": "x",
-        "fill-plan.json": "{}",
-    })
+    _mkdir(
+        cfg,
+        "adzuna_ca_1",
+        files={
+            "audit.json": json.dumps({"verdict": "ship"}),
+            "Casey_Hsu_Resume.docx": "x",
+            "Casey_Hsu_Cover_Letter.docx": "x",
+            "fill-plan.json": "{}",
+        },
+    )
     # stale: audit only, verdict ship — died before render
     _mkdir(cfg, "adzuna_ca_2", files={"audit.json": json.dumps({"verdict": "ship"})})
     # blocked: correct state, must never be actioned
@@ -105,9 +109,7 @@ def test_adopt_writes_drafted_row_dated_from_dir_mtime(cfg: Config) -> None:
         adoptable = next(o for o in orphans if o.kind == "adoptable")
         assert db_cmd._adopt(conn, adoptable) is True
         conn.commit()
-        row = conn.execute(
-            "SELECT * FROM applications WHERE job_id = 'adzuna_ca:1'"
-        ).fetchone()
+        row = conn.execute("SELECT * FROM applications WHERE job_id = 'adzuna_ca:1'").fetchone()
     finally:
         conn.close()
 

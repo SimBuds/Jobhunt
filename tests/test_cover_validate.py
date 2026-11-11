@@ -139,8 +139,7 @@ def test_scalable_does_not_trigger_scala_fabrication(verified: dict) -> None:
 def test_disclaimed_tech_does_not_fire_fabrication(verified: dict) -> None:
     cover = _good_cover()
     cover.body[2] = (
-        "I focus on JavaScript and TypeScript rather than Scala or Kotlin for "
-        "back-end work."
+        "I focus on JavaScript and TypeScript rather than Scala or Kotlin for back-end work."
     )
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("unverified tech claim" in v for v in violations)
@@ -154,6 +153,7 @@ def test_claimed_tech_still_fires_fabrication(verified: dict) -> None:
 
 
 # --- overreach (framing-level capability claims) ---
+
 
 def test_overreach_live_data_streams_flagged(verified: dict) -> None:
     """Mirrors cover #manual:4bcf846a — 'live data streams' isn't in any
@@ -206,8 +206,7 @@ def test_overreach_suppressed_if_verified(verified: dict) -> None:
     real-time streaming project), the overreach check must NOT fire."""
     verified_with_streams = dict(verified)
     verified_with_streams["summary"] = (
-        verified.get("summary", "")
-        + " Built live data streams for an analytics dashboard."
+        verified.get("summary", "") + " Built live data streams for an analytics dashboard."
     )
     cover = _good_cover()
     cover.body[0] = (
@@ -249,9 +248,7 @@ def test_company_descriptor_suffix_dropped(verified: dict) -> None:
 def test_company_with_tld_suffix_matches_root(verified: dict) -> None:
     """Real-world miss: 'SRED.io' lead wrote 'SRED'."""
     cover = _good_cover(company="SRED")
-    violations = validate_cover(
-        cover, verified=verified, company="SRED.io", max_words=280
-    )
+    violations = validate_cover(cover, verified=verified, company="SRED.io", max_words=280)
     assert not any("does not name company" in v for v in violations)
 
 
@@ -309,9 +306,7 @@ def test_defensive_rather_than_phrasing_flagged(verified: dict) -> None:
 def test_neutral_rather_than_not_flagged(verified: dict) -> None:
     """A neutral 'rather than' (not disclaiming a tech) should pass."""
     cover = _good_cover()
-    cover.body[1] = (
-        cover.body[1] + " I prefer concrete examples rather than abstract claims."
-    )
+    cover.body[1] = cover.body[1] + " I prefer concrete examples rather than abstract claims."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("rather than" in v.lower() for v in violations)
 
@@ -343,9 +338,7 @@ def test_track_record_no_longer_flagged(verified: dict) -> None:
     """'track record' was too generic — dropped from BANNED_PHRASES in May 2026.
     A legitimate sentence using it should pass."""
     cover = _good_cover()
-    cover.body[1] = (
-        "I've built a track record of shipping Shopify migrations on tight timelines."
-    )
+    cover.body[1] = "I've built a track record of shipping Shopify migrations on tight timelines."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("track record" in v.lower() for v in violations)
 
@@ -363,9 +356,7 @@ def test_production_grade_no_longer_flagged(verified: dict) -> None:
 def test_fabrication_watchlist_2026_unverified_langchain(verified: dict) -> None:
     """May 2026 watchlist addition: LangChain claims must trace to verified."""
     cover = _good_cover()
-    cover.body[2] = (
-        cover.body[2] + " I built a RAG pipeline using LangChain for an internal tool."
-    )
+    cover.body[2] = cover.body[2] + " I built a RAG pipeline using LangChain for an internal tool."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("langchain" in v.lower() for v in violations)
 
@@ -373,9 +364,7 @@ def test_fabrication_watchlist_2026_unverified_langchain(verified: dict) -> None
 def test_fabrication_watchlist_2026_unverified_prisma(verified: dict) -> None:
     """May 2026 watchlist: Prisma — Casey has not used it in production."""
     cover = _good_cover()
-    cover.body[2] = (
-        cover.body[2] + " I modeled the schema in Prisma and ran the migrations."
-    )
+    cover.body[2] = cover.body[2] + " I modeled the schema in Prisma and ran the migrations."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("prisma" in v.lower() for v in violations)
 
@@ -393,25 +382,16 @@ def test_fabrication_watchlist_with_however_negation_suppressed(verified: dict) 
     'though i haven't' so legitimate disclaiming context doesn't fire the
     watchlist."""
     cover = _good_cover()
-    cover.body[2] = (
-        cover.body[2]
-        + " However, I haven't worked with Kubernetes in production yet."
-    )
+    cover.body[2] = cover.body[2] + " However, I haven't worked with Kubernetes in production yet."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
-    assert not any(
-        "kubernetes" in v.lower() and "unverified" in v.lower() for v in violations
-    )
+    assert not any("kubernetes" in v.lower() and "unverified" in v.lower() for v in violations)
 
 
 def test_fabrication_watchlist_but_i_dont_negation_suppressed(verified: dict) -> None:
     cover = _good_cover()
-    cover.body[2] = (
-        cover.body[2] + " But I don't have hands-on Pinecone experience yet."
-    )
+    cover.body[2] = cover.body[2] + " But I don't have hands-on Pinecone experience yet."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
-    assert not any(
-        "pinecone" in v.lower() and "unverified" in v.lower() for v in violations
-    )
+    assert not any("pinecone" in v.lower() and "unverified" in v.lower() for v in violations)
 
 
 def test_concepts_defensive_phrasing_flagged(verified: dict) -> None:
@@ -422,10 +402,7 @@ def test_concepts_defensive_phrasing_flagged(verified: dict) -> None:
     regex. New _DEFENSIVE_PATTERNS entry catches it structurally.
     """
     cover = _good_cover()
-    cover.body[2] = (
-        cover.body[2]
-        + " I have also worked with GraphQL concepts in my data layer."
-    )
+    cover.body[2] = cover.body[2] + " I have also worked with GraphQL concepts in my data layer."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert any("concepts" in v.lower() for v in violations)
 
@@ -447,8 +424,7 @@ def test_underscore_joined_tech_token_not_fragmented(verified: dict) -> None:
     and not matched. Legitimate standalone `0` still flags."""
     cover = _good_cover()
     cover.body[2] = (
-        cover.body[2]
-        + " I host local LLMs with Ollama using q5_0 KV cache and flash attention."
+        cover.body[2] + " I host local LLMs with Ollama using q5_0 KV cache and flash attention."
     )
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     # The '0' inside 'q5_0' must NOT be flagged.
@@ -469,10 +445,7 @@ def test_legitimate_concepts_usage_not_flagged(verified: dict) -> None:
     with X concepts'. Legitimate uses of 'concepts' in other framings (e.g.
     discussing concepts a project taught) should pass."""
     cover = _good_cover()
-    cover.body[1] = (
-        cover.body[1]
-        + " The migration taught me concepts that translate to any CMS."
-    )
+    cover.body[1] = cover.body[1] + " The migration taught me concepts that translate to any CMS."
     violations = validate_cover(cover, verified=verified, company="Acme Corp", max_words=280)
     assert not any("concepts" in v.lower() for v in violations)
 
@@ -556,9 +529,7 @@ def test_project_tech_still_flagged_when_not_in_any_project() -> None:
     verified_no_fastapi = {
         "summary": "Full-stack developer.",
         "work_history": [{"bullets": ["Built a Shopify storefront."]}],
-        "projects": [
-            {"name": "jobhunt", "stack": ["Redis"], "bullets": ["Built a CLI."]}
-        ],
+        "projects": [{"name": "jobhunt", "stack": ["Redis"], "bullets": ["Built a CLI."]}],
     }
     cover = _good_cover()
     cover.body[2] = cover.body[2] + " I built the service on FastAPI in production."
@@ -573,9 +544,7 @@ def test_unverified_tech_claims_helper_matches_the_cover_check(verified: dict) -
     validator and the tailored-summary check."""
     from jobhunt.pipeline.cover_validate import unverified_tech_claims
 
-    assert unverified_tech_claims("I built agents on the Claude API.", verified) == [
-        "claude api"
-    ]
+    assert unverified_tech_claims("I built agents on the Claude API.", verified) == ["claude api"]
     assert unverified_tech_claims("I chose Docker rather than Kubernetes.", verified) == []
     assert unverified_tech_claims("Nothing technical here.", verified) == []
 

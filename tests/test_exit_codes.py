@@ -106,8 +106,13 @@ def test_installed_script_routes_through_run(tmp_path: Path) -> None:
     env = {k: v for k, v in os.environ.items() if not k.startswith("JOBHUNT_")}
     env |= {"XDG_CONFIG_HOME": str(config_home), "XDG_DATA_HOME": str(tmp_path / "data")}
     proc = subprocess.run(
-        [str(script), "list"], cwd=REPO, env=env, capture_output=True, text=True,
-        stdin=subprocess.DEVNULL, timeout=60,
+        [str(script), "list"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
     )
     assert proc.returncode == 10, proc.stderr
     assert "Traceback" not in proc.stderr
@@ -126,7 +131,10 @@ def _serve(monkeypatch: pytest.MonkeyPatch, handler) -> None:
 
 async def _call() -> dict[str, Any]:
     return await complete_json(
-        base_url="http://localhost:8080/v1", model="lite", system="s", user="u",
+        base_url="http://localhost:8080/v1",
+        model="lite",
+        system="s",
+        user="u",
         schema={"type": "object"},
     )
 
@@ -153,23 +161,69 @@ def _status(code: int, body: Any):
         (_raise(httpx.ConnectError), "GatewayUnavailableError"),
         (_raise(httpx.ConnectTimeout), "GatewayUnavailableError"),
         (
-            _status(503, {"error": {"code": 503, "message": "Loading model",
-                                    "type": "unavailable_error"}}),
+            _status(
+                503,
+                {"error": {"code": 503, "message": "Loading model", "type": "unavailable_error"}},
+            ),
             "GatewayUnavailableError",
         ),
-        (_status(500, {"error": {"code": 500, "message": "model name=lite failed to load",
-                                  "type": "server_error"}}), "GatewayUnavailableError"),
+        (
+            _status(
+                500,
+                {
+                    "error": {
+                        "code": 500,
+                        "message": "model name=lite failed to load",
+                        "type": "server_error",
+                    }
+                },
+            ),
+            "GatewayUnavailableError",
+        ),
         (_status(500, "proxy error: Failed to read connection"), "GatewayUnavailableError"),
-        (_status(500, {"error": {"code": 500, "message": "unexpected", "type": "server_error"}}),
-         "GatewayError"),
-        (_status(400, {"error": {"code": 400, "message": "model 'lite' not found",
-                                  "type": "invalid_request_error"}}), "ConfigError"),
-        (_status(400, {"error": {"code": 400, "message": "prompt too long",
-                                  "type": "exceed_context_size_error"}}), "GatewayError"),
+        (
+            _status(500, {"error": {"code": 500, "message": "unexpected", "type": "server_error"}}),
+            "GatewayError",
+        ),
+        (
+            _status(
+                400,
+                {
+                    "error": {
+                        "code": 400,
+                        "message": "model 'lite' not found",
+                        "type": "invalid_request_error",
+                    }
+                },
+            ),
+            "ConfigError",
+        ),
+        (
+            _status(
+                400,
+                {
+                    "error": {
+                        "code": 400,
+                        "message": "prompt too long",
+                        "type": "exceed_context_size_error",
+                    }
+                },
+            ),
+            "GatewayError",
+        ),
         (_raise(httpx.ReadTimeout), "GatewayError"),
     ],
-    ids=["connect-refused", "connect-timeout", "503-loading", "500-failed-to-load",
-         "500-proxy-died", "500-other", "400-unknown-model", "400-context", "read-timeout"],
+    ids=[
+        "connect-refused",
+        "connect-timeout",
+        "503-loading",
+        "500-failed-to-load",
+        "500-proxy-died",
+        "500-other",
+        "400-unknown-model",
+        "400-context",
+        "read-timeout",
+    ],
 )
 async def test_router_failures_are_classified(
     monkeypatch: pytest.MonkeyPatch, handler, expected: str
@@ -184,8 +238,18 @@ async def test_length_cutoff_keeps_the_fragment_out_of_the_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"choices": [{"index": 0, "finish_reason": "length",
-            "message": {"role": "assistant", "content": '{"summary": "RESUME TEXT'}}]})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "length",
+                        "message": {"role": "assistant", "content": '{"summary": "RESUME TEXT'},
+                    }
+                ]
+            },
+        )
 
     _serve(monkeypatch, handler)
     with pytest.raises(errors.GatewayError) as exc:
@@ -217,8 +281,13 @@ from jobhunt.models import Job  # noqa: E402
 
 def _job(n: str) -> Job:
     return Job(
-        id=f"greenhouse:acme:{n}", source="greenhouse", external_id=n, company="Acme",
-        title=f"Developer {n}", location="Toronto, ON", description="Need Python.",
+        id=f"greenhouse:acme:{n}",
+        source="greenhouse",
+        external_id=n,
+        company="Acme",
+        title=f"Developer {n}",
+        location="Toronto, ON",
+        description="Need Python.",
         url=f"https://example.com/{n}",
     )
 
@@ -255,7 +324,11 @@ def _scorer(fail: dict[str, Exception], calls: list[str]):
 
 async def _scan(cfg: Config) -> None:
     await scan_cmd._run(
-        cfg, skip_score=False, skip_ingest=True, limit=None, max_age_days=0,
+        cfg,
+        skip_score=False,
+        skip_ingest=True,
+        limit=None,
+        max_age_days=0,
         no_discover=True,
     )
 
@@ -266,13 +339,16 @@ async def _scan(cfg: Config) -> None:
     ids=["router-down-13", "unknown-model-10"],
 )
 async def test_scan_stops_at_a_run_wide_failure(
-    exc: Exception, migrations_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    exc: Exception,
+    migrations_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     cfg = _profiled_cfg(migrations_dir, "1", "2")
     calls: list[str] = []
-    monkeypatch.setattr(scan_cmd, "score_job", _scorer({"greenhouse:acme:1": exc,
-                                                         "greenhouse:acme:2": exc}, calls))
+    monkeypatch.setattr(
+        scan_cmd, "score_job", _scorer({"greenhouse:acme:1": exc, "greenhouse:acme:2": exc}, calls)
+    )
     with pytest.raises(type(exc)):
         await _scan(cfg)
     assert len(calls) == 1, "the scan kept scoring after a run-wide failure"
@@ -280,12 +356,16 @@ async def test_scan_stops_at_a_run_wide_failure(
 
 
 async def test_scan_skips_a_per_job_failure_and_scores_the_rest(
-    migrations_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    migrations_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     cfg = _profiled_cfg(migrations_dir, "1", "2")
     calls: list[str] = []
-    fail = {"greenhouse:acme:1": errors.PipelineError("bad JD"),
-            "greenhouse:acme:2": errors.PipelineError("bad JD")}
+    fail = {
+        "greenhouse:acme:1": errors.PipelineError("bad JD"),
+        "greenhouse:acme:2": errors.PipelineError("bad JD"),
+    }
     first = sorted(fail)[0]
     monkeypatch.setattr(scan_cmd, "score_job", _scorer({first: fail[first]}, calls))
     await _scan(cfg)
@@ -296,13 +376,18 @@ async def test_scan_skips_a_per_job_failure_and_scores_the_rest(
 @pytest.mark.parametrize("stage", ["tailor", "cover"])
 @pytest.mark.parametrize(
     ("exc", "stops"),
-    [(errors.GatewayUnavailableError("router down"), True),
-     (errors.ConfigError("model 'x' not found"), True),
-     (errors.PipelineError("fabrication"), False)],
+    [
+        (errors.GatewayUnavailableError("router down"), True),
+        (errors.ConfigError("model 'x' not found"), True),
+        (errors.PipelineError("fabrication"), False),
+    ],
     ids=["13", "10", "12"],
 )
 async def test_apply_llm_phase_raises_only_run_wide_failures(
-    stage: str, exc: Exception, stops: bool, tmp_path: Path,
+    stage: str,
+    exc: Exception,
+    stops: bool,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def deepen(cfg: Any, job: Job, *, echo: Any) -> Job:
@@ -330,7 +415,8 @@ async def test_apply_llm_phase_raises_only_run_wide_failures(
 
 
 async def test_apply_each_stops_after_the_current_job_and_shows_progress(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Job B's LLM phase is prefetched during job A's IO phase. When B finds
     the router down, A still finishes, B's buffered header is shown, and C
@@ -344,8 +430,9 @@ async def test_apply_each_stops_after_the_current_job_and_shows_progress(
             raise errors.GatewayUnavailableError("router down")
         return SimpleNamespace(early_exit=False, topics=[])
 
-    async def io(cfg: Any, job: Job, phase: Any, *, no_browser: bool,
-                 drafted_by: str | None = None) -> Any:
+    async def io(
+        cfg: Any, job: Job, phase: Any, *, no_browser: bool, drafted_by: str | None = None
+    ) -> Any:
         events.append(f"io:{job.id}")
         return "ship", []
 
@@ -366,6 +453,7 @@ async def test_apply_url_scoring_stops_on_a_run_wide_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`apply --url` used to print the scoring failure and go on to tailor."""
+
     async def synth(cfg: Any, **kw: Any) -> Job:
         return _job("1")
 
@@ -376,8 +464,12 @@ async def test_apply_url_scoring_stops_on_a_run_wide_failure(
     monkeypatch.setattr(apply_cmd, "score_job", score_job)
     with pytest.raises(errors.GatewayUnavailableError):
         await apply_cmd._resolve_manual(
-            Config(), url="https://example.com/1", title=None, company=None,
-            no_score=False, force_robots=False,
+            Config(),
+            url="https://example.com/1",
+            title=None,
+            company=None,
+            no_score=False,
+            force_robots=False,
         )
 
 

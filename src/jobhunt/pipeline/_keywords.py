@@ -35,39 +35,72 @@ PEER_FAMILIES: dict[str, frozenset[str]] = {
     for family_name, members in {
         "frontend": ("react", "vue", "svelte", "angular", "solidjs", "preact"),
         "meta_framework": (
-            "next.js", "nextjs", "remix", "astro", "sveltekit", "nuxt", "qwik",
+            "next.js",
+            "nextjs",
+            "remix",
+            "astro",
+            "sveltekit",
+            "nuxt",
+            "qwik",
         ),
         "js_runtime": ("node.js", "node", "nodejs", "bun", "deno"),
         "edge_runtime": (
-            "cloudflare workers", "vercel edge", "lambda@edge", "deno deploy",
+            "cloudflare workers",
+            "vercel edge",
+            "lambda@edge",
+            "deno deploy",
         ),
         "node_server": ("express", "fastify", "koa", "nestjs", "hono"),
         "orm": ("prisma", "drizzle", "knex", "typeorm", "sequelize", "kysely"),
         "api_pattern": ("rest", "rest api", "restful api", "restful apis", "trpc"),
         "relational_db": (
-            "postgres", "postgresql", "mysql", "sqlite", "mariadb", "cockroachdb",
+            "postgres",
+            "postgresql",
+            "mysql",
+            "sqlite",
+            "mariadb",
+            "cockroachdb",
         ),
         "doc_kv_db": ("mongodb", "mongo", "dynamodb", "firestore", "redis"),
         "vector_db": (
-            "pinecone", "weaviate", "pgvector", "qdrant", "chroma", "milvus",
+            "pinecone",
+            "weaviate",
+            "pgvector",
+            "qdrant",
+            "chroma",
+            "milvus",
         ),
         "js_test_runner": ("jest", "vitest", "mocha", "bun test"),
         "e2e_test_runner": ("playwright", "cypress", "puppeteer", "webdriverio"),
         "cloud_provider": ("aws", "gcp", "azure", "google cloud"),
         "container": ("docker", "podman"),
         "ci": (
-            "github actions", "gh actions", "gitlab ci", "circleci",
-            "buildkite", "jenkins",
+            "github actions",
+            "gh actions",
+            "gitlab ci",
+            "circleci",
+            "buildkite",
+            "jenkins",
         ),
         "ecommerce": ("shopify", "bigcommerce", "woocommerce", "medusa"),
         "headless_cms": (
-            "contentful", "strapi", "sanity", "ghost", "payload", "storyblok",
+            "contentful",
+            "strapi",
+            "sanity",
+            "ghost",
+            "payload",
+            "storyblok",
         ),
         # llama.cpp joined 2026-11-02: postings still ask for Ollama, and the
         # profile serves local models with llama.cpp. Mirrors the "AI SDKs /
         # hosts" line in kb/prompts/score.md.
         "ai_sdk": (
-            "openai", "anthropic", "bedrock", "vertex ai", "ollama", "llama.cpp",
+            "openai",
+            "anthropic",
+            "bedrock",
+            "vertex ai",
+            "ollama",
+            "llama.cpp",
         ),
         "llm_orchestration": ("langchain", "llamaindex", "haystack", "dspy"),
     }.items()
@@ -129,14 +162,58 @@ def peer_match(verified_skill: str, jd_blob_lower: str) -> bool:
     return any(
         re.search(rf"(?<![a-z0-9]){re.escape(peer)}(?![a-z0-9])", jd_blob_lower) for peer in family
     )
+
+
 _STOPWORDS = frozenset(
     {
-        "a", "an", "and", "or", "the", "of", "in", "on", "to", "for", "with",
-        "is", "are", "be", "as", "at", "by", "it", "this", "that", "you",
-        "we", "our", "your", "their", "from", "have", "has", "will", "can",
-        "year", "years", "experience", "skills", "knowledge", "ability",
-        "strong", "good", "great", "able", "must", "should", "would",
-        "preferred", "plus", "bonus", "required", "required.",
+        "a",
+        "an",
+        "and",
+        "or",
+        "the",
+        "of",
+        "in",
+        "on",
+        "to",
+        "for",
+        "with",
+        "is",
+        "are",
+        "be",
+        "as",
+        "at",
+        "by",
+        "it",
+        "this",
+        "that",
+        "you",
+        "we",
+        "our",
+        "your",
+        "their",
+        "from",
+        "have",
+        "has",
+        "will",
+        "can",
+        "year",
+        "years",
+        "experience",
+        "skills",
+        "knowledge",
+        "ability",
+        "strong",
+        "good",
+        "great",
+        "able",
+        "must",
+        "should",
+        "would",
+        "preferred",
+        "plus",
+        "bonus",
+        "required",
+        "required.",
         # A JD writes "CI/CD pipelines" where a resume writes "CI/CD": the
         # noun carries no technical discrimination of its own, so requiring it
         # makes a real match unfindable (9 such gaps in the 2026-08-29
@@ -146,7 +223,8 @@ _STOPWORDS = frozenset(
         # Pigment regression ("AI/LLM tools", guarded by
         # test_verify_demotes_llm_matched_when_not_in_profile) score as
         # matched against a profile that never claimed it.
-        "pipeline", "pipelines",
+        "pipeline",
+        "pipelines",
     }
 )
 

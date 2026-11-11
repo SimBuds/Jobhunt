@@ -86,10 +86,7 @@ def test_refresh_preserves_drafted_rows_and_artifacts(tmp_path: Path, conn) -> N
     jobs_left = {r[0] for r in conn.execute("SELECT id FROM jobs")}
     assert jobs_left == {"greenhouse:acme:draft", "greenhouse:acme:sent"}
 
-    apps_left = {
-        r[0]: r[1]
-        for r in conn.execute("SELECT job_id, status FROM applications")
-    }
+    apps_left = {r[0]: r[1] for r in conn.execute("SELECT job_id, status FROM applications")}
     assert apps_left == {
         "greenhouse:acme:draft": "drafted",
         "greenhouse:acme:sent": "applied",

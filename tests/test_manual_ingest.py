@@ -115,17 +115,20 @@ def test_extract_jsonld_returns_none_when_absent() -> None:
 
 def test_parse_html_for_job_prefers_jsonld() -> None:
     import json as _json
+
     description_html = (
         "<p>" + "We build prompt-engineering tools and need "
         "an engineer who can refine generative search readiness. " * 6 + "</p>"
     )
-    jsonld_payload = _json.dumps({
-        "@type": "JobPosting",
-        "title": "Prompt Engineer",
-        "description": description_html,
-        "hiringOrganization": {"name": "Real Co"},
-        "jobLocation": {"address": {"addressLocality": "Toronto"}},
-    })
+    jsonld_payload = _json.dumps(
+        {
+            "@type": "JobPosting",
+            "title": "Prompt Engineer",
+            "description": description_html,
+            "hiringOrganization": {"name": "Real Co"},
+            "jobLocation": {"address": {"addressLocality": "Toronto"}},
+        }
+    )
     html = f"""
     <html><head>
       <title>Generic OG Title at Generic Co</title>
@@ -171,8 +174,9 @@ def test_build_job_from_text_rejects_short_body() -> None:
 
 
 def test_build_job_from_text_accepts_full_body() -> None:
-    body = ("We need a prompt engineer to refine generative search "
-            "readiness across LLM products. ") * 10
+    body = (
+        "We need a prompt engineer to refine generative search readiness across LLM products. "
+    ) * 10
     job = build_job_from_text(
         description=body,
         title="Prompt Engineer",

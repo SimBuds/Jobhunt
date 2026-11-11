@@ -66,5 +66,5 @@ def check_private_paths(cfg: Config, root: Path | None) -> None:
             f"personal data inside the repository checkout {root}:\n  - "
             + "\n  - ".join(problems)
             + "\nMove it to the private data directory and drop any [paths] "
-            "override that points into the repo (README: \"Private data\")."
+            'override that points into the repo (README: "Private data").'
         )

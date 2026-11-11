@@ -135,9 +135,7 @@ async def main() -> None:
             for slug in slugs:
                 outcome = await _probe_one(client, limiter, slug, ats, slug)
                 marker = (
-                    "ok  " if outcome.status == 200
-                    else "404 " if outcome.status == 404
-                    else "err "
+                    "ok  " if outcome.status == 200 else "404 " if outcome.status == 404 else "err "
                 )
                 count = outcome.job_count if outcome.job_count is not None else "-"
                 print(f"  {marker} {slug:<25} jobs={count}")

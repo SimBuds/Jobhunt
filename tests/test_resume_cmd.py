@@ -73,9 +73,7 @@ def test_lanes_are_discovered_from_disk(tmp_path: Path) -> None:
     lanes = tmp_path / "lanes"
     lanes.mkdir()
     for slug in ("data-engineering", "platform-sre", "seo-technical"):
-        (lanes / f"{slug}.md").write_text(
-            f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8"
-        )
+        (lanes / f"{slug}.md").write_text(f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8")
 
     got = discover_lanes(tmp_path)
 
@@ -94,9 +92,7 @@ def test_colliding_slug_heads_fall_back_to_the_full_slug(tmp_path: Path) -> None
     lanes = tmp_path / "lanes"
     lanes.mkdir()
     for slug in ("ai-automation", "ai-research", "cms-ecommerce"):
-        (lanes / f"{slug}.md").write_text(
-            f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8"
-        )
+        (lanes / f"{slug}.md").write_text(f"---\ntitle: {slug}\n---\n\nBody.\n", encoding="utf-8")
 
     got = discover_lanes(tmp_path)
 
@@ -150,9 +146,7 @@ def _fixed_tailored() -> TailoredResume:
     )
 
 
-def test_renders_docx_for_one_lane(
-    tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_renders_docx_for_one_lane(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     data_dir = tmp_config_dir / "data"
     kb_dir = tmp_config_dir / "kb"
     jh = tmp_config_dir / "jobhunt"

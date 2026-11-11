@@ -271,12 +271,8 @@ class ApplicantProfile(BaseModel):
     # and some senior candidates explicitly don't want Staff+ roles.
     include_senior_roles: bool = True
     pronouns: str = ""
-    work_arrangements: list[WorkArrangement] = Field(
-        default_factory=_default_work_arrangements
-    )
-    employment_types: list[EmploymentType] = Field(
-        default_factory=_default_employment_types
-    )
+    work_arrangements: list[WorkArrangement] = Field(default_factory=_default_work_arrangements)
+    employment_types: list[EmploymentType] = Field(default_factory=_default_employment_types)
 
 
 class Config(BaseModel):

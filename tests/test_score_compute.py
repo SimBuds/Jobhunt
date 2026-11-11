@@ -138,8 +138,7 @@ class TestWeighting:
         bridged = _score(["Vue"])
         assert exact > bridged
         assert bridged == round(
-            SCORE_BASE
-            + (SCORE_TIER1_WEIGHT + SCORE_TIER2_WEIGHT) * SCORE_TRANSFERABLE_CREDIT
+            SCORE_BASE + (SCORE_TIER1_WEIGHT + SCORE_TIER2_WEIGHT) * SCORE_TRANSFERABLE_CREDIT
         )
 
     def test_ai_bonus_is_additive_and_small(self) -> None:
@@ -195,10 +194,7 @@ class TestConfigurableWeights:
         assert _score([]) == SCORE_BASE  # sanity: empty tier is base
         t1, t2 = _tiers(["Rust"])
         assert _compute_score(t1, t2, False, ScoreWeights.from_config(_cfg())) == 30
-        assert (
-            _compute_score(t1, t2, False, ScoreWeights.from_config(_cfg(score_base=0)))
-            == 0
-        )
+        assert _compute_score(t1, t2, False, ScoreWeights.from_config(_cfg(score_base=0))) == 0
 
 
 class TestPromptHashCoversWeights:
@@ -253,7 +249,6 @@ class TestPromptHashCoversScoreModel:
         assert prompt_hash(self._with_tasks({"score": "lite", "cover": "lite"})) == prompt_hash(
             self._with_tasks({"score": "lite", "cover": "gemma"})
         )
-
 
 
 # --- 2026-11-10: Familiar-only evidence earns transferable credit ----------

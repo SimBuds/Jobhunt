@@ -102,7 +102,7 @@ def _clean(fragment: str | None, *, drop_label: str | None = None) -> str | None
     if text is None:
         return None
     if drop_label and text.lower().startswith(drop_label.lower()):
-        text = text[len(drop_label):].strip()
+        text = text[len(drop_label) :].strip()
     return text or None
 
 

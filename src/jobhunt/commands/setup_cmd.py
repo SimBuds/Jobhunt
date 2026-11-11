@@ -131,9 +131,7 @@ def _prompt_multi[Choice: str](
     label: str, current: Sequence[Choice], allowed: tuple[Choice, ...]
 ) -> list[Choice]:
     typer.echo(f"{label} (comma-separated; allowed: {', '.join(allowed)})")
-    raw = str(
-        typer.prompt("  >", default=",".join(current), show_default=bool(current))
-    )
+    raw = str(typer.prompt("  >", default=",".join(current), show_default=bool(current)))
     picked = [t.strip() for t in raw.split(",") if t.strip()]
     allowed_by_value = {value: value for value in allowed}
     invalid = [t for t in picked if t not in allowed_by_value]

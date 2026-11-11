@@ -3,6 +3,7 @@
 No live HTTP. Validates the script's hand-curated candidate list structure
 and exercises the probe loop with a stub so the emit-TOML path is exercised.
 """
+
 from __future__ import annotations
 
 import importlib.util

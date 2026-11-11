@@ -128,7 +128,7 @@ def test_discover_returns_only_hits(
     _seed(
         conn,
         [
-            ("Okta", 10),       # → slug "okta" — hit on greenhouse
+            ("Okta", 10),  # → slug "okta" — hit on greenhouse
             ("Konrad Group", 5),  # → "konradgroup" hit on greenhouse, "konrad" 404s
             ("Acme Random", 3),  # no ATS exists at all
         ],
@@ -295,17 +295,27 @@ def test_discover_harvests_urls_from_jobs_table(
     upsert_job(
         conn,
         Job(
-            id="seed:1", source="adzuna_ca", external_id="1",
-            company="Braze", title="Engineer", location="Toronto, ON",
-            description="…", url="https://boards.greenhouse.io/braze/jobs/123",
+            id="seed:1",
+            source="adzuna_ca",
+            external_id="1",
+            company="Braze",
+            title="Engineer",
+            location="Toronto, ON",
+            description="…",
+            url="https://boards.greenhouse.io/braze/jobs/123",
         ),
     )
     upsert_job(
         conn,
         Job(
-            id="seed:2", source="adzuna_ca", external_id="2",
-            company="Figma", title="Engineer", location="Toronto, ON",
-            description="…", url="https://jobs.lever.co/figma/abc/apply",
+            id="seed:2",
+            source="adzuna_ca",
+            external_id="2",
+            company="Figma",
+            title="Engineer",
+            location="Toronto, ON",
+            description="…",
+            url="https://jobs.lever.co/figma/abc/apply",
         ),
     )
 
@@ -322,9 +332,12 @@ def test_discover_harvests_urls_from_jobs_table(
     async def go() -> list[ProbeOutcome]:
         async with httpx.AsyncClient() as client:
             return await discover(
-                client, cfg, conn,
+                client,
+                cfg,
+                conn,
                 atses=["greenhouse", "ashby", "lever", "smartrecruiters"],
-                limit=50, include_cached=False,
+                limit=50,
+                include_cached=False,
             )
 
     hits = _run(go())
@@ -333,9 +346,7 @@ def test_discover_harvests_urls_from_jobs_table(
     assert ("lever", "figma") in by_slug
 
     # URL harvest persisted both as cached 200 hits
-    rows = conn.execute(
-        "SELECT ats, slug, status FROM slug_probes WHERE status = 200"
-    ).fetchall()
+    rows = conn.execute("SELECT ats, slug, status FROM slug_probes WHERE status = 200").fetchall()
     seen = {(r["ats"], r["slug"]) for r in rows}
     assert ("greenhouse", "braze") in seen
     assert ("lever", "figma") in seen
@@ -357,8 +368,12 @@ def test_discover_treats_zero_job_board_as_miss(
     async def go() -> list[ProbeOutcome]:
         async with httpx.AsyncClient() as client:
             return await discover(
-                client, cfg, conn,
-                atses=["smartrecruiters"], limit=10, include_cached=False,
+                client,
+                cfg,
+                conn,
+                atses=["smartrecruiters"],
+                limit=10,
+                include_cached=False,
             )
 
     hits = _run(go())
@@ -390,9 +405,12 @@ def test_discover_probes_lever_and_smartrecruiters(
     async def go() -> list[ProbeOutcome]:
         async with httpx.AsyncClient() as client:
             return await discover(
-                client, cfg, conn,
+                client,
+                cfg,
+                conn,
                 atses=["greenhouse", "ashby", "lever", "smartrecruiters"],
-                limit=50, include_cached=False,
+                limit=50,
+                include_cached=False,
             )
 
     hits = _run(go())

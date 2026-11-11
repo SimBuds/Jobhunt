@@ -89,14 +89,50 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # alignment check for anyone else: a candidate with a single Shopify role has
 # "shopify" as a genuinely distinctive anchor, and their own filler words were
 # never covered. `_profile_stopwords` derives those per-profile instead.
-_ANCHOR_STOPWORDS: frozenset[str] = frozenset({
-    "built", "build", "maintained", "designed", "shipped", "developed", "created",
-    "page", "pages", "item", "items", "skus", "monthly", "visitors", "serving",
-    "custom", "brand", "agency", "retailer", "confidential", "company", "group",
-    "studio", "solutions", "technologies", "labs", "venue", "venues", "multiple",
-    "client", "clients", "project", "projects", "team", "teams",
-    "stack", "developer", "development", "years", "year",
-})
+_ANCHOR_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "built",
+        "build",
+        "maintained",
+        "designed",
+        "shipped",
+        "developed",
+        "created",
+        "page",
+        "pages",
+        "item",
+        "items",
+        "skus",
+        "monthly",
+        "visitors",
+        "serving",
+        "custom",
+        "brand",
+        "agency",
+        "retailer",
+        "confidential",
+        "company",
+        "group",
+        "studio",
+        "solutions",
+        "technologies",
+        "labs",
+        "venue",
+        "venues",
+        "multiple",
+        "client",
+        "clients",
+        "project",
+        "projects",
+        "team",
+        "teams",
+        "stack",
+        "developer",
+        "development",
+        "years",
+        "year",
+    }
+)
 
 _SKILL_BUCKET_KEYS: tuple[str, ...] = (
     "skills_core",
@@ -196,9 +232,7 @@ def _derive_project_anchors(
     return tuple(anchors)
 
 
-def _find_project_anchor(
-    text: str, anchors: tuple[tuple[str, frozenset[str]], ...]
-) -> str | None:
+def _find_project_anchor(text: str, anchors: tuple[tuple[str, frozenset[str]], ...]) -> str | None:
     """Return the first anchor key whose terms appear in `text` (token-boundary,
     case-insensitive). None if no anchor matches. Used by the alignment check."""
     low = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
@@ -413,22 +447,20 @@ def audit(
     # Outbound hidden-text guard. Covers the cover letter as well as the resume:
     # both are rendered and uploaded, and the cover is the one the tailor is
     # most likely to let a phrase from the posting through into.
-    outbound_injection = hidden_text_flags(
-        "\n".join([_resume_text(tailored), cover.to_markdown()])
-    )
+    outbound_injection = hidden_text_flags("\n".join([_resume_text(tailored), cover.to_markdown()]))
     # Posting-side hits are recorded but never block: a posting that tried to
     # steer the model is the employer's or aggregator's doing, not a defect in
     # the candidate's application. The inbound scrub already neutralized it
     # before the prompt; this is the audit trail saying so.
-    posting_injection = [
-        f"posting: {flag}" for flag in scrub_jd(job_description).flags
-    ]
+    posting_injection = [f"posting: {flag}" for flag in scrub_jd(job_description).flags]
     injection_flags = outbound_injection + posting_injection
 
     specificity_flags = specificity_report(tailored, verified).flags
 
-    if fabrication_flags or outbound_injection or (
-        coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT
+    if (
+        fabrication_flags
+        or outbound_injection
+        or (coverage_pct is not None and coverage_pct < HARD_COVERAGE_FLOOR_PCT)
     ):
         verdict = "block"
     elif (

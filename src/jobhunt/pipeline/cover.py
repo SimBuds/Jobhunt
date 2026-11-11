@@ -18,9 +18,7 @@ from jobhunt.pipeline.score import MAX_DESC_CHARS, truncate
 # Trailing sign-off closer ("Best,", "Regards,", "Sincerely,", etc.). The
 # optional name fragment is built per-call from the profile name so the strip
 # works for any candidate, not just a hard-coded one.
-_SIGNOFF_CLOSER = (
-    r"(?:best|regards|sincerely|cheers|thanks|thank you|best regards|kind regards)"
-)
+_SIGNOFF_CLOSER = r"(?:best|regards|sincerely|cheers|thanks|thank you|best regards|kind regards)"
 
 
 def _signoff_name_pattern(name: str) -> str:
@@ -97,8 +95,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
     body = raw.get("body") or raw.get("paragraphs") or raw.get("content")
     if body is None:
         raise PipelineError(
-            f"cover returned malformed shape (missing 'body'); "
-            f"keys={sorted(raw.keys())}"
+            f"cover returned malformed shape (missing 'body'); keys={sorted(raw.keys())}"
         )
     if isinstance(body, str):
         body = [body]
@@ -109,11 +106,7 @@ async def write_cover(cfg: Config, job: Job, *, revisions: str = "") -> CoverLet
     # than merely defaulted over. Until 2026-07-25 the system prompt hard-coded
     # one candidate's name and this line only used the profile as a fallback,
     # so any other user's letter shipped signed with that name (A11a).
-    sign_off = (
-        f"Best,\n{profile_name}"
-        if profile_name
-        else str(raw.get("sign_off") or "Best,")
-    )
+    sign_off = f"Best,\n{profile_name}" if profile_name else str(raw.get("sign_off") or "Best,")
     return CoverLetter(
         salutation=str(raw.get("salutation") or "Dear Hiring Team,"),
         body=cleaned_body,
@@ -147,9 +140,7 @@ async def write_cover_with_retry(
     revisions = ""
     for attempt in range(1, attempts + 1):
         cover = await write_cover(cfg, job, revisions=revisions)
-        violations = validate_cover(
-            cover, verified=verified, company=company, max_words=max_words
-        )
+        violations = validate_cover(cover, verified=verified, company=company, max_words=max_words)
         if not violations:
             return cover, [], attempt
         last_cover = cover

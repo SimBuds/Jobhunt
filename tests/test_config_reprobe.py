@@ -1,4 +1,5 @@
 """Phase 7 tests — `jobhunt config reprobe` subcommand."""
+
 from __future__ import annotations
 
 import tomllib
@@ -28,9 +29,7 @@ def _seed_config(config_dir: Path, **overrides: list[str]) -> Path:
         "[paths]\n"
         f'kb_dir = "{config_dir / "kb"}"\n'
         f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
-        "[ingest]\n"
-        + "\n".join(ingest_lines)
-        + "\n"
+        "[ingest]\n" + "\n".join(ingest_lines) + "\n"
     )
     profile = config_dir / "kb" / "profile"
     profile.mkdir(parents=True, exist_ok=True)
@@ -45,12 +44,10 @@ def _load_ingest(cfg_path: Path) -> dict[str, Any]:
 
 def _outcomes(per_ats: dict[str, dict[str, ProbeOutcome]]):
     """Stub `_probe_one` so it returns a pre-canned outcome per (ats, slug)."""
-    async def fake(
-        client: Any, limiter: Any, company: str, ats: str, slug: str
-    ) -> ProbeOutcome:
-        return per_ats.get(ats, {}).get(
-            slug, ProbeOutcome(company, ats, slug, 0, None)
-        )
+
+    async def fake(client: Any, limiter: Any, company: str, ats: str, slug: str) -> ProbeOutcome:
+        return per_ats.get(ats, {}).get(slug, ProbeOutcome(company, ats, slug, 0, None))
+
     return fake
 
 
@@ -62,15 +59,21 @@ def test_reprobe_dry_run_prints_stale_without_writing(
         greenhouse=["live-co", "stale-co"],
         lever=["another-live"],
     )
-    monkeypatch.setattr(probe_mod, "_probe_one", _outcomes({
-        "greenhouse": {
-            "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 12),
-            "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
-        },
-        "lever": {
-            "another-live": ProbeOutcome("another-live", "lever", "another-live", 200, 5),
-        },
-    }))
+    monkeypatch.setattr(
+        probe_mod,
+        "_probe_one",
+        _outcomes(
+            {
+                "greenhouse": {
+                    "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 12),
+                    "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
+                },
+                "lever": {
+                    "another-live": ProbeOutcome("another-live", "lever", "another-live", 200, 5),
+                },
+            }
+        ),
+    )
 
     runner = CliRunner()
     result = runner.invoke(app, ["config", "reprobe"])
@@ -91,16 +94,24 @@ def test_reprobe_prune_with_force_removes_stale(
         greenhouse=["live-co", "stale-co", "another-stale"],
         ashby=["good-ash"],
     )
-    monkeypatch.setattr(probe_mod, "_probe_one", _outcomes({
-        "greenhouse": {
-            "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 12),
-            "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
-            "another-stale": ProbeOutcome("another-stale", "greenhouse", "another-stale", 0, None),
-        },
-        "ashby": {
-            "good-ash": ProbeOutcome("good-ash", "ashby", "good-ash", 200, 4),
-        },
-    }))
+    monkeypatch.setattr(
+        probe_mod,
+        "_probe_one",
+        _outcomes(
+            {
+                "greenhouse": {
+                    "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 12),
+                    "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
+                    "another-stale": ProbeOutcome(
+                        "another-stale", "greenhouse", "another-stale", 0, None
+                    ),
+                },
+                "ashby": {
+                    "good-ash": ProbeOutcome("good-ash", "ashby", "good-ash", 200, 4),
+                },
+            }
+        ),
+    )
 
     runner = CliRunner()
     result = runner.invoke(app, ["config", "reprobe", "--prune", "--force"])
@@ -113,15 +124,19 @@ def test_reprobe_prune_with_force_removes_stale(
 def test_reprobe_prune_aborts_without_confirmation(
     tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cfg_path = _seed_config(
-        tmp_config_dir, greenhouse=["live-co", "stale-co"]
+    cfg_path = _seed_config(tmp_config_dir, greenhouse=["live-co", "stale-co"])
+    monkeypatch.setattr(
+        probe_mod,
+        "_probe_one",
+        _outcomes(
+            {
+                "greenhouse": {
+                    "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 1),
+                    "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
+                },
+            }
+        ),
     )
-    monkeypatch.setattr(probe_mod, "_probe_one", _outcomes({
-        "greenhouse": {
-            "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 1),
-            "stale-co": ProbeOutcome("stale-co", "greenhouse", "stale-co", 404, None),
-        },
-    }))
 
     # CliRunner input is not a terminal: stub the guard tests/test_no_tty.py covers.
     monkeypatch.setattr("jobhunt.commands.require_tty", lambda reason: None)
@@ -139,11 +154,17 @@ def test_reprobe_with_no_stale_does_nothing(
     tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _seed_config(tmp_config_dir, greenhouse=["live-co"])
-    monkeypatch.setattr(probe_mod, "_probe_one", _outcomes({
-        "greenhouse": {
-            "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 3),
-        },
-    }))
+    monkeypatch.setattr(
+        probe_mod,
+        "_probe_one",
+        _outcomes(
+            {
+                "greenhouse": {
+                    "live-co": ProbeOutcome("live-co", "greenhouse", "live-co", 200, 3),
+                },
+            }
+        ),
+    )
 
     runner = CliRunner()
     result = runner.invoke(app, ["config", "reprobe", "--prune", "--force"])
@@ -175,9 +196,7 @@ def test_reprobe_force_without_prune_rejects(
     assert "--force only applies with --prune" in result.output
 
 
-def test_reprobe_skips_workday(
-    tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_reprobe_skips_workday(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Workday tenants are specs, not raw slugs, and lack a probeable
     public endpoint. They must not be passed to _probe_one."""
     _seed_config(
@@ -187,9 +206,7 @@ def test_reprobe_skips_workday(
     )
     calls: list[str] = []
 
-    async def fake(
-        client: Any, limiter: Any, company: str, ats: str, slug: str
-    ) -> ProbeOutcome:
+    async def fake(client: Any, limiter: Any, company: str, ats: str, slug: str) -> ProbeOutcome:
         calls.append(ats)
         return ProbeOutcome(company, ats, slug, 200, 1)
 

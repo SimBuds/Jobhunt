@@ -35,22 +35,22 @@ from jobhunt.http import DEFAULT_UA, RateLimiter
 CANDIDATES: dict[str, list[str]] = {
     "greenhouse": [
         # Toronto AI/LLM-adjacent
-        "cohere",                  # already on ashby — try greenhouse too
+        "cohere",  # already on ashby — try greenhouse too
         "verloop",
-        "ada",                     # conversational AI
-        "voiceflow",               # also on lever — try greenhouse
-        "tealbook",                # AI procurement, Toronto HQ
+        "ada",  # conversational AI
+        "voiceflow",  # also on lever — try greenhouse
+        "tealbook",  # AI procurement, Toronto HQ
         "integrate-ai",
-        "borealis",                # RBC AI subsidiary
+        "borealis",  # RBC AI subsidiary
         # Generative AI tooling / dev tools
-        "tenstorrent",             # AI accelerator hardware, Toronto
-        "kira",                    # AI contract review
+        "tenstorrent",  # AI accelerator hardware, Toronto
+        "kira",  # AI contract review
         # Health / bio AI
         "deepgenomics",
         "proteinqure",
         "bluedot",
         # Toronto fintech AI
-        "wealthsimple",            # known live
+        "wealthsimple",  # known live
         "drop",
         "neo",
         "borrowell",
@@ -68,7 +68,7 @@ CANDIDATES: dict[str, list[str]] = {
         "q4inc",
         "venasolutions",
         "validere",
-        "north",                   # north.io
+        "north",  # north.io
         "coconutsoftware",
         # AI agency / consultancy
         "altaml",
@@ -86,13 +86,13 @@ CANDIDATES: dict[str, list[str]] = {
     ],
     "ashby": [
         # Ashby is *the* AI-startup ATS in 2026 — broader candidate list here.
-        "harvey",                  # legal AI
-        "perplexity",              # AI search
-        "anthropic",               # likely 404 (greenhouse/workday) but cheap to probe
-        "openai",                  # same — cheap to confirm
+        "harvey",  # legal AI
+        "perplexity",  # AI search
+        "anthropic",  # likely 404 (greenhouse/workday) but cheap to probe
+        "openai",  # same — cheap to confirm
         "lovable",
         "cursor",
-        "anysphere",               # cursor's parent
+        "anysphere",  # cursor's parent
         "magic",
         "browserbase",
         "elevenlabs",
@@ -102,7 +102,7 @@ CANDIDATES: dict[str, list[str]] = {
         "writer",
         "exa",
         "decagon",
-        "mercor",                  # already in seed; idempotent
+        "mercor",  # already in seed; idempotent
         "vapi",
         "retell",
         "11x",
@@ -122,7 +122,7 @@ CANDIDATES: dict[str, list[str]] = {
         "TELUS",
         "Sobeys",
         "Loblaw",
-        "Manulife",                # likely Workday in reality
+        "Manulife",  # likely Workday in reality
     ],
 }
 
@@ -141,9 +141,7 @@ async def main() -> None:
             for slug in slugs:
                 outcome = await _probe_one(client, limiter, slug, ats, slug)
                 marker = (
-                    "ok  " if outcome.status == 200
-                    else "404 " if outcome.status == 404
-                    else "err "
+                    "ok  " if outcome.status == 200 else "404 " if outcome.status == 404 else "err "
                 )
                 count = outcome.job_count if outcome.job_count is not None else "-"
                 print(f"  {marker} {slug:<25} jobs={count}")

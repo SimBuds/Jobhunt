@@ -128,8 +128,8 @@ class ScoreBreakdown:
     tier2_total: int
     tier2_credit: float
     ai_bonus: bool
-    computed: int          # before any cap
-    final: int             # after every cap
+    computed: int  # before any cap
+    final: int  # after every cap
     caps_applied: list[str]
     weights: dict[str, float]
 
@@ -235,9 +235,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # decides the title is people-management, and raising there would mean the
     # decline never persists and the job is re-scored on every scan forever.
     if not tier1_phrases and not tier2_phrases and not decline_reason:
-        raise PipelineError(
-            f"job {job.id}: model extracted no requirements from the posting"
-        )
+        raise PipelineError(f"job {job.id}: model extracted no requirements from the posting")
     # Drop tenure-only asks AFTER the extraction check above, so a model that
     # read the posting but found only a years bar is not misreported as having
     # extracted nothing. An emptied tier-1 falls through to the promotion
@@ -405,11 +403,7 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     ):
         decline_reason = None
 
-    if (
-        decline_reason is None
-        and matched
-        and _all_matched_are_familiar(matched, verified)
-    ):
+    if decline_reason is None and matched and _all_matched_are_familiar(matched, verified):
         if is_senior_title(job.title):
             # Senior familiar-stack roles stay declined — a Familiar-only
             # resume against a senior bar is a genuine misrepresentation risk
@@ -545,10 +539,7 @@ def _all_matched_are_familiar(matched: list[str], verified_blob: str) -> bool:
             return False
         # Require every token to appear as a whole word, or +-#-bounded chunk,
         # within at least one bucket item.
-        return any(
-            all(_re.search(rf"\b{_re.escape(t)}\b", item) for t in tokens)
-            for item in items
-        )
+        return any(all(_re.search(rf"\b{_re.escape(t)}\b", item) for t in tokens) for item in items)
 
     return all(
         _in_bucket(phrase, familiar_items) and not _in_bucket(phrase, core_items)
@@ -584,13 +575,55 @@ _TENURE_RE = re.compile(r"\b\d+\s*(?:[-+]|to)?\s*\d*\s*\+?\s*years?\b")
 # is the conservative direction, since a kept phrase can only lower the score.
 _TENURE_FILLER = frozenset(
     {
-        "professional", "software", "development", "developing", "engineering",
-        "engineer", "experience", "experiences", "work", "working", "relevant",
-        "commercial", "industry", "role", "total", "demonstrated", "hands-on",
-        "hands", "on", "minimum", "min", "at", "least", "plus", "or", "more",
-        "of", "in", "a", "an", "as", "the", "with", "and", "to", "candidate",
-        "has", "have", "gap", "yoe", "actual", "required", "vs", "exceeds",
-        "cushion", "meets", "threshold", "hard", "tenure",
+        "professional",
+        "software",
+        "development",
+        "developing",
+        "engineering",
+        "engineer",
+        "experience",
+        "experiences",
+        "work",
+        "working",
+        "relevant",
+        "commercial",
+        "industry",
+        "role",
+        "total",
+        "demonstrated",
+        "hands-on",
+        "hands",
+        "on",
+        "minimum",
+        "min",
+        "at",
+        "least",
+        "plus",
+        "or",
+        "more",
+        "of",
+        "in",
+        "a",
+        "an",
+        "as",
+        "the",
+        "with",
+        "and",
+        "to",
+        "candidate",
+        "has",
+        "have",
+        "gap",
+        "yoe",
+        "actual",
+        "required",
+        "vs",
+        "exceeds",
+        "cushion",
+        "meets",
+        "threshold",
+        "hard",
+        "tenure",
     }
 )
 
@@ -618,9 +651,7 @@ def _drop_pure_tenure_asks(phrases: list[str]) -> list[str]:
     return [p for p in phrases if not _is_pure_tenure_ask(p)]
 
 
-_TRANSFER_BRIDGE_RE = re.compile(
-    r"\(\s*transferable\b[:\s—–-]*([^)]+)\)", re.IGNORECASE
-)
+_TRANSFER_BRIDGE_RE = re.compile(r"\(\s*transferable\b[:\s—–-]*([^)]+)\)", re.IGNORECASE)
 
 
 def _bridge_of(phrase: str) -> str | None:

@@ -32,14 +32,28 @@ def _seed_ready(cfg: Config, n: int, *, score: int = 80) -> None:
     try:
         for i in range(n):
             jid = f"greenhouse:acme:{i}"
-            upsert_job(conn, Job(
-                id=jid, source="greenhouse", external_id=str(i),
-                company="acme", title=f"Dev {i}", location="Toronto, ON",
-                description="…", url=f"https://example.com/{i}",
-            ))
+            upsert_job(
+                conn,
+                Job(
+                    id=jid,
+                    source="greenhouse",
+                    external_id=str(i),
+                    company="acme",
+                    title=f"Dev {i}",
+                    location="Toronto, ON",
+                    description="…",
+                    url=f"https://example.com/{i}",
+                ),
+            )
             write_score(
-                conn, job_id=jid, score=score, reasons=[], red_flags=[],
-                must_clarify=[], model="test", prompt_hash="test",
+                conn,
+                job_id=jid,
+                score=score,
+                reasons=[],
+                red_flags=[],
+                must_clarify=[],
+                model="test",
+                prompt_hash="test",
             )
         conn.commit()
     finally:
@@ -84,8 +98,14 @@ def test_applied_and_declined_jobs_do_not_count_toward_backlog(cfg: Config) -> N
     try:
         # One applied, one declined → backlog drops to 1, under the ceiling.
         upsert_application(
-            conn, application_id="a1", job_id="greenhouse:acme:0", status="applied",
-            resume_path=None, cover_path=None, fill_plan_path=None, applied_week=None,
+            conn,
+            application_id="a1",
+            job_id="greenhouse:acme:0",
+            status="applied",
+            resume_path=None,
+            cover_path=None,
+            fill_plan_path=None,
+            applied_week=None,
         )
         conn.execute(
             "UPDATE jobs SET decline_reason = 'wrong_domain' WHERE id = 'greenhouse:acme:1'"

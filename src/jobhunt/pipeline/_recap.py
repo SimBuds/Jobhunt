@@ -27,7 +27,12 @@ _GENERIC_RECAP_TOKENS: tuple[str, ...] = ("dean's list", "diploma")
 # short form people actually write ("Waterloo" for "Waterloo University"), so
 # both spellings are caught.
 _INSTITUTION_SUFFIXES = (
-    "college", "university", "institute", "school", "polytechnic", "academy",
+    "college",
+    "university",
+    "institute",
+    "school",
+    "polytechnic",
+    "academy",
 )
 
 # `education` entries are free text shaped like
@@ -44,9 +49,7 @@ def _institution_names(verified: Mapping[str, Any]) -> list[str]:
         entries = [entries]
     for entry in entries:
         if isinstance(entry, Mapping):
-            raw = str(
-                entry.get("institution") or entry.get("school") or entry.get("name") or ""
-            )
+            raw = str(entry.get("institution") or entry.get("school") or entry.get("name") or "")
         else:
             parts = _EM_DASH_RE.split(str(entry), 1)
             raw = parts[1] if len(parts) > 1 else ""
@@ -61,9 +64,7 @@ def _institution_names(verified: Mapping[str, Any]) -> list[str]:
     return names
 
 
-def recap_tokens(
-    verified: Mapping[str, Any], *, extra: Sequence[str] = ()
-) -> tuple[str, ...]:
+def recap_tokens(verified: Mapping[str, Any], *, extra: Sequence[str] = ()) -> tuple[str, ...]:
     """Lowercase substrings whose presence means a document is reciting
     education credentials.
 

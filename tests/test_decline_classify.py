@@ -1,4 +1,5 @@
 """Phase 4 tests — decline-reason classifier + backfill."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,22 +40,25 @@ def _job(suffix: str) -> Job:
 # --- classify_decline_reason — per category --------------------------------
 
 
-@pytest.mark.parametrize("reason,expected", [
-    ("Requires 7+ years of production Python.", "years_gap"),
-    ("Insufficient years for this role.", "years_gap"),
-    ("Hiring manager role with direct reports.", "people_management"),
-    ("VP Engineering people-management track.", "people_management"),
-    ("Must be located in San Francisco.", "location_mismatch"),
-    ("US residents only, on-site in NYC.", "location_mismatch"),
-    ("Role requires production Go and Rust experience.", "wrong_stack"),
-    ("Primary stack is Ruby on Rails.", "wrong_stack"),
-    ("Specific to fintech industry.", "wrong_domain"),
-    ("Industry experience required.", "wrong_domain"),
-    ("Clinical software for FDA-regulated devices.", "regulated_domain"),
-    ("Securities trading platform; investment-bank background.", "regulated_domain"),
-    ("Matched skills are all Familiar (academic/light use only).", "familiar_only"),
-    ("Coursework-only Java.", "familiar_only"),
-])
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        ("Requires 7+ years of production Python.", "years_gap"),
+        ("Insufficient years for this role.", "years_gap"),
+        ("Hiring manager role with direct reports.", "people_management"),
+        ("VP Engineering people-management track.", "people_management"),
+        ("Must be located in San Francisco.", "location_mismatch"),
+        ("US residents only, on-site in NYC.", "location_mismatch"),
+        ("Role requires production Go and Rust experience.", "wrong_stack"),
+        ("Primary stack is Ruby on Rails.", "wrong_stack"),
+        ("Specific to fintech industry.", "wrong_domain"),
+        ("Industry experience required.", "wrong_domain"),
+        ("Clinical software for FDA-regulated devices.", "regulated_domain"),
+        ("Securities trading platform; investment-bank background.", "regulated_domain"),
+        ("Matched skills are all Familiar (academic/light use only).", "familiar_only"),
+        ("Coursework-only Java.", "familiar_only"),
+    ],
+)
 def test_classify_known_patterns(reason: str, expected: str) -> None:
     assert classify_decline_reason(reason) == expected
 
@@ -103,11 +107,13 @@ def test_set_decline_reason_clearing_clears_category(conn) -> None:
 def test_backfill_classifies_existing_rows(conn) -> None:
     """Insert jobs with decline_reason but force decline_category to NULL,
     then run backfill and assert categories populated."""
-    for i, reason in enumerate([
-        "Requires 5+ years",
-        "Hiring manager role",
-        "Some odd reason that won't match",
-    ]):
+    for i, reason in enumerate(
+        [
+            "Requires 5+ years",
+            "Hiring manager role",
+            "Some odd reason that won't match",
+        ]
+    ):
         upsert_job(conn, _job(str(i)))
         conn.execute(
             "UPDATE jobs SET decline_reason = ?, decline_category = NULL WHERE id = ?",
@@ -135,27 +141,34 @@ def test_backfill_skips_already_classified(conn) -> None:
 # --- live `lite` reason shapes (2026-09-15: 114 of 150 declines fell to "other")
 
 
-@pytest.mark.parametrize("reason,expected", [
-    # snake_case codes: `_` is a word character, so `\b` never fired inside them
-    ("years_required_exceeds_limit", "years_gap"),
-    ("years_required_exceeds_threshold", "years_gap"),
-    ("years_exceeded", "years_gap"),
-    ("years_gap", "years_gap"),
-    ("regulated_domain_gap", "regulated_domain"),
-    ("domain_requires_regulated_experience", "regulated_domain"),
-    ("location_outside_toronto", "location_mismatch"),
-    ("domain_mismatch", "wrong_domain"),
-    # prose
-    ("4+ tier-1 requirements the candidate cannot satisfy by any path", "tier1_gaps"),
-    ("4+ tier-1 requirements (RISC-V CPU, Compilers) are gaps", "tier1_gaps"),
-    ("Title is a non-engineering function (Sales Development Representative)",
-     "non_engineering"),
-    ("Domain requires regulated experience (banking/financial services)",
-     "regulated_domain"),
-    # a title-function decline wins over a second cited ground
-    ("Title is non-engineering function (Risk Analyst) and domain requires "
-     "regulated experience", "non_engineering"),
-])
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        # snake_case codes: `_` is a word character, so `\b` never fired inside them
+        ("years_required_exceeds_limit", "years_gap"),
+        ("years_required_exceeds_threshold", "years_gap"),
+        ("years_exceeded", "years_gap"),
+        ("years_gap", "years_gap"),
+        ("regulated_domain_gap", "regulated_domain"),
+        ("domain_requires_regulated_experience", "regulated_domain"),
+        ("location_outside_toronto", "location_mismatch"),
+        ("domain_mismatch", "wrong_domain"),
+        # prose
+        ("4+ tier-1 requirements the candidate cannot satisfy by any path", "tier1_gaps"),
+        ("4+ tier-1 requirements (RISC-V CPU, Compilers) are gaps", "tier1_gaps"),
+        (
+            "Title is a non-engineering function (Sales Development Representative)",
+            "non_engineering",
+        ),
+        ("Domain requires regulated experience (banking/financial services)", "regulated_domain"),
+        # a title-function decline wins over a second cited ground
+        (
+            "Title is non-engineering function (Risk Analyst) and domain requires "
+            "regulated experience",
+            "non_engineering",
+        ),
+    ],
+)
 def test_classify_live_reason_shapes(reason: str, expected: str) -> None:
     assert classify_decline_reason(reason) == expected
 

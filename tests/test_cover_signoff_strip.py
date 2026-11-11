@@ -27,10 +27,7 @@ def test_strips_best_with_name() -> None:
 def test_strips_best_with_non_casey_name() -> None:
     # Genericization guard: the name is data-driven, not hard-coded to Casey.
     para = "I would welcome a conversation. Best,\nJane Q. Public"
-    assert (
-        _strip_trailing_signoff(para, "Jane Q. Public")
-        == "I would welcome a conversation."
-    )
+    assert _strip_trailing_signoff(para, "Jane Q. Public") == "I would welcome a conversation."
 
 
 def test_strips_best_alone() -> None:
@@ -110,8 +107,12 @@ async def test_signoff_uses_verified_name_not_model_output(
             gateway=GatewayConfig(tasks={"cover": "qwen3.5:9b"}),
         ),
         Job(
-            id="t:1", source="t", external_id="1", title="Engineer",
-            company="Acme", description="React role.",
+            id="t:1",
+            source="t",
+            external_id="1",
+            title="Engineer",
+            company="Acme",
+            description="React role.",
         ),
     )
     assert cover.sign_off == "Best,\nJane Dev"
@@ -138,8 +139,12 @@ async def test_signoff_falls_back_to_model_when_profile_has_no_name(
             gateway=GatewayConfig(tasks={"cover": "qwen3.5:9b"}),
         ),
         Job(
-            id="t:1", source="t", external_id="1", title="Engineer",
-            company="Acme", description="React role.",
+            id="t:1",
+            source="t",
+            external_id="1",
+            title="Engineer",
+            company="Acme",
+            description="React role.",
         ),
     )
     assert cover.sign_off == "Best,\nSomeone"

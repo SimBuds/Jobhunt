@@ -234,9 +234,7 @@ def _verified_candidate_name(cfg: Config) -> str | None:
     return name.strip() if isinstance(name, str) and name.strip() else None
 
 
-def _violation_hint_line(
-    v: FabricationViolation, *, candidate_name: str | None = None
-) -> str:
+def _violation_hint_line(v: FabricationViolation, *, candidate_name: str | None = None) -> str:
     """One bullet describing how to remediate a single violation. Kind-driven
     so the model gets the right corrective rule, not a generic 'try again'."""
     if v.kind == "unverified-skill":
@@ -476,6 +474,7 @@ def _append_jd_skill(
     non_familiar = [c for c in tailored.skills_categories if c.name.strip().lower() != "familiar"]
 
     if non_familiar:
+
         def _sibling_count(cat: TailoredCategory) -> int:
             return sum(1 for it in cat.items if it.strip().lower() in bucket_skills)
 
@@ -560,14 +559,10 @@ def _significant_tokens(text: str) -> set[str]:
     """
     from jobhunt.pipeline._keywords import _STOPWORDS, _TOKEN_RE
 
-    return {
-        t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS and len(t) >= 4
-    }
+    return {t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS and len(t) >= 4}
 
 
-def _order_bullets_by_jd(
-    tailored: TailoredResume, job: Job, verified: dict[str, Any]
-) -> None:
+def _order_bullets_by_jd(tailored: TailoredResume, job: Job, verified: dict[str, Any]) -> None:
     """Lead each role with the bullet carrying the most JD-named verified skills.
 
     `_shrink_to_one_page` keeps each role's lead bullet and pops from the end,
@@ -600,6 +595,7 @@ def _order_bullets_by_jd(
     for role in tailored.roles:
         if len(role.bullets) < 2:
             continue
+
         def rank(bullet: str) -> tuple[int, bool]:
             return (-len(_significant_tokens(bullet) & jd_tokens), not metrics(bullet))
 
@@ -662,9 +658,7 @@ def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
     def _is_current(role: TailoredRole) -> bool:
         return "present" in role.dates.lower()
 
-    other_has_spare = any(
-        len(r.bullets) > 1 and not _is_current(r) for r in tailored.roles
-    )
+    other_has_spare = any(len(r.bullets) > 1 and not _is_current(r) for r in tailored.roles)
 
     worst_role = None
     worst_cost = 0
@@ -797,8 +791,7 @@ def _parse(raw: dict[str, Any], model: str) -> TailoredResume:
         # missing required keys or has wrong shapes. Convert to a domain
         # error so apply_cmd skips the job instead of crashing.
         raise PipelineError(
-            f"tailor returned malformed shape ({type(e).__name__}: {e}); "
-            f"keys={sorted(raw.keys())}"
+            f"tailor returned malformed shape ({type(e).__name__}: {e}); keys={sorted(raw.keys())}"
         ) from e
 
 
@@ -820,19 +813,39 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # must match a verified skill that names one ("REST APIs", "Shopify Admin
 # API"). "apis" folds to "api" in `_SURFACE_ALIASES` so singular and plural
 # still match.
-_ANNOTATION_TOKENS: frozenset[str] = frozenset({
-    # parenthetical detail words
-    "custom", "themes", "certified", "professional", "personalization",
-    "skill", "badge", "integration", "integrations", "fundamentals", "advanced",
-    # surface-form / category indicators
-    "ci", "cd", "es6", "es2015", "es2020",
-    # Category wrappers — these decorate an anchor but don't identify it.
-    # "headless CMS (Contentful)" → identity {contentful}; "headless CMS" alone
-    # → empty identity → rejected (too vague).
-    "headless", "cms",
-    # generic articles / particles that survive tokenisation
-    "and", "or", "with", "of", "the",
-})
+_ANNOTATION_TOKENS: frozenset[str] = frozenset(
+    {
+        # parenthetical detail words
+        "custom",
+        "themes",
+        "certified",
+        "professional",
+        "personalization",
+        "skill",
+        "badge",
+        "integration",
+        "integrations",
+        "fundamentals",
+        "advanced",
+        # surface-form / category indicators
+        "ci",
+        "cd",
+        "es6",
+        "es2015",
+        "es2020",
+        # Category wrappers — these decorate an anchor but don't identify it.
+        # "headless CMS (Contentful)" → identity {contentful}; "headless CMS" alone
+        # → empty identity → rejected (too vague).
+        "headless",
+        "cms",
+        # generic articles / particles that survive tokenisation
+        "and",
+        "or",
+        "with",
+        "of",
+        "the",
+    }
+)
 
 # Short-form JD aliases that should normalise to their canonical token before
 # comparison. Mirrors tailor.md rule 9. When the LLM (correctly) writes the
@@ -851,10 +864,10 @@ _SURFACE_ALIASES: dict[str, str] = {
     "postgres": "postgresql",
     "rest": "restful",
     "apis": "api",
-    "node": "nodejs",   # verified has "Node.js" → tokenises to {node, js}; we
-                        # collapse both sides via this alias + the "js" mapping
-                        # for safety
-    "nextjs": "next",   # rare; the tokenizer drops the dot in "Next.js"
+    "node": "nodejs",  # verified has "Node.js" → tokenises to {node, js}; we
+    # collapse both sides via this alias + the "js" mapping
+    # for safety
+    "nextjs": "next",  # rare; the tokenizer drops the dot in "Next.js"
 }
 
 
@@ -902,12 +915,34 @@ _CULINARY_TERMS = ("culinary", "chef", "kitchen", "restaurant", "sous")
 # Deliberately minimal — words like "designer" or "architect" DO carry a claim
 # and are excluded so they get checked (or, for seniority words, rejected
 # earlier by `_FORBIDDEN_SENIORITY`).
-_LABEL_GENERIC_TOKENS: frozenset[str] = frozenset({
-    "developer", "engineer", "programmer", "consultant", "specialist",
-    "full", "stack", "fullstack", "front", "frontend", "back", "backend",
-    "end", "web", "software", "e", "commerce", "ecommerce", "cms",
-    "and", "or", "the", "a", "an",
-})
+_LABEL_GENERIC_TOKENS: frozenset[str] = frozenset(
+    {
+        "developer",
+        "engineer",
+        "programmer",
+        "consultant",
+        "specialist",
+        "full",
+        "stack",
+        "fullstack",
+        "front",
+        "frontend",
+        "back",
+        "backend",
+        "end",
+        "web",
+        "software",
+        "e",
+        "commerce",
+        "ecommerce",
+        "cms",
+        "and",
+        "or",
+        "the",
+        "a",
+        "an",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -960,15 +995,11 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
     for token in _FORBIDDEN_SENIORITY:
         if _has_word(s, token) and not _has_word(verified_summary, token):
             msg = f"summary contains seniority token {token!r} not present in verified.summary"
-            raise FabricationError(
-                [FabricationViolation("summary-seniority", token)], msg
-            )
+            raise FabricationError([FabricationViolation("summary-seniority", token)], msg)
     for token in _FORBIDDEN_PROFICIENCY:
         if _has_word(s, token) and not _has_word(verified_summary, token):
             msg = f"summary claims {token!r} mastery not present in verified.summary"
-            raise FabricationError(
-                [FabricationViolation("summary-proficiency", token)], msg
-            )
+            raise FabricationError([FabricationViolation("summary-proficiency", token)], msg)
     identity = _FORBIDDEN_IDENTITY_RE.search(summary)
     if identity and not _FORBIDDEN_IDENTITY_RE.search(verified_summary):
         term = identity.group(0).lower()
@@ -977,9 +1008,7 @@ def _check_summary(summary: str, verified: dict[str, Any]) -> None:
     first_sentence = re.split(r"(?<=[.!?])\s+", summary.strip(), maxsplit=1)[0].lower()
     if any(_has_word(first_sentence, term) for term in _CULINARY_TERMS):
         msg = "summary leads with culinary/kitchen content; it must come last, not first"
-        raise FabricationError(
-            [FabricationViolation("summary-culinary", "first-sentence")], msg
-        )
+        raise FabricationError([FabricationViolation("summary-culinary", "first-sentence")], msg)
 
     # Role-label grounding (tailor.md §6a). The summary may open with a
     # JD-appropriate role label ("Full-stack JavaScript developer") instead of
@@ -1044,9 +1073,7 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
         # detail encodes the divergence — extra is the more actionable side
         # for an LLM ("you invented this role"), so prefer it when present.
         detail = f"extra={sorted(extra)}" if extra else f"missing={sorted(missing)}"
-        raise FabricationError(
-            [FabricationViolation("role-divergence", detail)], msg
-        )
+        raise FabricationError([FabricationViolation("role-divergence", detail)], msg)
 
     # Projects: reject any tailored project that isn't a verified project, and
     # any url that diverges from the verified one. Missing verified projects are
@@ -1108,9 +1135,7 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
                 for v in verified_identity_sets
             ):
                 msg = f"skill not in verified facts: {item!r}"
-                raise FabricationError(
-                    [FabricationViolation("unverified-skill", item)], msg
-                )
+                raise FabricationError([FabricationViolation("unverified-skill", item)], msg)
             # Familiar-promoted check: only meaningful when the tailored
             # claim has a non-empty identity. An empty-identity tailored item
             # (e.g. a pure category label that somehow made it past the
@@ -1126,6 +1151,4 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
                 )
             ):
                 msg = f"Familiar skill {item!r} promoted to category {cat.name!r}"
-                raise FabricationError(
-                    [FabricationViolation("familiar-promoted", item)], msg
-                )
+                raise FabricationError([FabricationViolation("familiar-promoted", item)], msg)

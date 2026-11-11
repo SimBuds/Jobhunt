@@ -98,9 +98,7 @@ async def autofill(
             )
             browser = None
         else:
-            browser = await pw.chromium.launch(
-                headless=not headed, args=[_BROWSER_WINDOW_SIZE]
-            )
+            browser = await pw.chromium.launch(headless=not headed, args=[_BROWSER_WINDOW_SIZE])
             ctx = await browser.new_context(viewport=_BROWSER_VIEWPORT)
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         try:

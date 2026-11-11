@@ -15,9 +15,7 @@ from jobhunt.ingest._query_planner import (
 # The fictional profile, never the repo's own kb/profile/verified.json — that
 # file is personal, gitignored, and hand-edited, so asserting against it makes
 # the suite pass or fail on whose resume is checked out (IMPLEMENT.md A10/D2).
-FIXTURE_PROFILE = (
-    Path(__file__).resolve().parent / "fixtures" / "profile" / "verified.json"
-)
+FIXTURE_PROFILE = Path(__file__).resolve().parent / "fixtures" / "profile" / "verified.json"
 
 
 def test_normalize_skill_strips_parens_and_trailing_slash() -> None:

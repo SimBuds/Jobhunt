@@ -28,27 +28,29 @@ _SUFFIXES = (
 
 # Companies whose normalized name contains any of these tokens are skipped — they
 # are staffing/recruiting agencies that repost JDs and never run a public ATS board.
-_STAFFING_HINTS = frozenset({
-    "staffing",
-    "talent",
-    "recruit",
-    "infoteck",
-    "hirevouch",
-    "targeted",
-    "insight global",
-    "ignite",
-    "trident staff",
-    "morson",
-    "cleo consulting",
-    "innosystech",
-    "nearsource",
-    "source code",
-    "alquemy",
-    "maarut",
-    "tangentia",
-    "virtusa",
-    "recrute action",
-})
+_STAFFING_HINTS = frozenset(
+    {
+        "staffing",
+        "talent",
+        "recruit",
+        "infoteck",
+        "hirevouch",
+        "targeted",
+        "insight global",
+        "ignite",
+        "trident staff",
+        "morson",
+        "cleo consulting",
+        "innosystech",
+        "nearsource",
+        "source code",
+        "alquemy",
+        "maarut",
+        "tangentia",
+        "virtusa",
+        "recrute action",
+    }
+)
 
 _NON_SLUG = re.compile(r"[^a-z0-9 ]+")
 _WHITESPACE = re.compile(r"\s+")

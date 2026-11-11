@@ -20,9 +20,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-_QUESTION_BLOCK_RE = re.compile(
-    r"^# Question\s*\n+(?P<question>.+?)\n+# Answer", re.DOTALL
-)
+_QUESTION_BLOCK_RE = re.compile(r"^# Question\s*\n+(?P<question>.+?)\n+# Answer", re.DOTALL)
 
 
 def question_sha1(question: str) -> str:
@@ -107,9 +105,7 @@ def backfill_existing(conn: sqlite3.Connection, data_dir: Path) -> int:
     return updated
 
 
-def recall(
-    conn: sqlite3.Connection, phrase: str, *, limit: int = 10
-) -> list[sqlite3.Row]:
+def recall(conn: sqlite3.Connection, phrase: str, *, limit: int = 10) -> list[sqlite3.Row]:
     """LIKE-match the question column. Case-insensitive, partial substring.
     Sorted newest-first so re-asking a question surfaces the most-recent
     draft before older variants. `job_id=''` (standalone) is normalised

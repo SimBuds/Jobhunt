@@ -189,39 +189,118 @@ _BUCKET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     # named "Development"/"Software Development" and demote real production
     # skill to Familiar — the mirror of the fabrication bug this bucket order
     # exists to prevent.
-    ("Familiar", (
-        "familiar", "additional", "exposure", "other", "academic", "beginner",
-        "basic", "learning", "coursework", "supplementary",
-        "currently", "developing", "upskilling", "progress",
-    )),
-    ("AI & Tooling", (
-        "ai", "ml", "llm", "genai", "automation", "agent", "agentic", "assisted",
-        "prompt", "intelligence",
-    )),
-    ("CMS & E-commerce", (
-        "cms", "commerce", "ecommerce", "shopify", "wordpress", "content", "seo",
-    )),
-    ("Data & DevOps", (
-        "database", "data", "devops", "infrastructure", "cloud", "version",
-        "control", "testing", "test", "qa", "deployment", "ops", "ci", "cd",
-        "platform", "tooling", "tools",
-    )),
-    ("Core", (
-        "language", "framework", "frontend", "backend", "programming",
-        "development", "develop", "api", "library", "web", "software", "stack",
-        "mobile", "engineering", "technical",
-    )),
+    (
+        "Familiar",
+        (
+            "familiar",
+            "additional",
+            "exposure",
+            "other",
+            "academic",
+            "beginner",
+            "basic",
+            "learning",
+            "coursework",
+            "supplementary",
+            "currently",
+            "developing",
+            "upskilling",
+            "progress",
+        ),
+    ),
+    (
+        "AI & Tooling",
+        (
+            "ai",
+            "ml",
+            "llm",
+            "genai",
+            "automation",
+            "agent",
+            "agentic",
+            "assisted",
+            "prompt",
+            "intelligence",
+        ),
+    ),
+    (
+        "CMS & E-commerce",
+        (
+            "cms",
+            "commerce",
+            "ecommerce",
+            "shopify",
+            "wordpress",
+            "content",
+            "seo",
+        ),
+    ),
+    (
+        "Data & DevOps",
+        (
+            "database",
+            "data",
+            "devops",
+            "infrastructure",
+            "cloud",
+            "version",
+            "control",
+            "testing",
+            "test",
+            "qa",
+            "deployment",
+            "ops",
+            "ci",
+            "cd",
+            "platform",
+            "tooling",
+            "tools",
+        ),
+    ),
+    (
+        "Core",
+        (
+            "language",
+            "framework",
+            "frontend",
+            "backend",
+            "programming",
+            "development",
+            "develop",
+            "api",
+            "library",
+            "web",
+            "software",
+            "stack",
+            "mobile",
+            "engineering",
+            "technical",
+        ),
+    ),
 )
 
 # Rows that are legitimately NOT skills. Without this, the "unknown label falls
 # back to Core" rule would file "Climbing, Chess" from an Interests row as
 # claimable production skill — worse than dropping it, because the tailor treats
 # everything in `verified.json` as fair game.
-_NON_SKILL_LABEL_TOKENS: frozenset[str] = frozenset({
-    "hobbies", "hobby", "interests", "activities", "references", "awards",
-    "volunteer", "volunteering", "publications", "memberships", "affiliations",
-    "spoken", "availability", "objective",
-})
+_NON_SKILL_LABEL_TOKENS: frozenset[str] = frozenset(
+    {
+        "hobbies",
+        "hobby",
+        "interests",
+        "activities",
+        "references",
+        "awards",
+        "volunteer",
+        "volunteering",
+        "publications",
+        "memberships",
+        "affiliations",
+        "spoken",
+        "availability",
+        "objective",
+    }
+)
 
 _LABEL_TOKEN_RE = re.compile(r"[a-z0-9+#]+")
 
@@ -252,6 +331,7 @@ def _infer_skill_bucket(label: str) -> str | None:
                 if len(kw) >= 4 and token.startswith(kw):
                     return bucket
     return None
+
 
 # Alternate skill-section labels (lowercased) mapped onto the canonical buckets,
 # so a resume that does not use the candidate's exact headings still populates the right
@@ -515,7 +595,7 @@ def _paragraph_text_with_links(p: Paragraph) -> str:
             else:
                 # Normalize http:// hyperlinks to https://.
                 if target.lower().startswith("http://"):
-                    target = "https://" + target[len("http://"):]
+                    target = "https://" + target[len("http://") :]
                 parts.append(target)
         elif tag == qn("w:r"):
             parts.append("".join(t.text or "" for t in child.iter(qn("w:t"))))
@@ -541,8 +621,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     # reformat; matching on "List Paragraph" alone silently reclassified every
     # bullet as body text when this resume was restyled on 2026-07-26.
     paras: list[tuple[str, str]] = [
-        (_LIST_STYLE if _is_list_item(p) else (p.style.name if p.style else ""),
-         p.text.strip())
+        (_LIST_STYLE if _is_list_item(p) else (p.style.name if p.style else ""), p.text.strip())
         for p in non_empty
     ]
 
@@ -659,9 +738,7 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             current_role.bullets.append(text)
             continue
         if parsed is None:
-            warnings.append(
-                f"PROFESSIONAL EXPERIENCE: unparseable role header, skipped: {text!r}"
-            )
+            warnings.append(f"PROFESSIONAL EXPERIENCE: unparseable role header, skipped: {text!r}")
             continue
         if current_role is not None:
             work_history.append(current_role)
@@ -832,8 +909,11 @@ def _on_the_resume(facts: VerifiedFacts, skill: str, where: str, path: Path) -> 
             "A Familiar skill cannot be promoted into Core or a project stack."
         )
     listed = (
-        facts.skills_core + facts.skills_cms + facts.skills_data_devops
-        + facts.skills_ai + facts.skills_projects
+        facts.skills_core
+        + facts.skills_cms
+        + facts.skills_data_devops
+        + facts.skills_ai
+        + facts.skills_projects
     )
     if skill not in listed:
         raise ConfigError(
@@ -863,8 +943,7 @@ def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
     unknown = sorted(set(data) - _SUPPLEMENT_SECTIONS)
     if unknown:
         raise ConfigError(
-            f"{path}: unknown section(s) {unknown}. "
-            f"Expected only {sorted(_SUPPLEMENT_SECTIONS)}."
+            f"{path}: unknown section(s) {unknown}. Expected only {sorted(_SUPPLEMENT_SECTIONS)}."
         )
 
     for i, entry in enumerate(_supplement_tables(data, "core", path), start=1):
@@ -894,7 +973,8 @@ def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
         # which is stored joined with its location ("Harbour Loom, Toronto,
         # ON"). Nothing looser: a near-miss must fail, not attach to a role.
         matched = [
-            r for r in facts.work_history
+            r
+            for r in facts.work_history
             if r.employer == employer or r.employer.startswith(f"{employer}, ")
         ]
         if not matched:
@@ -923,7 +1003,9 @@ def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
             facts.projects.append(project)
             continue
         same = (on_resume.url, on_resume.stack, on_resume.bullets) == (
-            project.url, project.stack, project.bullets,
+            project.url,
+            project.stack,
+            project.bullets,
         )
         if not same:
             raise ConfigError(

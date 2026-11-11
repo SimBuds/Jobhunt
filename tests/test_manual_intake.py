@@ -3,6 +3,7 @@
 Covers the paste-JD happy path (synth + upsert into the jobs DB) and the
 `interview_prep_cmd._resolve_job_id` validation branches that gate it.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,9 +44,7 @@ def test_stdin_alias_is_accepted_by_manual_intake_commands(
 
 
 @pytest.mark.asyncio
-async def test_paste_intake_synths_and_upserts(
-    tmp_path: Path, migrations_dir: Path
-) -> None:
+async def test_paste_intake_synths_and_upserts(tmp_path: Path, migrations_dir: Path) -> None:
     cfg = _cfg(tmp_path)
     migrate(connect(cfg.paths.db_path), migrations_dir)
 
@@ -73,8 +72,12 @@ async def test_paste_intake_requires_title_and_company(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     with pytest.raises(typer.Exit) as exc:
         await synth_manual_job(
-            cfg, url=None, title=None, company=None,
-            force_robots=False, description=_JD_BODY,
+            cfg,
+            url=None,
+            title=None,
+            company=None,
+            force_robots=False,
+            description=_JD_BODY,
         )
     assert exc.value.exit_code == 2
 
@@ -83,8 +86,12 @@ def test_resolve_job_id_rejects_both_id_and_url(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     with pytest.raises(typer.Exit) as exc:
         _resolve_job_id(
-            cfg, job_id="adzuna_ca:1", url="https://x.test/jd",
-            title=None, company=None, description_from_stdin=False,
+            cfg,
+            job_id="adzuna_ca:1",
+            url="https://x.test/jd",
+            title=None,
+            company=None,
+            description_from_stdin=False,
             force_robots=False,
         )
     assert exc.value.exit_code == 2
@@ -94,8 +101,13 @@ def test_resolve_job_id_rejects_neither(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     with pytest.raises(typer.Exit) as exc:
         _resolve_job_id(
-            cfg, job_id=None, url=None, title=None, company=None,
-            description_from_stdin=False, force_robots=False,
+            cfg,
+            job_id=None,
+            url=None,
+            title=None,
+            company=None,
+            description_from_stdin=False,
+            force_robots=False,
         )
     assert exc.value.exit_code == 2
 
@@ -109,15 +121,18 @@ def test_resolve_job_id_passthrough_existing_id(tmp_path: Path) -> None:
     """
     cfg = _cfg(tmp_path)
     out = _resolve_job_id(
-        cfg, job_id="adzuna_ca:1", url=None, title=None, company=None,
-        description_from_stdin=False, force_robots=False,
+        cfg,
+        job_id="adzuna_ca:1",
+        url=None,
+        title=None,
+        company=None,
+        description_from_stdin=False,
+        force_robots=False,
     )
     assert out == "adzuna_ca:1"
 
 
-def test_resolve_job_id_accepts_company_fragment(
-    tmp_path: Path, migrations_dir: Path
-) -> None:
+def test_resolve_job_id_accepts_company_fragment(tmp_path: Path, migrations_dir: Path) -> None:
     """`jobhunt interview-prep opentable` — no job id needed."""
     cfg = _cfg(tmp_path)
     c = connect(cfg.paths.db_path)
@@ -130,8 +145,13 @@ def test_resolve_job_id_accepts_company_fragment(
     c.close()
 
     out = _resolve_job_id(
-        cfg, job_id="opentable", url=None, title=None, company=None,
-        description_from_stdin=False, force_robots=False,
+        cfg,
+        job_id="opentable",
+        url=None,
+        title=None,
+        company=None,
+        description_from_stdin=False,
+        force_robots=False,
     )
     assert out == "manual:abc"
 
@@ -153,8 +173,13 @@ def test_resolve_job_id_ambiguous_fragment_exits(
 
     with pytest.raises(typer.Exit) as exc:
         _resolve_job_id(
-            cfg, job_id="acme", url=None, title=None, company=None,
-            description_from_stdin=False, force_robots=False,
+            cfg,
+            job_id="acme",
+            url=None,
+            title=None,
+            company=None,
+            description_from_stdin=False,
+            force_robots=False,
         )
     assert exc.value.exit_code == 10
     assert "ambiguous" in capsys.readouterr().err

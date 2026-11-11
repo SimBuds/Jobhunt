@@ -142,17 +142,14 @@ def reclassify_all(conn: sqlite3.Connection) -> int:
     pattern change; `backfill_existing` only fills NULLs. Returns rows changed.
     """
     rows = conn.execute(
-        "SELECT id, decline_reason, decline_category FROM jobs "
-        "WHERE decline_reason IS NOT NULL"
+        "SELECT id, decline_reason, decline_category FROM jobs WHERE decline_reason IS NOT NULL"
     ).fetchall()
     changed = 0
     with conn:
         for job_id, reason, old in rows:
             new = classify_decline_reason(reason)
             if new != old:
-                conn.execute(
-                    "UPDATE jobs SET decline_category = ? WHERE id = ?", (new, job_id)
-                )
+                conn.execute("UPDATE jobs SET decline_category = ? WHERE id = ?", (new, job_id))
                 changed += 1
     return changed
 

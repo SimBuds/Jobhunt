@@ -1,4 +1,5 @@
 """Phase 14 tests for analyze skills, employers, and response-rate."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,9 +44,15 @@ def _seed_minimal_config(config_dir: Path, db_path: Path) -> Path:
     return cfg_path
 
 
-def _job(suffix: str, *, source: str = "greenhouse", company: str = "live-co",
-         description: str = "Build with React and Node.js.",
-         title: str = "Dev", posted: str | None = None) -> Job:
+def _job(
+    suffix: str,
+    *,
+    source: str = "greenhouse",
+    company: str = "live-co",
+    description: str = "Build with React and Node.js.",
+    title: str = "Dev",
+    posted: str | None = None,
+) -> Job:
     return Job(
         id=f"{source}:{company}:{suffix}",
         source=source,
@@ -62,9 +69,7 @@ def _job(suffix: str, *, source: str = "greenhouse", company: str = "live-co",
 # --- analyze skills ---------------------------------------------------------
 
 
-def test_analyze_skills_default_matches_gaps_flag(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_skills_default_matches_gaps_flag(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -80,9 +85,7 @@ def test_analyze_skills_default_matches_gaps_flag(
 
     runner = CliRunner()
     result = runner.invoke(app, ["analyze", "skills", "--window-days", "365"])
-    compat = runner.invoke(
-        app, ["analyze", "skills", "--gaps", "--window-days", "365"]
-    )
+    compat = runner.invoke(app, ["analyze", "skills", "--gaps", "--window-days", "365"])
     assert result.exit_code == 0, result.output
     assert compat.exit_code == 0, compat.output
     assert result.output == compat.output
@@ -99,9 +102,7 @@ def test_analyze_skills_help_hides_gaps_compat_flag() -> None:
     assert "--gaps" not in result.output
 
 
-def test_analyze_skills_no_declines_in_window(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_skills_no_declines_in_window(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -119,9 +120,7 @@ def test_analyze_skills_no_declines_in_window(
 # --- analyze employers ------------------------------------------------------
 
 
-def test_analyze_employers_groups_by_slug(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_employers_groups_by_slug(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -134,9 +133,7 @@ def test_analyze_employers_groups_by_slug(
     c.close()
 
     runner = CliRunner()
-    result = runner.invoke(
-        app, ["analyze", "employers", "--window-days", "365"]
-    )
+    result = runner.invoke(app, ["analyze", "employers", "--window-days", "365"])
     compat = runner.invoke(
         app, ["analyze", "employers", "--hiring-velocity", "--window-days", "365"]
     )
@@ -161,9 +158,7 @@ def test_analyze_employers_help_hides_hiring_velocity_compat_flag() -> None:
 # --- analyze response-rate --------------------------------------------------
 
 
-def test_analyze_response_rate_by_score_bands(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_response_rate_by_score_bands(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -173,13 +168,23 @@ def test_analyze_response_rate_by_score_bands(
         j = _job(str(i))
         upsert_job(c, j)
         write_score(
-            c, job_id=j.id, score=sc,
-            reasons=[], red_flags=[], must_clarify=[],
-            model="t", prompt_hash="h",
+            c,
+            job_id=j.id,
+            score=sc,
+            reasons=[],
+            red_flags=[],
+            must_clarify=[],
+            model="t",
+            prompt_hash="h",
         )
         upsert_application(
-            c, application_id=f"a{i}", job_id=j.id, status="applied",
-            resume_path=None, cover_path=None, fill_plan_path=None,
+            c,
+            application_id=f"a{i}",
+            job_id=j.id,
+            status="applied",
+            resume_path=None,
+            cover_path=None,
+            fill_plan_path=None,
             applied_week="2026-W21",
         )
     mark_response_received(c, "greenhouse:live-co:0", "2026-05-20", None)
@@ -193,9 +198,7 @@ def test_analyze_response_rate_by_score_bands(
     assert "TOTAL" in result.output
 
 
-def test_analyze_response_rate_by_ats(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_response_rate_by_ats(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -205,12 +208,24 @@ def test_analyze_response_rate_by_ats(
     upsert_job(c, j_gh)
     upsert_job(c, j_ash)
     upsert_application(
-        c, application_id="a1", job_id=j_gh.id, status="applied",
-        resume_path=None, cover_path=None, fill_plan_path=None, applied_week="2026-W21",
+        c,
+        application_id="a1",
+        job_id=j_gh.id,
+        status="applied",
+        resume_path=None,
+        cover_path=None,
+        fill_plan_path=None,
+        applied_week="2026-W21",
     )
     upsert_application(
-        c, application_id="a2", job_id=j_ash.id, status="applied",
-        resume_path=None, cover_path=None, fill_plan_path=None, applied_week="2026-W21",
+        c,
+        application_id="a2",
+        job_id=j_ash.id,
+        status="applied",
+        resume_path=None,
+        cover_path=None,
+        fill_plan_path=None,
+        applied_week="2026-W21",
     )
     mark_response_received(c, j_ash.id, "2026-05-20", None)
     c.commit()
@@ -223,9 +238,7 @@ def test_analyze_response_rate_by_ats(
     assert "ashby" in result.output
 
 
-def test_analyze_response_rate_rejects_bad_by(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_response_rate_rejects_bad_by(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -238,9 +251,7 @@ def test_analyze_response_rate_rejects_bad_by(
     assert "must be" in result.output
 
 
-def test_analyze_response_rate_no_applications(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_response_rate_no_applications(tmp_config_dir: Path, tmp_path: Path) -> None:
     db_path = tmp_path / "jobhunt.db"
     _seed_minimal_config(tmp_config_dir, db_path)
     c = connect(db_path)
@@ -269,11 +280,19 @@ def test_analyze_employers_groups_aggregator_postings_by_company(
         ("5954051790", ""),
     )
     for ext, company in postings:
-        upsert_job(c, Job(
-            id=f"adzuna_ca:{ext}", source="adzuna_ca", external_id=ext, company=company,
-            title="Dev", location="Toronto, ON", description="x",
-            url=f"https://example.com/{ext}",
-        ))
+        upsert_job(
+            c,
+            Job(
+                id=f"adzuna_ca:{ext}",
+                source="adzuna_ca",
+                external_id=ext,
+                company=company,
+                title="Dev",
+                location="Toronto, ON",
+                description="x",
+                url=f"https://example.com/{ext}",
+            ),
+        )
     upsert_job(c, _job("1", company="live-co"))
     c.commit()
     c.close()

@@ -100,7 +100,8 @@ def run(
         ),
     ),
     as_json: bool = typer.Option(
-        False, "--json",
+        False,
+        "--json",
         help="Print one JSON object on stdout. Human output moves to stderr.",
     ),
 ) -> None:
@@ -112,9 +113,7 @@ def run(
     with envelope as out:
         cfg = load_config()
         ensure_profile(cfg)
-        effective_max_age = (
-            max_age_days if max_age_days is not None else cfg.ingest.max_age_days
-        )
+        effective_max_age = max_age_days if max_age_days is not None else cfg.ingest.max_age_days
         asyncio.run(
             _run(
                 cfg,
@@ -162,9 +161,7 @@ async def _run(
             _refresh_scan_state(cfg, conn)
 
         if not skip_ingest:
-            inserted, per_source, filtered = await _ingest_all(
-                cfg, conn, max_age_days=max_age_days
-            )
+            inserted, per_source, filtered = await _ingest_all(cfg, conn, max_age_days=max_age_days)
             _print_ingest_summary(per_source)
             typer.echo(f"ingest: {inserted} new job(s) inserted")
             out["ingest"] = {
@@ -209,9 +206,7 @@ async def _run(
             return
 
         ph = prompt_hash(cfg)
-        rows = jobs_to_score(
-            conn, current_hash=ph, limit=limit, max_age_days=max_age_days
-        )
+        rows = jobs_to_score(conn, current_hash=ph, limit=limit, max_age_days=max_age_days)
         if not rows:
             typer.echo("score: nothing to score")
             return
@@ -264,13 +259,15 @@ async def _run(
             ok += 1
             score_counts["scored"] += 1
             score_counts["declined"] += bool(result.decline_reason)
-            scored_jobs.append({
-                "id": job.id,
-                "title": job.title,
-                "company": job.company,
-                "score": result.score,
-                "declined": bool(result.decline_reason),
-            })
+            scored_jobs.append(
+                {
+                    "id": job.id,
+                    "title": job.title,
+                    "company": job.company,
+                    "score": result.score,
+                    "declined": bool(result.decline_reason),
+                }
+            )
             if verbose:
                 tag = (
                     f"DECLINE: {result.decline_reason}"
@@ -295,7 +292,12 @@ async def _run(
 
 
 _AUTO_DISCOVER_ATSES = (
-    "greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee",
+    "greenhouse",
+    "ashby",
+    "lever",
+    "smartrecruiters",
+    "workable",
+    "recruitee",
 )
 
 
@@ -408,9 +410,7 @@ def _refresh_scan_state(cfg: Config, conn: sqlite3.Connection) -> None:
         drafted = conn.execute(
             "SELECT COUNT(*) FROM applications WHERE status = 'drafted'"
         ).fetchone()[0]
-        cur = conn.execute(
-            "DELETE FROM jobs WHERE id NOT IN (SELECT job_id FROM applications)"
-        )
+        cur = conn.execute("DELETE FROM jobs WHERE id NOT IN (SELECT job_id FROM applications)")
         dropped_jobs = cur.rowcount
         submitted = conn.execute(
             "SELECT COUNT(*) FROM applications WHERE status != 'drafted'"
@@ -489,9 +489,7 @@ async def _ingest_all(
         for slug in cfg.ingest.recruitee:
             adapters.append(("recruitee", slug, recruitee.fetch(client, limiter, slug)))
         for url in cfg.ingest.job_bank_ca:
-            adapters.append(
-                ("job_bank_ca", url, job_bank_ca.fetch(client, jobbank_limiter, url))
-            )
+            adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, jobbank_limiter, url)))
         for url in cfg.ingest.rss:
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
         adzuna_queries = cfg.ingest.adzuna.queries
@@ -499,6 +497,7 @@ async def _ingest_all(
             import json as _json
 
             from jobhunt.ingest._query_planner import derive_adzuna_queries
+
             verified_path = cfg.paths.profile_dir / "verified.json"
             if verified_path.is_file():
                 verified = _json.loads(verified_path.read_text(encoding="utf-8"))
@@ -600,13 +599,17 @@ async def _ingest_all(
                     total=total,
                     start=True,
                 )
-                source_state[source] = {"done": 0, "jobs": 0, "errors": 0,
-                                        "total": total, "tid": tid}
+                source_state[source] = {
+                    "done": 0,
+                    "jobs": 0,
+                    "errors": 0,
+                    "total": total,
+                    "tid": tid,
+                }
             streams: list[AsyncIterator[Job]] = []
             for source, label, fetch in adapters:
                 streams.append(
-                    _safe_stream(source, label, fetch, progress, source_state,
-                                 overall, results)
+                    _safe_stream(source, label, fetch, progress, source_state, overall, results)
                 )
 
             async def drain(stream: AsyncIterator[Job]) -> None:
@@ -635,8 +638,12 @@ async def _ingest_all(
 
             inserted = 0
             filtered = {
-                "mgmt": 0, "stale": 0, "research": 0, "senior": 0,
-                "non_eng": 0, "dup": 0,
+                "mgmt": 0,
+                "stale": 0,
+                "research": 0,
+                "senior": 0,
+                "non_eng": 0,
+                "dup": 0,
             }
             drop_research = cfg.ingest.drop_research_titles
             drop_non_eng = cfg.ingest.drop_non_engineering_titles
@@ -671,9 +678,7 @@ async def _ingest_all(
                 if not is_within_age_window(item.posted_at, max_age_days):
                     filtered["stale"] += 1
                     continue
-                skip, stale_agg_id, shadow_claim = _dedup_decision(
-                    item, seen_dedup, agg_shadow
-                )
+                skip, stale_agg_id, shadow_claim = _dedup_decision(item, seen_dedup, agg_shadow)
                 if skip:
                     filtered["dup"] += 1
                     continue
@@ -681,9 +686,7 @@ async def _ingest_all(
                     if stale_agg_id is not None:
                         # Direct row supersedes the thinner aggregator copy
                         # inserted earlier this scan (still unscored).
-                        conn.execute(
-                            "DELETE FROM jobs WHERE id = ?", (stale_agg_id,)
-                        )
+                        conn.execute("DELETE FROM jobs WHERE id = ?", (stale_agg_id,))
                         inserted -= 1
                     if upsert_job(conn, item):
                         inserted += 1
@@ -691,8 +694,12 @@ async def _ingest_all(
                             agg_shadow[shadow_claim] = item.id
             await closer_task
             per_source = [
-                (source, label, results.get((source, label), (0, None))[0],
-                 results.get((source, label), (0, None))[1])
+                (
+                    source,
+                    label,
+                    results.get((source, label), (0, None))[0],
+                    results.get((source, label), (0, None))[1],
+                )
                 for (source, label, _) in adapters
             ]
             return inserted, per_source, filtered
@@ -714,8 +721,13 @@ def _dedup_key(job: Job) -> tuple[str, ...]:
     company_norm = _DEDUP_RE.sub("", (job.company or "").lower())
     shadow = f"{title_norm}:{company_norm}"
     if job.source in {
-        "greenhouse", "lever", "ashby", "smartrecruiters", "workday",
-        "workable", "recruitee",
+        "greenhouse",
+        "lever",
+        "ashby",
+        "smartrecruiters",
+        "workday",
+        "workable",
+        "recruitee",
     }:
         return (job.id, shadow)
     return (shadow,)
@@ -751,8 +763,7 @@ def _dedup_decision(
     return False, agg_shadow.pop(keys[1], None), None
 
 
-def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID],
-                        source: str) -> None:
+def _refresh_source_row(progress: Progress, st: dict[str, int | TaskID], source: str) -> None:
     task_id = cast(TaskID, st["tid"])
     done = int(st["done"])
     total = int(st["total"])

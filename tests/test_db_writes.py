@@ -102,12 +102,24 @@ def test_jobs_to_score_includes_new_and_stale(conn):
     upsert_job(conn, _job("2"))
     upsert_job(conn, _job("3"))
     write_score(
-        conn, job_id="greenhouse:acme:1", score=80, reasons=[], red_flags=[],
-        must_clarify=[], model="m", prompt_hash="OLD",
+        conn,
+        job_id="greenhouse:acme:1",
+        score=80,
+        reasons=[],
+        red_flags=[],
+        must_clarify=[],
+        model="m",
+        prompt_hash="OLD",
     )
     write_score(
-        conn, job_id="greenhouse:acme:2", score=70, reasons=[], red_flags=[],
-        must_clarify=[], model="m", prompt_hash="CURRENT",
+        conn,
+        job_id="greenhouse:acme:2",
+        score=70,
+        reasons=[],
+        red_flags=[],
+        must_clarify=[],
+        model="m",
+        prompt_hash="CURRENT",
     )
     rows = jobs_to_score(conn, current_hash="CURRENT")
     by_id = {r["id"]: r["prev_hash"] for r in rows}

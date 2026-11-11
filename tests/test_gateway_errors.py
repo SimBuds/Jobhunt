@@ -178,8 +178,9 @@ async def test_non_object_output_retries_once_with_reinforcement(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("base_url", ["http://localhost:8080/v1", "http://localhost:8080/v1/",
-                                      "http://localhost:8080"])
+@pytest.mark.parametrize(
+    "base_url", ["http://localhost:8080/v1", "http://localhost:8080/v1/", "http://localhost:8080"]
+)
 async def test_posts_openai_chat_completions(
     monkeypatch: pytest.MonkeyPatch, base_url: str
 ) -> None:

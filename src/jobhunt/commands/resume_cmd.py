@@ -80,6 +80,7 @@ def discover_lanes(kb_dir: Path) -> dict[str, Lane]:
         out[key] = Lane(slug=slug, label=_lane_label(slug))
     return out
 
+
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
@@ -99,9 +100,7 @@ def load_lane_brief(kb_dir: Path, focus: str) -> LaneBrief:
     lanes = discover_lanes(kb_dir)
     lane = lanes.get(focus)
     if lane is None:
-        raise PipelineError(
-            f"unknown lane {focus!r} — found: {', '.join(lanes) or 'none'}"
-        )
+        raise PipelineError(f"unknown lane {focus!r} — found: {', '.join(lanes) or 'none'}")
     path = kb_dir / "lanes" / f"{lane.slug}.md"
     if not path.is_file():
         raise PipelineError(f"missing lane brief {path}")
@@ -117,7 +116,7 @@ def load_lane_brief(kb_dir: Path, focus: str) -> LaneBrief:
     title = meta.get("title", "")
     if not title:
         raise PipelineError(f"lane brief {path} frontmatter is missing `title:`")
-    body = text[m.end():].strip()
+    body = text[m.end() :].strip()
     return LaneBrief(
         focus=focus,
         slug=lane.slug,
@@ -167,7 +166,9 @@ async def _render_lane(
     typer.echo(f"\n=== {brief.title} ({brief.focus}) ===")
     typer.echo("    … tailoring resume (LLM, ~30–60s)")
     tailored, violations, attempts = await tailor_resume_with_retry(
-        cfg, lane_job(brief), max_attempts=cfg.pipeline.tailor_retry_attempts,
+        cfg,
+        lane_job(brief),
+        max_attempts=cfg.pipeline.tailor_retry_attempts,
         on_retry=lambda a, t, v: typer.echo(retry_line(a, t, v)),
     )
     if attempts > 1:
@@ -192,10 +193,7 @@ def run(
     focus: str = typer.Option(
         "all",
         "--focus",
-        help=(
-            "Which base resume to render: `all`, or a lane key discovered "
-            "from kb/lanes/*.md."
-        ),
+        help=("Which base resume to render: `all`, or a lane key discovered from kb/lanes/*.md."),
     ),
 ) -> None:
     from jobhunt.commands import ensure_profile

@@ -379,9 +379,7 @@ def test_workday_fixture_populates_posted_at() -> None:
     """Adapter integration check: walk the fixture's postedOn values, confirm
     each parseable one yields a non-None timestamp."""
     data = json.loads((FIXTURES / "workday.json").read_text())
-    parsed = [
-        _parse_posted_on(p.get("postedOn"), now=_NOW) for p in data["jobPostings"]
-    ]
+    parsed = [_parse_posted_on(p.get("postedOn"), now=_NOW) for p in data["jobPostings"]]
     # All three fixture entries have parseable postedOn values.
     assert all(t is not None for t in parsed)
 
@@ -575,12 +573,15 @@ def test_url_extract_unknown_host_returns_none() -> None:
 def test_location_search_terms_are_built_from_the_profile() -> None:
     from jobhunt.ingest._filter import location_search_terms
 
-    assert location_search_terms(
-        city="Berlin", region="Berlin", country="Germany"
-    ) == ("Berlin", "Remote, Germany")  # region deduped against city
-    assert location_search_terms(
-        city="Toronto", region="Ontario", country="Canada"
-    ) == ("Toronto", "Ontario", "Remote, Canada")
+    assert location_search_terms(city="Berlin", region="Berlin", country="Germany") == (
+        "Berlin",
+        "Remote, Germany",
+    )  # region deduped against city
+    assert location_search_terms(city="Toronto", region="Ontario", country="Canada") == (
+        "Toronto",
+        "Ontario",
+        "Remote, Canada",
+    )
     # A partially-filled profile still yields usable probes.
     assert location_search_terms(city="Lisbon") == ("Lisbon",)
     # Nothing configured -> no narrowing possible, never an invented location.

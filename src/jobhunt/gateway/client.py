@@ -195,9 +195,7 @@ async def complete_json(
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
-            raise GatewayError(
-                f"llama-server returned invalid JSON: {e} — {content[:200]}"
-            ) from e
+            raise GatewayError(f"llama-server returned invalid JSON: {e} — {content[:200]}") from e
         if not isinstance(parsed, dict):
             raise GatewayError(f"expected object, got {type(parsed).__name__}")
     return parsed

@@ -72,6 +72,7 @@ def migrate(conn: sqlite3.Connection, migrations_dir: Path) -> MigrationResult:
     # where the new column is NULL. Safe to run on every `db migrate`.
     if "0007_decline_category" in applied:
         from jobhunt.pipeline._decline_classify import backfill_existing
+
         backfill_existing(conn)
     # Phase 12 note: the original spec called for an auto-backfill of the
     # `answers` table from on-disk artifacts during the 0008 migration.
@@ -169,9 +170,7 @@ def jobs_to_score(
     if max_age_days > 0:
         # SQLite `datetime('now', '-N days')` returns an ISO-8601 string that
         # sorts correctly against the stored `posted_at` ISO strings.
-        where_clauses.append(
-            "(j.posted_at IS NULL OR j.posted_at >= datetime('now', ?))"
-        )
+        where_clauses.append("(j.posted_at IS NULL OR j.posted_at >= datetime('now', ?))")
         params.append(f"-{int(max_age_days)} days")
     sql = (
         "SELECT j.*, s.prompt_hash AS prev_hash FROM jobs j "
@@ -252,6 +251,7 @@ def set_decline_reason(conn: sqlite3.Connection, job_id: str, reason: str | None
     one shot. Classification runs deterministically against the prose; see
     `pipeline._decline_classify` for the rubric."""
     from jobhunt.pipeline._decline_classify import classify_decline_reason
+
     category = classify_decline_reason(reason)
     conn.execute(
         "UPDATE jobs SET decline_reason = ?, decline_category = ? WHERE id = ?",
@@ -308,9 +308,7 @@ def set_outcome(conn: sqlite3.Connection, job_id: str, outcome: str) -> None:
     the application is closed. Also stamps `outcome_at` if not already set.
     """
     if outcome not in _VALID_OUTCOMES:
-        raise ValueError(
-            f"invalid outcome {outcome!r}; expected one of {sorted(_VALID_OUTCOMES)}"
-        )
+        raise ValueError(f"invalid outcome {outcome!r}; expected one of {sorted(_VALID_OUTCOMES)}")
     conn.execute(
         "UPDATE applications SET outcome = ?, "
         "outcome_at = COALESCE(outcome_at, CURRENT_TIMESTAMP) "

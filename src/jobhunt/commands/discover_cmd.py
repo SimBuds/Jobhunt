@@ -101,9 +101,7 @@ def slugs(
             ),
             transient=False,
         ) as progress:
-            task_id = progress.add_task(
-                "probing …", total=None, hits=0, misses=0, errors=0
-            )
+            task_id = progress.add_task("probing …", total=None, hits=0, misses=0, errors=0)
             hit_count = 0
             miss_count = 0
             err_count = 0
@@ -156,9 +154,7 @@ def slugs(
         added = _apply_to_config(cfg, hits)
         if added:
             parts = ", ".join(f"+{n} {ats}" for ats, n in added.items() if n)
-            typer.echo(
-                f"\nupdated {config_path()} ({parts}). backup: {config_path()}.bak"
-            )
+            typer.echo(f"\nupdated {config_path()} ({parts}). backup: {config_path()}.bak")
         else:
             typer.echo("\nno new slugs to add — config already contains all hits.")
     else:
@@ -198,16 +194,12 @@ def _print_table(hits: list[ProbeOutcome]) -> None:
     company_w = max(7, max(len(h.company) for h in hits))
     ats_w = max(3, max(len(h.ats) for h in hits))
     slug_w = max(4, max(len(h.slug) for h in hits))
-    header = (
-        f"{'company':<{company_w}}  {'ats':<{ats_w}}  "
-        f"{'slug':<{slug_w}}  {'jobs':>5}"
-    )
+    header = f"{'company':<{company_w}}  {'ats':<{ats_w}}  {'slug':<{slug_w}}  {'jobs':>5}"
     typer.echo(header)
     typer.echo("-" * len(header))
     for h in hits:
         typer.echo(
-            f"{h.company:<{company_w}}  {h.ats:<{ats_w}}  "
-            f"{h.slug:<{slug_w}}  {h.job_count or 0:>5}"
+            f"{h.company:<{company_w}}  {h.ats:<{ats_w}}  {h.slug:<{slug_w}}  {h.job_count or 0:>5}"
         )
 
 
@@ -216,9 +208,7 @@ def _apply_to_config(cfg: Config, hits: list[ProbeOutcome]) -> dict[str, int] | 
     # adding a new probe-supported ATS only requires touching _SUPPORTED_ATSES
     # (and the IngestConfig field, which already exists).
     additions: dict[str, list[str]] = {ats: [] for ats in _SUPPORTED_ATSES}
-    existing: dict[str, set[str]] = {
-        ats: set(getattr(cfg.ingest, ats)) for ats in _SUPPORTED_ATSES
-    }
+    existing: dict[str, set[str]] = {ats: set(getattr(cfg.ingest, ats)) for ats in _SUPPORTED_ATSES}
 
     for h in hits:
         if h.ats not in additions:

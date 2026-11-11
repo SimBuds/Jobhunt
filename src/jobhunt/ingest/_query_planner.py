@@ -89,12 +89,12 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     (lambda v: bool(v.get("skills_cms")), ["solutions engineer", "implementation specialist"]),
     # "ai automation", not "ai engineer" (2026-11-10): the AI lane is LLM
     # automation, and "ai engineer" pulled ML research and training roles.
-    (_has_ai_signal,                       ["ai automation"]),
+    (_has_ai_signal, ["ai automation"]),
     # The candidate's SEO experience is technical (audits + security hardening), not
     # marketing/content. `seo specialist` returned 5/5 declines on the first
     # auto-derived scan — all non-IC marketing or content roles. Narrowing
     # the query to "technical seo developer" filters to engineering postings.
-    (_has_seo_signal,                      ["technical seo developer"]),
+    (_has_seo_signal, ["technical seo developer"]),
 ]
 
 # Phase 6 (reverted): a " Toronto" suffix was added to every derived query

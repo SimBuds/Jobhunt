@@ -139,9 +139,7 @@ async def test_returns_first_attempt_when_clean(
 
 
 @pytest.mark.asyncio
-async def test_retries_until_clean(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Attempt 1 leaks 'leveraged'; attempt 2 returns a clean payload."""
     responses = [_banned_payload(), _clean_payload()]
 
@@ -162,9 +160,7 @@ async def test_retries_until_clean(
 
 
 @pytest.mark.asyncio
-async def test_falls_back_after_max_attempts(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_falls_back_after_max_attempts(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When every attempt leaks a banned phrase, the loop must return the
     last attempt WITH violations rather than raising — the user can choose
     to ship-with-warnings or hand-edit (matches cover retry behaviour)."""
@@ -186,9 +182,7 @@ async def test_falls_back_after_max_attempts(
 
 
 @pytest.mark.asyncio
-async def test_retry_uses_temperature_zero(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_retry_uses_temperature_zero(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Phase 9 pattern carried into answers: retries force temp=0 so the
     model deterministically obeys the corrective hint instead of resampling
     the same banned phrase."""
@@ -293,10 +287,7 @@ def test_validator_allows_negated_unverified_tech() -> None:
         model="test",
     )
     violations = validate_answer(ans, verified=VERIFIED, max_words=200)
-    assert not any(
-        "kubernetes" in v.lower() and "unverified" in v.lower()
-        for v in violations
-    )
+    assert not any("kubernetes" in v.lower() and "unverified" in v.lower() for v in violations)
 
 
 def test_validator_flags_formulaic_opener() -> None:

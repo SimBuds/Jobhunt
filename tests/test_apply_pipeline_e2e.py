@@ -74,8 +74,7 @@ def cfg(tmp_path: Path) -> Config:
         # Pre-seed the job row so the FK on applications doesn't fail.
         with conn:
             conn.execute(
-                "INSERT INTO jobs (id, source, external_id, company, title) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO jobs (id, source, external_id, company, title) VALUES (?, ?, ?, ?, ?)",
                 ("test:1", "lever", "1", "ACME", "Engineer"),
             )
     finally:
@@ -149,9 +148,7 @@ def _count_apps(db_path: Path) -> int:
         conn.close()
 
 
-def test_apply_one_ship_renders_and_records(
-    cfg: Config, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_one_ship_renders_and_records(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_pipeline(monkeypatch, audit_verdict="ship")
     asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
 
@@ -165,9 +162,7 @@ def test_apply_one_ship_renders_and_records(
     assert _count_apps(cfg.paths.db_path) == 1
 
 
-def test_apply_one_revise_still_renders(
-    cfg: Config, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_one_revise_still_renders(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_pipeline(monkeypatch, audit_verdict="revise")
     asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
 
@@ -178,9 +173,7 @@ def test_apply_one_revise_still_renders(
     assert _count_apps(cfg.paths.db_path) == 1
 
 
-def test_apply_one_block_skips_render_and_db(
-    cfg: Config, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_one_block_skips_render_and_db(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_pipeline(monkeypatch, audit_verdict="block")
     asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
 
@@ -192,9 +185,7 @@ def test_apply_one_block_skips_render_and_db(
     assert _count_apps(cfg.paths.db_path) == 0  # no application row recorded
 
 
-def test_apply_one_no_browser_skips_autofill(
-    cfg: Config, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_apply_one_no_browser_skips_autofill(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_pipeline(monkeypatch, audit_verdict="ship")
     asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
     assert calls["autofill"] == 0
@@ -283,9 +274,7 @@ def _seed_application(cfg: Config, status: str) -> None:
         conn.close()
 
 
-@pytest.mark.parametrize(
-    "status", ["applied", "interviewing", "offer", "rejected", "withdrawn"]
-)
+@pytest.mark.parametrize("status", ["applied", "interviewing", "offer", "rejected", "withdrawn"])
 def test_redraft_keeps_a_recorded_status_and_its_dates(
     cfg: Config, monkeypatch: pytest.MonkeyPatch, status: str
 ) -> None:
@@ -361,9 +350,7 @@ def test_prompt_answer_still_moves_a_recorded_status(
 
 def test_hub_draft_records_the_actor(cfg: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_pipeline(monkeypatch, audit_verdict="ship")
-    asyncio.run(
-        apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub")
-    )
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub"))
     [row] = _app_rows(cfg.paths.db_path)
     assert (row["status"], row["drafted_by"]) == ("drafted", "hub")
 
@@ -382,9 +369,7 @@ def test_hub_run_leaves_a_job_past_drafted_untouched(
     race (Casey marks it applied mid-run): the row is not written at all."""
     _seed_application(cfg, "applied")
     _patch_pipeline(monkeypatch, audit_verdict="ship")
-    asyncio.run(
-        apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub")
-    )
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True, drafted_by="hub"))
     [row] = _app_rows(cfg.paths.db_path)
     assert (row["status"], row["resume_path"], row["drafted_by"]) == (
         "applied",

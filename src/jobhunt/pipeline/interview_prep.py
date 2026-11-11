@@ -167,9 +167,7 @@ async def draft_prep_sections(
         candidate_full_name=display_name(_verified),
     )
     recruiter_type = ctx.recruiter_type or "unknown"
-    recruiter_bias = _RECRUITER_BIAS_BLURB.get(
-        recruiter_type, _RECRUITER_BIAS_BLURB["unknown"]
-    )
+    recruiter_bias = _RECRUITER_BIAS_BLURB.get(recruiter_type, _RECRUITER_BIAS_BLURB["unknown"])
     user = prompt.render_user(
         verified_facts=verified_text,
         stage=ctx.stage,
@@ -182,15 +180,11 @@ async def draft_prep_sections(
             or "(not configured)"
         ),
         applicant_work_auth_canada=_flag_text(cfg.applicant.work_auth_canada),
-        applicant_requires_visa_sponsorship=_flag_text(
-            cfg.applicant.requires_visa_sponsorship
-        ),
+        applicant_requires_visa_sponsorship=_flag_text(cfg.applicant.requires_visa_sponsorship),
         audit_summary=ctx.audit_summary or "(no application yet)",
         cover_summary=ctx.cover_summary or "(no cover letter drafted)",
         research_blob=_truncate(ctx.research_blob, _RESEARCH_MAX_CHARS) or "(none)",
-        interview_context=_format_interview_context_for_prompt(
-            build_interview_context(ctx.stage)
-        ),
+        interview_context=_format_interview_context_for_prompt(build_interview_context(ctx.stage)),
         recruiter_type=recruiter_type,
         recruiter_bias=recruiter_bias,
         revisions=revisions,
@@ -202,9 +196,7 @@ async def draft_prep_sections(
     # re-samples the violation it was just told to fix).
     temperature = 0.0 if revisions else prompt.temperature
 
-    model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get(
-        "tailor", "lite"
-    )
+    model = cfg.gateway.tasks.get(prompt.task) or cfg.gateway.tasks.get("tailor", "lite")
     raw = await complete_json(
         base_url=cfg.gateway.base_url,
         model=model,
@@ -231,8 +223,7 @@ def _decode_sections(raw: dict[str, Any], *, model: str) -> PrepDocSections:
         gaps = [_coerce_honest_gap(g) for g in raw["honest_gaps"]]
     except (KeyError, TypeError, ValueError) as e:
         raise PipelineError(
-            f"interview-prep returned malformed shape: {e} "
-            f"(keys={sorted(raw.keys())})"
+            f"interview-prep returned malformed shape: {e} (keys={sorted(raw.keys())})"
         ) from e
     return PrepDocSections(
         role_decode=role,
@@ -389,9 +380,7 @@ def validate_prep_sections(
             if phrase in reported:
                 continue
             if _bullet_claims_phrase(bullet_lower, phrase):
-                violations.append(
-                    f"candidate claim mirrors unverified JD phrase: {phrase!r}"
-                )
+                violations.append(f"candidate claim mirrors unverified JD phrase: {phrase!r}")
                 reported.add(phrase)
 
     for i, gap in enumerate(sections.honest_gaps, start=1):
@@ -400,9 +389,7 @@ def validate_prep_sections(
         # ("I have not shipped X") legitimately has no trace; bullet 2+
         # is where the bridge lives.
         non_empty = [r for r in gap.reframes if r.strip()]
-        if non_empty and not any(
-            _has_verified_trace(r, verified_blob_lower) for r in non_empty
-        ):
+        if non_empty and not any(_has_verified_trace(r, verified_blob_lower) for r in non_empty):
             violations.append(f"honest gap {i} reframe lacks verified trace")
         for bullet in non_empty:
             bullet_lower = bullet.lower()
@@ -473,8 +460,7 @@ def has_blocking_prep_violations(violations: list[str]) -> bool:
         "unverified anchor",
     )
     return any(
-        any(needle in violation.lower() for needle in blocking_needles)
-        for violation in violations
+        any(needle in violation.lower() for needle in blocking_needles) for violation in violations
     )
 
 
@@ -539,9 +525,7 @@ async def draft_prep_with_retry(
             return sections, [], attempt
         last_sections = sections
         last_violations = violations
-        revisions = _format_revision_hint(
-            violations, attempt, candidate_name=_name(verified)
-        )
+        revisions = _format_revision_hint(violations, attempt, candidate_name=_name(verified))
     assert last_sections is not None
 
     # Last-resort cleanup for qwen's repeat offenders in interview prep.
@@ -681,11 +665,7 @@ def _patch_prep_sections(sections: PrepDocSections, *, cfg: Config) -> PrepDocSe
         )
         for g in sections.honest_gaps
     ]
-    anchors = [
-        patch_claim(a)
-        for a in sections.strongest_anchors
-        if not _is_logistics_anchor(a)
-    ]
+    anchors = [patch_claim(a) for a in sections.strongest_anchors if not _is_logistics_anchor(a)]
     if len(anchors) != len(sections.strongest_anchors):
         changed = True
 
@@ -881,7 +861,7 @@ def _bullet_claims_phrase(bullet_lower: str, phrase: str) -> bool:
     if not _is_title_phrase(phrase):
         return True
     idx = bullet_lower.find(phrase)
-    window = bullet_lower[max(0, idx - 40):idx]
+    window = bullet_lower[max(0, idx - 40) : idx]
     return any(rx.search(window) for rx in _TITLE_OWNERSHIP_RES)
 
 
@@ -1231,9 +1211,9 @@ def extract_comp_section(
         )
     else:
         lines.append(
-            "- Suggested recruiter phrasing: \"Your range looks in line with what "
+            '- Suggested recruiter phrasing: "Your range looks in line with what '
             "I'm looking at. I'd want to confirm contract vs full-time structure "
-            "and benefits before locking a specific number.\""
+            'and benefits before locking a specific number."'
         )
     return "\n".join(lines)
 
@@ -1244,9 +1224,7 @@ def extract_comp_section(
 _AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(k)?", re.IGNORECASE)
 
 
-def _range_fit(
-    jd_cad_low: float, jd_cad_high: float, applicant_range_cad: str
-) -> str | None:
+def _range_fit(jd_cad_low: float, jd_cad_high: float, applicant_range_cad: str) -> str | None:
     """Compare the JD's annualized CAD range to the applicant's stated range.
 
     Returns "below" (JD tops out under the applicant floor), "above" (JD

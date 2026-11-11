@@ -22,24 +22,35 @@ app = typer.Typer(
 @app.command("certs", help="Show the most common certifications across scanned jobs.")
 def certs(
     top: int = typer.Option(
-        25, "--top", "-n", min=1, max=200,
+        25,
+        "--top",
+        "-n",
+        min=1,
+        max=200,
         help="Number of top certifications to display (default 25).",
     ),
     trend: bool = typer.Option(
-        False, "--trend",
+        False,
+        "--trend",
         help="Compare two adjacent time windows and show per-cert delta + a "
-             "'Potential new certs' review list. Bucket by COALESCE(posted_at, ingested_at).",
+        "'Potential new certs' review list. Bucket by COALESCE(posted_at, ingested_at).",
     ),
     window_days: int = typer.Option(
-        30, "--window-days", min=1, max=365,
+        30,
+        "--window-days",
+        min=1,
+        max=365,
         help="Width of each comparison window in days when --trend is set (default 30).",
     ),
     min_score: int | None = typer.Option(
-        None, "--min-score", min=0, max=100,
+        None,
+        "--min-score",
+        min=0,
+        max=100,
         help="Restrict the tally to jobs you scored at least this high. "
-             "Joins `scores`; unscored jobs are excluded. In --trend mode this "
-             "adds a `Fit` column + a per-cert `Verdict` (worth pursuing / skip / "
-             "wrong direction / etc).",
+        "Joins `scores`; unscored jobs are excluded. In --trend mode this "
+        "adds a `Fit` column + a per-cert `Verdict` (worth pursuing / skip / "
+        "wrong direction / etc).",
     ),
 ) -> None:
     from jobhunt.commands import ensure_profile
@@ -57,30 +68,33 @@ def certs(
         conn.close()
 
 
-def _render_snapshot(
-    conn: sqlite3.Connection, *, top: int, min_score: int | None
-) -> None:
+def _render_snapshot(conn: sqlite3.Connection, *, top: int, min_score: int | None) -> None:
     from jobhunt.analyze.certs import tally
 
     if min_score is None:
-        rows = list(conn.execute(
-            "SELECT title, description FROM jobs WHERE description IS NOT NULL"
-        ))
+        rows = list(
+            conn.execute("SELECT title, description FROM jobs WHERE description IS NOT NULL")
+        )
         filter_note = ""
     else:
-        rows = list(conn.execute(
-            """
+        rows = list(
+            conn.execute(
+                """
             SELECT j.title, j.description FROM jobs j
             JOIN scores s ON s.job_id = j.id
             WHERE j.description IS NOT NULL AND s.score >= ?
             """,
-            (min_score,),
-        ))
+                (min_score,),
+            )
+        )
         filter_note = f" (fit_filter: score >= {min_score})"
 
     if not rows:
-        msg = "no scored jobs at that threshold." if min_score is not None \
+        msg = (
+            "no scored jobs at that threshold."
+            if min_score is not None
             else "no jobs scanned yet — run `jobhunt scan` first."
+        )
         typer.echo(msg)
         raise typer.Exit(code=0)
 
@@ -125,9 +139,7 @@ _VERDICT_PRIORITY: dict[str, int] = {
 }
 
 
-def _classify_verdict(
-    *, fit_cur: int, cur: int, trend_label: str, demand_rank: int | None
-) -> str:
+def _classify_verdict(*, fit_cur: int, cur: int, trend_label: str, demand_rank: int | None) -> str:
     """Decision rubric: is this cert worth pursuing?
 
     `fit_cur` = jobs you scored ≥ min_score that mention this cert in the
@@ -176,16 +188,18 @@ def _fetch_window(
     """Return rows whose bucket date falls in [today - start, today - end].
     `start_days_ago` must be ≥ `end_days_ago`. Bucket field is
     `COALESCE(posted_at, ingested_at)`."""
-    return list(conn.execute(
-        """
+    return list(
+        conn.execute(
+            """
         SELECT title, description
         FROM jobs
         WHERE description IS NOT NULL
           AND julianday('now') - julianday(COALESCE(posted_at, ingested_at))
               BETWEEN ? AND ?
         """,
-        (end_days_ago, start_days_ago),
-    ))
+            (end_days_ago, start_days_ago),
+        )
+    )
 
 
 def _fetch_window_with_score(
@@ -196,8 +210,9 @@ def _fetch_window_with_score(
     min_score: int,
 ) -> list[sqlite3.Row]:
     """Same window as `_fetch_window`, restricted to jobs with score >= min_score."""
-    return list(conn.execute(
-        """
+    return list(
+        conn.execute(
+            """
         SELECT j.title, j.description
         FROM jobs j
         JOIN scores s ON s.job_id = j.id
@@ -206,8 +221,9 @@ def _fetch_window_with_score(
           AND julianday('now') - julianday(COALESCE(j.posted_at, j.ingested_at))
               BETWEEN ? AND ?
         """,
-        (min_score, end_days_ago, start_days_ago),
-    ))
+            (min_score, end_days_ago, start_days_ago),
+        )
+    )
 
 
 def _render_trend(
@@ -219,18 +235,14 @@ def _render_trend(
 ) -> None:
     from jobhunt.analyze.certs import tally, tally_split
 
-    prev_rows = _fetch_window(
-        conn, start_days_ago=window_days * 2, end_days_ago=window_days
-    )
+    prev_rows = _fetch_window(conn, start_days_ago=window_days * 2, end_days_ago=window_days)
     cur_rows = _fetch_window(conn, start_days_ago=window_days, end_days_ago=0)
 
     if not cur_rows and not prev_rows:
         typer.echo("no jobs in either window — run `jobhunt scan` first.")
         raise typer.Exit(code=0)
 
-    prev_counts: Counter[str] = (
-        tally(dict(row) for row in prev_rows) if prev_rows else Counter()
-    )
+    prev_counts: Counter[str] = tally(dict(row) for row in prev_rows) if prev_rows else Counter()
     if cur_rows:
         cur_counts, generic_counts = tally_split(dict(row) for row in cur_rows)
     else:
@@ -261,15 +273,25 @@ def _render_trend(
         verdict = ""
         if min_score is not None:
             verdict = _classify_verdict(
-                fit_cur=fit_cur, cur=cur,
-                trend_label=label, demand_rank=demand_rank.get(name),
+                fit_cur=fit_cur,
+                cur=cur,
+                trend_label=label,
+                demand_rank=demand_rank.get(name),
             )
-        trend_rows.append(_TrendRow(
-            name=name, prev=prev, cur=cur, pct_change=pct, trend_label=label,
-            fit_cur=fit_cur, verdict=verdict,
-        ))
+        trend_rows.append(
+            _TrendRow(
+                name=name,
+                prev=prev,
+                cur=cur,
+                pct_change=pct,
+                trend_label=label,
+                fit_cur=fit_cur,
+                verdict=verdict,
+            )
+        )
 
     if min_score is not None:
+
         def _key(r: _TrendRow) -> tuple[int, int, float, str]:
             magnitude = float("inf") if r.pct_change == float("inf") else abs(r.pct_change)
             return (
@@ -279,9 +301,11 @@ def _render_trend(
                 r.name,
             )
     else:
+
         def _key(r: _TrendRow) -> tuple[int, int, float, str]:
             magnitude = float("inf") if r.pct_change == float("inf") else abs(r.pct_change)
             return (0, -r.cur, -magnitude, r.name)
+
     trend_rows.sort(key=_key)
     top_rows = trend_rows[:top]
 
@@ -297,10 +321,7 @@ def _render_trend(
             f"{'Trend':<18}  {'Fit':>4}  Verdict"
         )
     else:
-        header = (
-            f"{'Certification':<{name_w}}  {'Prev':>5}  {'Cur':>5}  "
-            f"{'Δ%':>7}  Trend"
-        )
+        header = f"{'Certification':<{name_w}}  {'Prev':>5}  {'Cur':>5}  {'Δ%':>7}  Trend"
     typer.echo(header)
     typer.echo("-" * (len(header) + verdict_w + 4))
     for r in top_rows:
@@ -311,9 +332,7 @@ def _render_trend(
                 f"{r.trend_label:<18}  {r.fit_cur:>4}  {r.verdict}"
             )
         else:
-            typer.echo(
-                f"{r.name:<{name_w}}  {r.prev:>5}  {r.cur:>5}  {pct_s:>7}  {r.trend_label}"
-            )
+            typer.echo(f"{r.name:<{name_w}}  {r.prev:>5}  {r.cur:>5}  {pct_s:>7}  {r.trend_label}")
 
     # Potential new certs (generic-regex hits ≥ 2 in the current window).
     review = [(name, count) for name, count in generic_counts.most_common() if count >= 2]
@@ -339,17 +358,71 @@ def _render_trend(
 # audit. Matched against JD bodies as word-boundary regexes so "node" doesn't
 # match "nodes" and "react" doesn't match "reactive". Order does not matter.
 _TECH_TOKENS = (
-    "react", "vue", "angular", "svelte", "next.js", "nextjs", "nuxt", "remix",
-    "typescript", "javascript", "node.js", "nodejs", "python", "go", "rust",
-    "java", "kotlin", "scala", "ruby", "php", "c#", ".net", "swift",
-    "django", "flask", "fastapi", "rails", "laravel", "spring boot", "express",
-    "postgres", "postgresql", "mysql", "mongodb", "redis", "dynamodb",
-    "graphql", "rest", "grpc", "kafka", "rabbitmq",
-    "docker", "kubernetes", "terraform", "aws", "gcp", "azure",
-    "shopify", "hubspot", "wordpress", "contentful", "sanity", "strapi",
-    "playwright", "cypress", "jest", "vitest",
-    "ollama", "langchain", "llamaindex", "openai", "anthropic", "claude",
-    "ci/cd", "github actions",
+    "react",
+    "vue",
+    "angular",
+    "svelte",
+    "next.js",
+    "nextjs",
+    "nuxt",
+    "remix",
+    "typescript",
+    "javascript",
+    "node.js",
+    "nodejs",
+    "python",
+    "go",
+    "rust",
+    "java",
+    "kotlin",
+    "scala",
+    "ruby",
+    "php",
+    "c#",
+    ".net",
+    "swift",
+    "django",
+    "flask",
+    "fastapi",
+    "rails",
+    "laravel",
+    "spring boot",
+    "express",
+    "postgres",
+    "postgresql",
+    "mysql",
+    "mongodb",
+    "redis",
+    "dynamodb",
+    "graphql",
+    "rest",
+    "grpc",
+    "kafka",
+    "rabbitmq",
+    "docker",
+    "kubernetes",
+    "terraform",
+    "aws",
+    "gcp",
+    "azure",
+    "shopify",
+    "hubspot",
+    "wordpress",
+    "contentful",
+    "sanity",
+    "strapi",
+    "playwright",
+    "cypress",
+    "jest",
+    "vitest",
+    "ollama",
+    "langchain",
+    "llamaindex",
+    "openai",
+    "anthropic",
+    "claude",
+    "ci/cd",
+    "github actions",
 )
 _TOKEN_PATTERNS = {
     tok: re.compile(rf"(?<![A-Za-z0-9]){re.escape(tok)}(?![A-Za-z0-9])", re.IGNORECASE)
@@ -370,16 +443,24 @@ def _window_cutoff(days: int) -> str:
 @app.command("skills", help="Aggregate analyses over skill mentions in scanned jobs.")
 def skills(
     gaps: bool = typer.Option(
-        False, "--gaps",
+        False,
+        "--gaps",
         help="Compatibility flag. Gaps is the default view.",
         hidden=True,
     ),
     window_days: int = typer.Option(
-        30, "--window-days", min=1, max=365,
+        30,
+        "--window-days",
+        min=1,
+        max=365,
         help="Limit to jobs ingested in the last N days (default 30).",
     ),
     top: int = typer.Option(
-        20, "--top", "-n", min=1, max=100,
+        20,
+        "--top",
+        "-n",
+        min=1,
+        max=100,
         help="Number of top skills to display (default 20).",
     ),
 ) -> None:
@@ -437,8 +518,7 @@ def skills(
 
     rows_out.sort(key=lambda x: -x[3])
     typer.echo(
-        f"\nwindow: last {window_days}d "
-        f"({decline_total} declined, {accept_total} accepted)\n"
+        f"\nwindow: last {window_days}d ({decline_total} declined, {accept_total} accepted)\n"
     )
     typer.echo(f"{'Skill':<22} {'Declined':>9} {'Accepted':>9} {'Decline-share Δ':>16}")
     typer.echo("-" * 60)
@@ -449,12 +529,16 @@ def skills(
 @app.command("employers", help="Hiring velocity by configured ATS slug.")
 def employers(
     hiring_velocity: bool = typer.Option(
-        False, "--hiring-velocity",
+        False,
+        "--hiring-velocity",
         help="Compatibility flag. Hiring velocity is the default view.",
         hidden=True,
     ),
     window_days: int = typer.Option(
-        30, "--window-days", min=1, max=365,
+        30,
+        "--window-days",
+        min=1,
+        max=365,
         help="Width of window in days (default 30).",
     ),
 ) -> None:
@@ -520,7 +604,8 @@ def employers(
 @app.command("response-rate", help="Per-bucket interview/response rate.")
 def response_rate(
     by: str = typer.Option(
-        "score", "--by",
+        "score",
+        "--by",
         help="Bucket key: 'score' (band), 'ats' (source), or 'channel'.",
     ),
 ) -> None:
@@ -559,8 +644,12 @@ def response_rate(
             sc = r["score"]
             if sc is None:
                 return "unscored"
-            for lo, hi, label in [(85, 101, "85–100"), (75, 85, "75–84"),
-                                  (65, 75, "65–74"), (0, 65, "< 65")]:
+            for lo, hi, label in [
+                (85, 101, "85–100"),
+                (75, 85, "75–84"),
+                (65, 75, "65–74"),
+                (0, 65, "< 65"),
+            ]:
                 if lo <= sc < hi:
                     return label
             return "—"
@@ -598,7 +687,9 @@ def response_rate(
 @app.command("funnel", help="Application funnel: applied → responded → interviewed → offer.")
 def funnel(
     by: str | None = typer.Option(
-        None, "--by", help="Optional split key: 'channel'.",
+        None,
+        "--by",
+        help="Optional split key: 'channel'.",
     ),
 ) -> None:
     """Aggregates every submitted application into funnel stages, with the
@@ -642,7 +733,9 @@ def funnel(
 
     def _responded(r: sqlite3.Row) -> bool:
         return r["response_received_at"] is not None or r["status"] in {
-            "interviewing", "offer", "rejected",
+            "interviewing",
+            "offer",
+            "rejected",
         }
 
     def _interviewed(r: sqlite3.Row) -> bool:
@@ -674,8 +767,7 @@ def funnel(
 
     typer.echo(f"\napplication funnel ({len(rows)} applications):\n")
     typer.echo(
-        f"{'Bucket':<14} {'Applied':>8} {'Resp':>6} {'':>6} "
-        f"{'Intvw':>6} {'':>6} {'Offer':>5}"
+        f"{'Bucket':<14} {'Applied':>8} {'Resp':>6} {'':>6} {'Intvw':>6} {'':>6} {'Offer':>5}"
     )
     typer.echo("-" * 78)
     if by == "channel":
@@ -691,11 +783,18 @@ def funnel(
 @app.command("validators", help="Which cover-letter validators fired most over a window.")
 def validators(
     window_days: int = typer.Option(
-        30, "--window-days", min=1, max=365,
+        30,
+        "--window-days",
+        min=1,
+        max=365,
         help="Limit to audit files modified in the last N days (default 30).",
     ),
     top: int = typer.Option(
-        20, "--top", "-n", min=1, max=100,
+        20,
+        "--top",
+        "-n",
+        min=1,
+        max=100,
         help="Number of top rules to display (default 20).",
     ),
 ) -> None:

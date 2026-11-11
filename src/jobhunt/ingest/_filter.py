@@ -44,9 +44,7 @@ _NON_CANADA_REMOTE = re.compile(
 )
 # GTA city match, word-boundaried so a city name can't fire inside a longer
 # word. Multi-word entries ("richmond hill") still match as phrases.
-_GTA_CITY_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(c) for c in GTA_CITIES) + r")\b"
-)
+_GTA_CITY_RE = re.compile(r"\b(?:" + "|".join(re.escape(c) for c in GTA_CITIES) + r")\b")
 # Non-Canada anchor veto for the city branch (June 2026): GTA city names are
 # not globally unique — Cambridge MA, Burlington VT, Richmond Hill NY,
 # Hamilton NZ, Markham IL, Waterloo Belgium, Milton Keynes UK all passed the
@@ -66,9 +64,7 @@ _NON_CANADA_ANCHOR = re.compile(
     re.IGNORECASE,
 )
 # Strong Canada hints — any one of these is sufficient.
-_CANADA_STRONG = re.compile(
-    r"\b(?:canada|canadian|ontario|toronto|gta)\b", re.IGNORECASE
-)
+_CANADA_STRONG = re.compile(r"\b(?:canada|canadian|ontario|toronto|gta)\b", re.IGNORECASE)
 # Weak Canada hints — "EST"/"Eastern Time"/the "on" province code. May 2026:
 # these are too noisy to act on alone (US Eastern Time is also EST; "Remote
 # (Eastern Time, US-only)" was being accepted as Canadian). Require BOTH a

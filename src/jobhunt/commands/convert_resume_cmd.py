@@ -51,8 +51,26 @@ _GITHUB_RE = re.compile(r"(?:https?://)?(?:www\.)?github\.com/\S+", re.IGNORECAS
 # allowlist is what keeps a bare-domain pattern from eating library names that
 # happen to look like hosts (`Node.js`, `Next.js`) out of a title line.
 _PORTFOLIO_TLDS = (
-    "com", "net", "org", "io", "dev", "ca", "co", "me", "ai", "app", "sh",
-    "xyz", "tech", "site", "page", "blog", "design", "studio", "us", "uk",
+    "com",
+    "net",
+    "org",
+    "io",
+    "dev",
+    "ca",
+    "co",
+    "me",
+    "ai",
+    "app",
+    "sh",
+    "xyz",
+    "tech",
+    "site",
+    "page",
+    "blog",
+    "design",
+    "studio",
+    "us",
+    "uk",
 )
 _PORTFOLIO_RE = re.compile(
     r"(?:https?://)?(?:www\.)?"
@@ -62,10 +80,19 @@ _PORTFOLIO_RE = re.compile(
     re.IGNORECASE,
 )
 _REGION_EXPANSIONS = {
-    "ON": "Ontario", "QC": "Quebec", "BC": "British Columbia", "AB": "Alberta",
-    "MB": "Manitoba", "SK": "Saskatchewan", "NS": "Nova Scotia", "NB": "New Brunswick",
-    "NL": "Newfoundland and Labrador", "PE": "Prince Edward Island",
-    "YT": "Yukon", "NT": "Northwest Territories", "NU": "Nunavut",
+    "ON": "Ontario",
+    "QC": "Quebec",
+    "BC": "British Columbia",
+    "AB": "Alberta",
+    "MB": "Manitoba",
+    "SK": "Saskatchewan",
+    "NS": "Nova Scotia",
+    "NB": "New Brunswick",
+    "NL": "Newfoundland and Labrador",
+    "PE": "Prince Edward Island",
+    "YT": "Yukon",
+    "NT": "Northwest Territories",
+    "NU": "Nunavut",
 }
 
 # Both spellings a resume might use, mapped to the canonical long form.
@@ -213,10 +240,7 @@ def _dropped_content_warnings(warnings: list[str]) -> list[str]:
     tailoring treat `verified.json` as the whole truth — so the safe default
     for an unfamiliar warning is to refuse the write and let a human look.
     """
-    return [
-        w for w in warnings
-        if not any(marker in w for marker in _BENIGN_WARNING_MARKERS)
-    ]
+    return [w for w in warnings if not any(marker in w for marker in _BENIGN_WARNING_MARKERS)]
 
 
 # Buckets worth comparing against the previous snapshot, paired with the label
@@ -261,9 +285,7 @@ _TRACKED_BUCKETS: tuple[tuple[str, str], ...] = (
 _OPTIONAL_BUCKETS: frozenset[str] = frozenset({"skills_familiar"})
 
 
-def _bucket_regressions(
-    facts: VerifiedFacts, verified_path: Path
-) -> tuple[list[str], list[str]]:
+def _bucket_regressions(facts: VerifiedFacts, verified_path: Path) -> tuple[list[str], list[str]]:
     """Buckets that carried content last run and parse empty now.
 
     Returns `(blocking, advisory)`. Blocking entries are appended to the parser
@@ -339,9 +361,7 @@ def run(
         docx = find_baseline_resume(resume_dir, explicit=docx)
     except PipelineError as e:
         typer.echo(f"error: {e}", err=True)
-        typer.echo(
-            f"put the resume in {resume_dir} or pass --docx <path>.", err=True
-        )
+        typer.echo(f"put the resume in {resume_dir} or pass --docx <path>.", err=True)
         raise typer.Exit(code=1) from e
     typer.echo(describe_choice(docx, resume_dir))
 

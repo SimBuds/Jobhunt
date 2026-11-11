@@ -1,4 +1,5 @@
 """Junior-title override on Senior-band declines (2026-05-22)."""
+
 from __future__ import annotations
 
 import pytest

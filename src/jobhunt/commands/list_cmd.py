@@ -28,6 +28,7 @@ class _AuditSummary:
     verdict: str | None
     coverage_pct: int | None
 
+
 app = typer.Typer(
     help="List scored jobs and weekly application pipeline.",
     invoke_without_command=True,
@@ -49,12 +50,8 @@ def run(
     drafted: bool = typer.Option(
         False, "--drafted", "--draft", help="Show drafted application rows."
     ),
-    applied: bool = typer.Option(
-        False, "--applied", help="Show submitted application rows."
-    ),
-    withdrawn: bool = typer.Option(
-        False, "--withdrawn", help="Show withdrawn application rows."
-    ),
+    applied: bool = typer.Option(False, "--applied", help="Show submitted application rows."),
+    withdrawn: bool = typer.Option(False, "--withdrawn", help="Show withdrawn application rows."),
     min_score: int | None = typer.Option(
         None, "--min-score", help="Filter scored jobs by minimum score."
     ),
@@ -62,20 +59,24 @@ def run(
         None, "--source", help="Filter by source (greenhouse/lever/ashby/adzuna_ca)."
     ),
     verdict: str | None = typer.Option(
-        None, "--verdict",
+        None,
+        "--verdict",
         help=f"Filter applied jobs by audit verdict ({', '.join(VALID_VERDICTS)}).",
     ),
     no_reply: bool = typer.Option(
-        False, "--no-reply",
+        False,
+        "--no-reply",
         help="Only applications that were submitted but have no recorded response.",
     ),
     older_than: str | None = typer.Option(
-        None, "--older-than",
+        None,
+        "--older-than",
         help="Only applications submitted before NOW - duration (e.g. 14d, 2w).",
     ),
     limit: int = typer.Option(10, "--limit", help="Max rows to display."),
     as_json: bool = typer.Option(
-        False, "--json",
+        False,
+        "--json",
         help="Print one JSON object on stdout. Human output moves to stderr.",
     ),
 ) -> None:
@@ -138,9 +139,7 @@ def run(
             )
             rows_with_audit = [(r, _load_audit_summary(cfg, r["id"])) for r in rows]
             if verdict is not None:
-                rows_with_audit = [
-                    (r, a) for r, a in rows_with_audit if a.verdict == verdict
-                ]
+                rows_with_audit = [(r, a) for r, a in rows_with_audit if a.verdict == verdict]
             # Default sort: ship-first then score-desc when no explicit "filter
             # that already implies an order" is set. --week / --status keep the
             # SQL ordering. --verdict implies the user wants verdict-grouped
@@ -219,9 +218,7 @@ def _load_audit_summary(cfg: Config, job_id: str) -> _AuditSummary:
     yield `_AuditSummary(None, None)` — the audit file is a side effect of
     `apply`, not load-bearing for `list`.
     """
-    audit_path = (
-        cfg.paths.data_dir / "applications" / _safe_id(job_id) / "audit.json"
-    )
+    audit_path = cfg.paths.data_dir / "applications" / _safe_id(job_id) / "audit.json"
     if not audit_path.is_file():
         return _AuditSummary(verdict=None, coverage_pct=None)
     try:

@@ -77,8 +77,7 @@ def run(
         outcome = asyncio.run(_probe(cfg, extracted))
         if outcome.status == 200:
             typer.echo(
-                f"probe ok: {extracted.ats}/{extracted.slug} "
-                f"({outcome.job_count} active postings)"
+                f"probe ok: {extracted.ats}/{extracted.slug} ({outcome.job_count} active postings)"
             )
         elif outcome.status == 404:
             typer.echo(
@@ -118,9 +117,7 @@ async def _probe(cfg: Config, extracted: ExtractedSlug) -> ProbeOutcome:
         },
         follow_redirects=True,
     ) as client:
-        return await _probe_one(
-            client, limiter, extracted.slug, extracted.ats, extracted.slug
-        )
+        return await _probe_one(client, limiter, extracted.slug, extracted.ats, extracted.slug)
 
 
 __all__ = ["app", "run"]

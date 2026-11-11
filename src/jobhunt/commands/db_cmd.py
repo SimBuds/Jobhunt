@@ -247,8 +247,7 @@ def gc(
             return
 
         by_kind = {
-            k: [o for o in orphans if o.kind == k]
-            for k in ("adoptable", "stale", "blocked")
+            k: [o for o in orphans if o.kind == k] for k in ("adoptable", "stale", "blocked")
         }
         for kind, label in (
             ("adoptable", "adoptable (rendered docs, no row)"),
@@ -278,9 +277,7 @@ def gc(
             else:
                 if not force:
                     typer.echo(f"\nprune will delete {len(targets)} dir(s).")
-                    answer = typer.prompt(
-                        "type 'yes' to confirm", default="no", show_default=False
-                    )
+                    answer = typer.prompt("type 'yes' to confirm", default="no", show_default=False)
                     if answer.strip().lower() not in ("yes", "y"):
                         typer.echo("gc: prune cancelled.")
                         raise typer.Exit(code=1)

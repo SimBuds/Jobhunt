@@ -215,11 +215,19 @@ def test_rejects_project_url_tampering():
 def test_parse_decodes_projects():
     """PB4a decode: the LLM's `projects` array becomes TailoredProject entries."""
     raw = {
-        "summary": "x", "skills_categories": [], "roles": [],
-        "certifications": [], "education": [], "coursework": [],
+        "summary": "x",
+        "skills_categories": [],
+        "roles": [],
+        "certifications": [],
+        "education": [],
+        "coursework": [],
         "projects": [
-            {"name": "jobhunt", "url": "github.com/SimBuds/Jobhunt",
-             "stack": ["Python"], "bullets": ["Built X."]},
+            {
+                "name": "jobhunt",
+                "url": "github.com/SimBuds/Jobhunt",
+                "stack": ["Python"],
+                "bullets": ["Built X."],
+            },
         ],
     }
     t = _parse(raw, "test")
@@ -231,8 +239,12 @@ def test_parse_decodes_projects():
 def test_parse_tolerates_missing_projects():
     """A resume with no projects key decodes to an empty list (back-compat)."""
     raw = {
-        "summary": "x", "skills_categories": [], "roles": [],
-        "certifications": [], "education": [], "coursework": [],
+        "summary": "x",
+        "skills_categories": [],
+        "roles": [],
+        "certifications": [],
+        "education": [],
+        "coursework": [],
     }
     assert _parse(raw, "test").projects == []
 
@@ -378,14 +390,18 @@ def test_try_drop_weakest_bullet_defers_present_role():
     from jobhunt.pipeline.tailor import _try_drop_weakest_bullet
 
     present_role = TailoredRole(
-        "Dev", "Acme", "2023 – Present",
+        "Dev",
+        "Acme",
+        "2023 – Present",
         bullets=[
             "Lead bullet for current role: built Shopify storefront.",
             "Second bullet for current role: shipped ring builder.",
         ],
     )
     older_role = TailoredRole(
-        "Dev", "BetaCo", "2021 – 2023",
+        "Dev",
+        "BetaCo",
+        "2021 – 2023",
         bullets=[
             "Lead bullet for older role: ran technical SEO audits and integrations.",
             "Second bullet for older role: bulk JSON catalog migration touching 400+ items.",
@@ -396,7 +412,10 @@ def test_try_drop_weakest_bullet_defers_present_role():
         summary="x",
         skills_categories=[TailoredCategory("Core", ["JavaScript"])],
         roles=[present_role, older_role],
-        certifications=[], education=[], coursework=[], model="test",
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
     assert _try_drop_weakest_bullet(t) is True
     # Older role should have lost its last bullet; Present role intact.
@@ -409,18 +428,25 @@ def test_try_drop_weakest_bullet_falls_through_to_present_when_no_other_spare():
     from jobhunt.pipeline.tailor import _try_drop_weakest_bullet
 
     present_role = TailoredRole(
-        "Dev", "Acme", "2023 – Present",
+        "Dev",
+        "Acme",
+        "2023 – Present",
         bullets=["Lead bullet.", "Second bullet."],
     )
     older_role = TailoredRole(
-        "Dev", "BetaCo", "2021 – 2023",
+        "Dev",
+        "BetaCo",
+        "2021 – 2023",
         bullets=["Only bullet."],
     )
     t = TailoredResume(
         summary="x",
         skills_categories=[TailoredCategory("Core", ["JavaScript"])],
         roles=[present_role, older_role],
-        certifications=[], education=[], coursework=[], model="test",
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
     assert _try_drop_weakest_bullet(t) is True
     assert len(present_role.bullets) == 1
@@ -440,15 +466,28 @@ def test_cap_lead_category_at_10_overflows_to_secondary():
             TailoredCategory(
                 "Frontend & CMS",
                 [
-                    "React", "Next.js", "JavaScript", "TypeScript", "HTML5",
-                    "CSS3", "Shopify", "HubSpot", "WordPress", "Contentful",
-                    "REST", "GH Actions",  # 12 items, last 2 are overflow
+                    "React",
+                    "Next.js",
+                    "JavaScript",
+                    "TypeScript",
+                    "HTML5",
+                    "CSS3",
+                    "Shopify",
+                    "HubSpot",
+                    "WordPress",
+                    "Contentful",
+                    "REST",
+                    "GH Actions",  # 12 items, last 2 are overflow
                 ],
             ),
             TailoredCategory("Backend & Data", ["Node", "Express", "Postgres"]),
             TailoredCategory("Familiar", ["Java", "Spring Boot"]),
         ],
-        roles=[], certifications=[], education=[], coursework=[], model="test",
+        roles=[],
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
     _cap_lead_category_size(tailored)
     assert len(tailored.skills_categories[0].items) == 10
@@ -475,7 +514,11 @@ def test_cap_lead_category_creates_additional_when_no_secondary():
             ),
             TailoredCategory("Familiar", ["Java"]),
         ],
-        roles=[], certifications=[], education=[], coursework=[], model="test",
+        roles=[],
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
     _cap_lead_category_size(tailored)
     assert len(tailored.skills_categories[0].items) == 10
@@ -494,7 +537,11 @@ def test_cap_lead_category_no_op_when_already_under_cap():
             TailoredCategory("Frontend & UI", ["React"] * 8),
             TailoredCategory("Familiar", ["Java"]),
         ],
-        roles=[], certifications=[], education=[], coursework=[], model="test",
+        roles=[],
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
     before = [(c.name, list(c.items)) for c in tailored.skills_categories]
     _cap_lead_category_size(tailored)
@@ -547,7 +594,9 @@ def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
     long_bullet = "A long project bullet describing a shipped system in real detail. " * 2
     projects = [
         TailoredProject(
-            f"proj{i}", f"github.com/x/proj{i}", ["Python", "Docker"],
+            f"proj{i}",
+            f"github.com/x/proj{i}",
+            ["Python", "Docker"],
             [long_bullet, long_bullet, long_bullet],
         )
         # 20, not 8, since 6c.3: a project now costs one rendered line, so 8
@@ -558,7 +607,10 @@ def test_shrink_trims_projects_last_and_keeps_a_lead_bullet():
         summary="Full-stack developer. Builds things end to end. Ships production code.",
         skills_categories=[TailoredCategory("Core", ["JavaScript"])],
         roles=[TailoredRole("Dev", "Acme", "2023 – Present", ["One lead bullet."])],
-        certifications=[], education=[], coursework=[], model="test",
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
         projects=projects,
     )
     assert not fits_one_page(t)  # 20 one-line projects overflow
@@ -789,8 +841,7 @@ def test_earlier_career_flag_is_copied_by_employer_and_dates():
         **VERIFIED,
         "work_history": [
             {"employer": "Acme", "dates": "2023 – Present", "title": "Dev"},
-            {"employer": "BetaCo", "dates": "2021 – 2023", "title": "Cook",
-             "earlier_career": True},
+            {"employer": "BetaCo", "dates": "2021 – 2023", "title": "Cook", "earlier_career": True},
         ],
     }
     t = _make()
@@ -819,7 +870,10 @@ def _one_role(bullets: list[str]) -> TailoredResume:
         summary="x",
         skills_categories=[TailoredCategory("Core", ["JavaScript"])],
         roles=[TailoredRole("Dev", "BetaCo", "2021 – 2023", list(bullets))],
-        certifications=[], education=[], coursework=[], model="test",
+        certifications=[],
+        education=[],
+        coursework=[],
+        model="test",
     )
 
 
@@ -833,7 +887,8 @@ def _drop(bullets: list[str]) -> list[str]:
 
 def test_unquantified_bullet_goes_before_a_later_quantified_one():
     assert _drop(["Lead.", "Kept the site updated.", "Cut load time 25%."]) == [
-        "Lead.", "Cut load time 25%.",
+        "Lead.",
+        "Cut load time 25%.",
     ]
 
 

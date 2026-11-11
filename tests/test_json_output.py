@@ -41,16 +41,37 @@ def _seed(migrations_dir: Path, *, jobs: bool = True) -> Config:
     if jobs:
         with conn:
             for n, score in (("1", 80), ("2", 65)):
-                upsert_job(conn, Job(
-                    id=f"greenhouse:acme:{n}", source="greenhouse", external_id=n,
-                    company="Acme", title=f"Developer {n}", location="Toronto, ON",
-                    description=SENTINEL, url=f"https://example.com/{n}",
-                ))
-                write_score(conn, job_id=f"greenhouse:acme:{n}", score=score, reasons=[],
-                            red_flags=[], must_clarify=[], model="t", prompt_hash="t")
+                upsert_job(
+                    conn,
+                    Job(
+                        id=f"greenhouse:acme:{n}",
+                        source="greenhouse",
+                        external_id=n,
+                        company="Acme",
+                        title=f"Developer {n}",
+                        location="Toronto, ON",
+                        description=SENTINEL,
+                        url=f"https://example.com/{n}",
+                    ),
+                )
+                write_score(
+                    conn,
+                    job_id=f"greenhouse:acme:{n}",
+                    score=score,
+                    reasons=[],
+                    red_flags=[],
+                    must_clarify=[],
+                    model="t",
+                    prompt_hash="t",
+                )
             upsert_application(
-                conn, application_id="a2", job_id="greenhouse:acme:2", status="applied",
-                resume_path=None, cover_path=None, fill_plan_path=None,
+                conn,
+                application_id="a2",
+                job_id="greenhouse:acme:2",
+                status="applied",
+                resume_path=None,
+                cover_path=None,
+                fill_plan_path=None,
                 applied_week="2026-W45",
             )
         audit = cfg.paths.data_dir / "applications" / _safe_id("greenhouse:acme:1")
@@ -75,10 +96,16 @@ def test_list_json_stdout_is_one_envelope(migrations_dir: Path) -> None:
     assert out["exit_code"] == 0
     assert out["error"] is None
     assert out["count"] == 1
-    assert out["jobs"] == [{
-        "id": "greenhouse:acme:1", "title": "Developer 1", "company": "Acme",
-        "score": 80, "status": None, "verdict": "ship",
-    }]
+    assert out["jobs"] == [
+        {
+            "id": "greenhouse:acme:1",
+            "title": "Developer 1",
+            "company": "Acme",
+            "score": 80,
+            "status": None,
+            "verdict": "ship",
+        }
+    ]
 
 
 def test_list_json_sends_human_lines_to_stderr(migrations_dir: Path) -> None:
@@ -174,17 +201,24 @@ def test_helper_routes_print_and_echo_to_stderr(capsys: pytest.CaptureFixture[st
     captured = capsys.readouterr()
     assert "human line" in captured.err and "echoed line" in captured.err
     assert json.loads(captured.out) == {
-        "schema": 1, "command": "demo", "ok": True, "exit_code": 0, "error": None, "n": 1,
+        "schema": 1,
+        "command": "demo",
+        "ok": True,
+        "exit_code": 0,
+        "error": None,
+        "n": 1,
     }
     assert sys.stdout is before
 
 
 @pytest.mark.parametrize(
     ("exc", "code", "cls"),
-    [(errors.GatewayUnavailableError("down"), 13, "GatewayUnavailableError"),
-     (errors.PipelineError("x"), 12, "PipelineError"),
-     (typer.Exit(code=2), 2, "Exit"),
-     (RuntimeError("bug"), 1, "RuntimeError")],
+    [
+        (errors.GatewayUnavailableError("down"), 13, "GatewayUnavailableError"),
+        (errors.PipelineError("x"), 12, "PipelineError"),
+        (typer.Exit(code=2), 2, "Exit"),
+        (RuntimeError("bug"), 1, "RuntimeError"),
+    ],
 )
 def test_helper_reports_an_escaping_exception_and_reraises(
     exc: BaseException, code: int, cls: str, capsys: pytest.CaptureFixture[str]
@@ -223,16 +257,27 @@ _FILTERED = {"mgmt": 1, "stale": 2, "research": 0, "non_eng": 0, "senior": 0, "d
 def _fake_ingest(n_jobs: int):
     """Stand-in for `_ingest_all`: inserts `n_jobs` and reports one failed source
     whose error text (a URL, a body) must not reach the envelope."""
+
     async def ingest(cfg: Config, conn: Any, *, max_age_days: int) -> Any:
         with conn:
             for n in range(1, n_jobs + 1):
-                upsert_job(conn, Job(
-                    id=f"greenhouse:acme:{n}", source="greenhouse", external_id=str(n),
-                    company="Acme", title=f"Developer {n}", location="Toronto, ON",
-                    description=SENTINEL, url=f"https://example.com/{n}",
-                ))
-        per_source = [("greenhouse", "acme", n_jobs, None),
-                      ("lever", "globex", 0, f"HTTP 500 {SENTINEL}")]
+                upsert_job(
+                    conn,
+                    Job(
+                        id=f"greenhouse:acme:{n}",
+                        source="greenhouse",
+                        external_id=str(n),
+                        company="Acme",
+                        title=f"Developer {n}",
+                        location="Toronto, ON",
+                        description=SENTINEL,
+                        url=f"https://example.com/{n}",
+                    ),
+                )
+        per_source = [
+            ("greenhouse", "acme", n_jobs, None),
+            ("lever", "globex", 0, f"HTTP 500 {SENTINEL}"),
+        ]
         return n_jobs, per_source, dict(_FILTERED)
 
     return ingest
@@ -249,12 +294,19 @@ def _fake_score(outcomes: dict[str, Any]):
 
 
 def _scored(score: int, decline: str | None = None) -> Any:
-    return SimpleNamespace(score=score, matched_must_haves=[], decline_reason=decline,
-                           gaps=[SENTINEL], model="t", breakdown=None)
+    return SimpleNamespace(
+        score=score,
+        matched_must_haves=[],
+        decline_reason=decline,
+        gaps=[SENTINEL],
+        model="t",
+        breakdown=None,
+    )
 
 
-def _scan_setup(migrations_dir: Path, monkeypatch: pytest.MonkeyPatch, n_jobs: int,
-                outcomes: dict[str, Any]) -> None:
+def _scan_setup(
+    migrations_dir: Path, monkeypatch: pytest.MonkeyPatch, n_jobs: int, outcomes: dict[str, Any]
+) -> None:
     _seed(migrations_dir, jobs=False)
     monkeypatch.setattr(scan_cmd, "_ingest_all", _fake_ingest(n_jobs))
     monkeypatch.setattr(scan_cmd, "score_job", _fake_score(outcomes))
@@ -263,24 +315,40 @@ def _scan_setup(migrations_dir: Path, monkeypatch: pytest.MonkeyPatch, n_jobs: i
 def test_scan_json_reports_ingest_and_scores(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _scan_setup(migrations_dir, monkeypatch, 2, {
-        "greenhouse:acme:1": _scored(72),
-        "greenhouse:acme:2": _scored(30, decline="Manager title"),
-    })
+    _scan_setup(
+        migrations_dir,
+        monkeypatch,
+        2,
+        {
+            "greenhouse:acme:1": _scored(72),
+            "greenhouse:acme:2": _scored(30, decline="Manager title"),
+        },
+    )
     result = _invoke(["scan", "--no-discover", "--json"])
     assert result.exit_code == 0, result.stderr
     out = json.loads(result.stdout)
     assert (out["command"], out["ok"], out["error"]) == ("scan", True, None)
     assert out["ingest"] == {
-        "inserted": 2, "filtered": _FILTERED,
+        "inserted": 2,
+        "filtered": _FILTERED,
         "source_errors": [{"source": "lever", "label": "globex"}],
     }
     assert out["score"] == {"scored": 2, "failed": 0, "declined": 1}
     assert out["jobs"] == [
-        {"id": "greenhouse:acme:1", "title": "Developer 1", "company": "Acme",
-         "score": 72, "declined": False},
-        {"id": "greenhouse:acme:2", "title": "Developer 2", "company": "Acme",
-         "score": 30, "declined": True},
+        {
+            "id": "greenhouse:acme:1",
+            "title": "Developer 1",
+            "company": "Acme",
+            "score": 72,
+            "declined": False,
+        },
+        {
+            "id": "greenhouse:acme:2",
+            "title": "Developer 2",
+            "company": "Acme",
+            "score": 30,
+            "declined": True,
+        },
     ]
     assert out["failures"] == []
     assert "ingest summary" in result.stderr
@@ -289,10 +357,15 @@ def test_scan_json_reports_ingest_and_scores(
 def test_scan_json_router_down_gives_a_partial_payload(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _scan_setup(migrations_dir, monkeypatch, 2, {
-        "greenhouse:acme:1": _scored(72),
-        "greenhouse:acme:2": errors.GatewayUnavailableError(f"down {SENTINEL}"),
-    })
+    _scan_setup(
+        migrations_dir,
+        monkeypatch,
+        2,
+        {
+            "greenhouse:acme:1": _scored(72),
+            "greenhouse:acme:2": errors.GatewayUnavailableError(f"down {SENTINEL}"),
+        },
+    )
     result = _invoke(["scan", "--no-discover", "--json"])
     # CliRunner runs `app`, not `cli._run`, so the error surfaces as the exception.
     assert isinstance(result.exception, errors.GatewayUnavailableError)
@@ -307,23 +380,24 @@ def test_scan_json_router_down_gives_a_partial_payload(
 def test_scan_json_counts_a_per_job_failure_and_stays_ok(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _scan_setup(migrations_dir, monkeypatch, 2, {
-        "greenhouse:acme:1": errors.PipelineError(f"bad JD {SENTINEL}"),
-        "greenhouse:acme:2": _scored(60),
-    })
+    _scan_setup(
+        migrations_dir,
+        monkeypatch,
+        2,
+        {
+            "greenhouse:acme:1": errors.PipelineError(f"bad JD {SENTINEL}"),
+            "greenhouse:acme:2": _scored(60),
+        },
+    )
     result = _invoke(["scan", "--no-discover", "--json"])
     assert result.exit_code == 0, result.stderr
     out = json.loads(result.stdout)
     assert out["ok"] is True
     assert out["score"] == {"scored": 1, "failed": 1, "declined": 0}
-    assert out["failures"] == [
-        {"id": "greenhouse:acme:1", "error": {"class": "PipelineError"}}
-    ]
+    assert out["failures"] == [{"id": "greenhouse:acme:1", "error": {"class": "PipelineError"}}]
 
 
-def test_scan_json_with_nothing_new(
-    migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_scan_json_with_nothing_new(migrations_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _scan_setup(migrations_dir, monkeypatch, 0, {})
     result = _invoke(["scan", "--no-discover", "--json"])
     assert result.exit_code == 0, result.stderr
@@ -344,10 +418,15 @@ def test_scan_json_skip_ingest_reports_no_ingest(
 def test_scan_json_never_carries_description_gaps_or_error_text(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _scan_setup(migrations_dir, monkeypatch, 2, {
-        "greenhouse:acme:1": errors.PipelineError(f"bad JD {SENTINEL}"),
-        "greenhouse:acme:2": _scored(60),
-    })
+    _scan_setup(
+        migrations_dir,
+        monkeypatch,
+        2,
+        {
+            "greenhouse:acme:1": errors.PipelineError(f"bad JD {SENTINEL}"),
+            "greenhouse:acme:2": _scored(60),
+        },
+    )
     assert SENTINEL not in _invoke(["scan", "--no-discover", "--json"]).stdout
 
 
@@ -359,9 +438,13 @@ from jobhunt.pipeline.audit import AuditResult  # noqa: E402
 
 def _audit(verdict: str, *, fabrication: list[str] | None = None) -> AuditResult:
     return AuditResult(
-        keyword_coverage_pct=90, matched_keywords=[SENTINEL], missing_must_haves=[],
-        fabrication_flags=fabrication or [], cover_letter_violations=[],
-        alignment_flags=[], verdict=verdict,
+        keyword_coverage_pct=90,
+        matched_keywords=[SENTINEL],
+        missing_must_haves=[],
+        fabrication_flags=fabrication or [],
+        cover_letter_violations=[],
+        alignment_flags=[],
+        verdict=verdict,
     )
 
 
@@ -374,13 +457,29 @@ def _apply_setup(
     conn = connect(cfg.paths.db_path)
     with conn:
         for n, score in (("1", 80), ("2", 70), ("3", 60)):
-            upsert_job(conn, Job(
-                id=f"greenhouse:acme:{n}", source="greenhouse", external_id=n,
-                company="Acme", title=f"Developer {n}", location="Toronto, ON",
-                description=SENTINEL, url="",
-            ))
-            write_score(conn, job_id=f"greenhouse:acme:{n}", score=score, reasons=[],
-                        red_flags=[], must_clarify=[], model="t", prompt_hash="t")
+            upsert_job(
+                conn,
+                Job(
+                    id=f"greenhouse:acme:{n}",
+                    source="greenhouse",
+                    external_id=n,
+                    company="Acme",
+                    title=f"Developer {n}",
+                    location="Toronto, ON",
+                    description=SENTINEL,
+                    url="",
+                ),
+            )
+            write_score(
+                conn,
+                job_id=f"greenhouse:acme:{n}",
+                score=score,
+                reasons=[],
+                red_flags=[],
+                must_clarify=[],
+                model="t",
+                prompt_hash="t",
+            )
     conn.close()
 
     async def llm(cfg: Config, job: Job, *, verified: Any, echo: Any = None) -> Any:
@@ -394,8 +493,11 @@ def _apply_setup(
         audit_path = out_dir / "audit.json"
         audit_path.write_text(json.dumps({"verdict": outcome.verdict, "text": SENTINEL}))
         return apply_cmd._LLMPhaseResult(
-            out_dir=out_dir, tailored=SENTINEL, cover=SENTINEL,  # type: ignore[arg-type]
-            audit_result=outcome, audit_path=audit_path,
+            out_dir=out_dir,
+            tailored=SENTINEL,
+            cover=SENTINEL,  # type: ignore[arg-type]
+            audit_result=outcome,
+            audit_path=audit_path,
             topics=apply_cmd._audit_topics(outcome),
             early_exit=outcome.verdict == "block",
         )
@@ -417,49 +519,66 @@ _APPLY = ["apply", "--top", "3", "--no-browser", "--drafted-by", "hub", "--json"
 def test_apply_json_reports_drafted_blocked_and_skipped(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _apply_setup(migrations_dir, monkeypatch, {
-        "greenhouse:acme:1": _audit("ship"),
-        "greenhouse:acme:2": _audit("block", fabrication=[f"invented {SENTINEL}"]),
-        "greenhouse:acme:3": apply_cmd._Skipped("FabricationError"),
-    })
+    _apply_setup(
+        migrations_dir,
+        monkeypatch,
+        {
+            "greenhouse:acme:1": _audit("ship"),
+            "greenhouse:acme:2": _audit("block", fabrication=[f"invented {SENTINEL}"]),
+            "greenhouse:acme:3": apply_cmd._Skipped("FabricationError"),
+        },
+    )
     result = _invoke(_APPLY)
     assert result.exit_code == 0, (result.stderr, result.exception)
     out = json.loads(result.stdout)
     assert (out["command"], out["ok"], out["error"]) == ("apply", True, None)
     assert out["counts"] == {"drafted": 1, "blocked": 1, "skipped": 1}
     [drafted] = out["drafted"]
-    assert {k: drafted[k] for k in ("id", "title", "company", "score", "status",
-                                    "verdict", "drafted_by")} == {
-        "id": "greenhouse:acme:1", "title": "Developer 1", "company": "Acme",
-        "score": 80, "status": "drafted", "verdict": "ship", "drafted_by": "hub",
+    assert {
+        k: drafted[k]
+        for k in ("id", "title", "company", "score", "status", "verdict", "drafted_by")
+    } == {
+        "id": "greenhouse:acme:1",
+        "title": "Developer 1",
+        "company": "Acme",
+        "score": 80,
+        "status": "drafted",
+        "verdict": "ship",
+        "drafted_by": "hub",
     }
     for key in ("resume_path", "cover_path", "audit_path"):
         assert Path(drafted[key]).is_file(), key
     assert out["blocked"] == [{"id": "greenhouse:acme:2", "rules": ["fabrication"]}]
-    assert out["skipped"] == [
-        {"id": "greenhouse:acme:3", "error": {"class": "FabricationError"}}
-    ]
+    assert out["skipped"] == [{"id": "greenhouse:acme:3", "error": {"class": "FabricationError"}}]
 
 
 def test_apply_json_never_carries_document_or_flag_text(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _apply_setup(migrations_dir, monkeypatch, {
-        "greenhouse:acme:1": _audit("ship"),
-        "greenhouse:acme:2": _audit("block", fabrication=[f"invented {SENTINEL}"]),
-        "greenhouse:acme:3": apply_cmd._Skipped("FabricationError"),
-    })
+    _apply_setup(
+        migrations_dir,
+        monkeypatch,
+        {
+            "greenhouse:acme:1": _audit("ship"),
+            "greenhouse:acme:2": _audit("block", fabrication=[f"invented {SENTINEL}"]),
+            "greenhouse:acme:3": apply_cmd._Skipped("FabricationError"),
+        },
+    )
     assert SENTINEL not in _invoke(_APPLY).stdout
 
 
 def test_apply_json_router_down_gives_a_partial_payload(
     migrations_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _apply_setup(migrations_dir, monkeypatch, {
-        "greenhouse:acme:1": _audit("ship"),
-        "greenhouse:acme:2": errors.GatewayUnavailableError(f"down {SENTINEL}"),
-        "greenhouse:acme:3": _audit("ship"),
-    })
+    _apply_setup(
+        migrations_dir,
+        monkeypatch,
+        {
+            "greenhouse:acme:1": _audit("ship"),
+            "greenhouse:acme:2": errors.GatewayUnavailableError(f"down {SENTINEL}"),
+            "greenhouse:acme:3": _audit("ship"),
+        },
+    )
     result = _invoke(_APPLY)
     assert isinstance(result.exception, errors.GatewayUnavailableError)
     out = json.loads(result.stdout)
@@ -481,9 +600,11 @@ def test_apply_json_nothing_to_apply(migrations_dir: Path) -> None:
 
 @pytest.mark.parametrize(
     "args",
-    [["apply", "greenhouse:acme:1", "--no-browser", "--json"],
-     ["apply", "--top", "1", "--json"],
-     ["apply", "--best", "--no-browser", "--json"]],
+    [
+        ["apply", "greenhouse:acme:1", "--no-browser", "--json"],
+        ["apply", "--top", "1", "--json"],
+        ["apply", "--best", "--no-browser", "--json"],
+    ],
     ids=["job-id", "browser", "best"],
 )
 def test_apply_json_outside_the_automated_shape_is_a_usage_error(

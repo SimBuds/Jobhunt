@@ -79,9 +79,7 @@ def test_upsert_preserves_manual_channel_on_retailor(conn) -> None:
         fill_plan_path=None,
         applied_week=None,
     )
-    row = conn.execute(
-        "SELECT channel FROM applications WHERE job_id = 'manual:abc'"
-    ).fetchone()
+    row = conn.execute("SELECT channel FROM applications WHERE job_id = 'manual:abc'").fetchone()
     assert row["channel"] == "linkedin"
 
 
@@ -98,9 +96,7 @@ def test_upsert_explicit_channel_wins(conn) -> None:
         applied_week=None,
         channel="indeed",
     )
-    row = conn.execute(
-        "SELECT channel FROM applications WHERE job_id = 'manual:abc'"
-    ).fetchone()
+    row = conn.execute("SELECT channel FROM applications WHERE job_id = 'manual:abc'").fetchone()
     assert row["channel"] == "indeed"
 
 
@@ -159,13 +155,19 @@ def test_track_applied_paste_path_writes_row(isolated_env: Path) -> None:
     result = runner.invoke(
         track_cmd.app,
         [
-            "applied", "https://www.linkedin.com/jobs/view/4211",
-            "--channel", "linkedin",
-            "--title", "Junior Developer",
-            "--company", "Next Match AI",
+            "applied",
+            "https://www.linkedin.com/jobs/view/4211",
+            "--channel",
+            "linkedin",
+            "--title",
+            "Junior Developer",
+            "--company",
+            "Next Match AI",
             "--jd-from-stdin",
-            "--when", "2026-07-15",
-            "--notes", "easy apply",
+            "--when",
+            "2026-07-15",
+            "--notes",
+            "easy apply",
         ],
         input=(
             "We are hiring a Junior Developer to join our engineering team. "
@@ -209,8 +211,12 @@ def test_track_applied_rejects_bad_date(isolated_env: Path) -> None:
     result = runner.invoke(
         track_cmd.app,
         [
-            "applied", "https://example.com/x",
-            "--channel", "indeed", "--when", "last tuesday",
+            "applied",
+            "https://example.com/x",
+            "--channel",
+            "indeed",
+            "--when",
+            "last tuesday",
         ],
     )
     assert result.exit_code == 2
@@ -243,11 +249,16 @@ def test_track_applied_no_jd_backfill_writes_stub_row(isolated_env: Path) -> Non
     result = runner.invoke(
         track_cmd.app,
         [
-            "applied", "--no-jd",
-            "--channel", "indeed",
-            "--title", "Web Developer",
-            "--company", "Oldco",
-            "--when", "2026-06-02",
+            "applied",
+            "--no-jd",
+            "--channel",
+            "indeed",
+            "--title",
+            "Web Developer",
+            "--company",
+            "Oldco",
+            "--when",
+            "2026-06-02",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -270,8 +281,14 @@ def test_track_applied_no_jd_backfill_writes_stub_row(isolated_env: Path) -> Non
 
 def test_track_applied_no_jd_dedupes_on_same_title_company(isolated_env: Path) -> None:
     args = [
-        "applied", "--no-jd", "--channel", "indeed",
-        "--title", "Web Developer", "--company", "Oldco",
+        "applied",
+        "--no-jd",
+        "--channel",
+        "indeed",
+        "--title",
+        "Web Developer",
+        "--company",
+        "Oldco",
     ]
     assert runner.invoke(track_cmd.app, args).exit_code == 0
     assert runner.invoke(track_cmd.app, args).exit_code == 0
@@ -284,9 +301,7 @@ def test_track_applied_no_jd_dedupes_on_same_title_company(isolated_env: Path) -
 
 
 def test_track_applied_no_jd_requires_title_company(isolated_env: Path) -> None:
-    result = runner.invoke(
-        track_cmd.app, ["applied", "--no-jd", "--channel", "indeed"]
-    )
+    result = runner.invoke(track_cmd.app, ["applied", "--no-jd", "--channel", "indeed"])
     assert result.exit_code == 2
     assert "--no-jd requires --title and --company" in result.output
 
@@ -380,8 +395,7 @@ def test_track_applied_paste_header_only_creates_stub(isolated_env: Path) -> Non
 
 def test_track_applied_paste_full_page_stores_jd(isolated_env: Path) -> None:
     jd = (
-        "About the job\n"
-        + "We build availability planning and dining experiences at scale. "
+        "About the job\n" + "We build availability planning and dining experiences at scale. "
         "You will ship React and TypeScript features, own frontend architecture, "
         "and collaborate with design and product on guest-facing surfaces. " * 4
     )
@@ -422,20 +436,16 @@ def _seed_aged(conn, id_: str, company: str, *, days_ago: int, **cols: object) -
             (f"-{days_ago} days", id_),
         )
         for col, val in cols.items():
-            conn.execute(
-                f"UPDATE applications SET {col} = ? WHERE job_id = ?", (val, id_)
-            )
+            conn.execute(f"UPDATE applications SET {col} = ? WHERE job_id = ?", (val, id_))
     return id_
 
 
 def test_sweep_selects_only_silent_applications(conn) -> None:
     _seed_aged(conn, "greenhouse:a:1", "Stale", days_ago=30)
     _seed_aged(conn, "greenhouse:a:2", "Recent", days_ago=5)
-    _seed_aged(conn, "greenhouse:a:3", "Answered", days_ago=30,
-               response_received_at="2026-07-01")
+    _seed_aged(conn, "greenhouse:a:3", "Answered", days_ago=30, response_received_at="2026-07-01")
     _seed_aged(conn, "greenhouse:a:4", "Closed", days_ago=30, outcome="rejected")
-    _seed_aged(conn, "greenhouse:a:5", "Interviewing", days_ago=30,
-               status="interviewing")
+    _seed_aged(conn, "greenhouse:a:5", "Interviewing", days_ago=30, status="interviewing")
 
     cutoff = (date.today() - timedelta(days=21)).isoformat()
     hits = {r["job_id"] for r in track_cmd._stale_no_response(conn, cutoff)}
@@ -472,9 +482,9 @@ def test_sweep_apply_marks_ghosted(isolated_env: Path) -> None:
 
     conn = sqlite3.connect(isolated_env / "jobhunt.db")
     conn.row_factory = sqlite3.Row
-    rows = {r["job_id"]: r["outcome"] for r in conn.execute(
-        "SELECT job_id, outcome FROM applications"
-    )}
+    rows = {
+        r["job_id"]: r["outcome"] for r in conn.execute("SELECT job_id, outcome FROM applications")
+    }
     conn.close()
     assert rows["greenhouse:a:1"] == "ghosted"
     assert rows["greenhouse:a:2"] is None  # too recent to sweep
@@ -486,12 +496,8 @@ def test_sweep_honors_older_than(isolated_env: Path) -> None:
     _seed_aged(conn, "greenhouse:a:1", "Week old", days_ago=10)
     conn.close()
 
-    assert "no applications older than 21d" in runner.invoke(
-        track_cmd.app, ["sweep"]
-    ).output
-    assert "Week old" in runner.invoke(
-        track_cmd.app, ["sweep", "--older-than", "7d"]
-    ).output
+    assert "no applications older than 21d" in runner.invoke(track_cmd.app, ["sweep"]).output
+    assert "Week old" in runner.invoke(track_cmd.app, ["sweep", "--older-than", "7d"]).output
 
 
 # --- Phase O5 (2026-11-10): messages lead with title · company ---------------

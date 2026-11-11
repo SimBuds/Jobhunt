@@ -43,7 +43,7 @@ def run(
     question: str = typer.Argument(
         ...,
         help=(
-            'The application form question, in quotes. Example: '
+            "The application form question, in quotes. Example: "
             '"Why are you interested in this role?"'
         ),
     ),
@@ -134,9 +134,7 @@ def run(
 def _load_verified(cfg: Config) -> dict[str, Any]:
     verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
-        raise PipelineError(
-            f"missing {verified_path} — run `jobhunt convert-resume` first"
-        )
+        raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")
     return cast(dict[str, Any], json.loads(verified_path.read_text(encoding="utf-8")))
 
 
@@ -178,9 +176,7 @@ def _load_jd_context(cfg: Config, job_id: str) -> tuple[str, str]:
     return ("\n".join(bits) if bits else ""), _safe_id(job_id)
 
 
-def _save_answer(
-    cfg: Config, *, question: str, answer_text: str, job_id_safe: str | None
-) -> Path:
+def _save_answer(cfg: Config, *, question: str, answer_text: str, job_id_safe: str | None) -> Path:
     """Write the answer as `<sha1-12>.md` under the appropriate directory
     AND index it in the `answers` table. Filename is derived from the
     question text so the same question regenerates to the same file
@@ -197,10 +193,7 @@ def _save_answer(
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{digest}.md"
 
-    body = (
-        f"# Question\n\n{question.strip()}\n\n"
-        f"# Answer\n\n{answer_text.strip()}\n"
-    )
+    body = f"# Question\n\n{question.strip()}\n\n# Answer\n\n{answer_text.strip()}\n"
     path.write_text(body, encoding="utf-8")
 
     # Index for --recall. DB write failures are non-fatal — the file is

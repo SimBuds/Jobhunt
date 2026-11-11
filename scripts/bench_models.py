@@ -81,9 +81,9 @@ REPO_ROOT = Path(__file__).parent.parent
 # on this box — the gateway owns the system prompt and sampler, so the router
 # preset only matters in raw mode. Override with --models.
 DEFAULT_CANDIDATES: list[tuple[str, str]] = [
-    ("lite", "lite"),    # unsloth Qwen3.5-9B-MTP Q4_K_M — the production default
+    ("lite", "lite"),  # unsloth Qwen3.5-9B-MTP Q4_K_M — the production default
     ("gemma", "gemma"),  # Gemma 4 26B-A4B QAT
-    ("qwen", "qwen"),    # Qwen3.6-35B-A3B-MTP Q4_K_M
+    ("qwen", "qwen"),  # Qwen3.6-35B-A3B-MTP Q4_K_M
 ]
 DEFAULT_RUNS_PER_MODEL = 2  # score+tailor+cover × N × M models — 2 keeps wall time sane
 
@@ -140,6 +140,7 @@ async def _params_from_router(base_url: str, model: str) -> dict[str, Any] | Non
 def _router_host(base_url: str) -> str:
     host = base_url.rstrip("/")
     return host[: -len("/v1")] if host.endswith("/v1") else host
+
 
 # --- fixture JD ---------------------------------------------------------------
 FIXTURE_JD = """
@@ -333,7 +334,10 @@ def _make_cfg(model: str) -> Config:
 
 
 async def _bench_one_run(
-    model: str, cfg: Config, m: ModelMetrics, kb_dir: Path,
+    model: str,
+    cfg: Config,
+    m: ModelMetrics,
+    kb_dir: Path,
     fixture: BenchFixture,
     options: dict[str, Any] | None = None,
 ) -> None:
@@ -368,8 +372,13 @@ async def _bench_one_run(
     score_raw: dict | None = None
     try:
         score_raw = await complete_json(
-            base_url=base_url, model=model, system=sp.system, user=score_user,
-            schema=sp.schema, temperature=0.0, options=options,
+            base_url=base_url,
+            model=model,
+            system=sp.system,
+            user=score_user,
+            schema=sp.schema,
+            temperature=0.0,
+            options=options,
         )
         m.score_latencies.append(time.monotonic() - t0)
         if isinstance(score_raw.get("score"), int):
@@ -401,8 +410,13 @@ async def _bench_one_run(
     tailored = None
     try:
         traw = await complete_json(
-            base_url=base_url, model=model, system=tp.system, user=tailor_user,
-            schema=tp.schema, temperature=0.3, options=options,
+            base_url=base_url,
+            model=model,
+            system=tp.system,
+            user=tailor_user,
+            schema=tp.schema,
+            temperature=0.3,
+            options=options,
         )
         m.tailor_latencies.append(time.monotonic() - t0)
         tailored = _parse(traw, model)
@@ -435,8 +449,13 @@ async def _bench_one_run(
     cover: CoverLetter | None = None
     try:
         craw = await complete_json(
-            base_url=base_url, model=model, system=cp.system, user=cover_user,
-            schema=cp.schema, temperature=cp.temperature, options=options,
+            base_url=base_url,
+            model=model,
+            system=cp.system,
+            user=cover_user,
+            schema=cp.schema,
+            temperature=cp.temperature,
+            options=options,
         )
         body = craw.get("body") or craw.get("paragraphs") or craw.get("content")
         if body is None:
@@ -452,7 +471,9 @@ async def _bench_one_run(
         )
         m.cover_latencies.append(time.monotonic() - t0)
         violations = validate_cover(
-            cover, verified=verified, company=job.company,
+            cover,
+            verified=verified,
+            company=job.company,
             max_words=cfg.pipeline.cover_max_words,
         )
         m.cover_violation_counts.append(len(violations))
@@ -476,8 +497,13 @@ async def _bench_one_run(
     t0 = time.monotonic()
     try:
         araw = await complete_json(
-            base_url=base_url, model=model, system=ap.system, user=answer_user,
-            schema=ap.schema, temperature=ap.temperature, options=options,
+            base_url=base_url,
+            model=model,
+            system=ap.system,
+            user=answer_user,
+            schema=ap.schema,
+            temperature=ap.temperature,
+            options=options,
         )
         text = araw.get("answer")
         if not isinstance(text, str) or not text.strip():
@@ -485,7 +511,9 @@ async def _bench_one_run(
         answer = Answer(text=text.strip(), model=model)
         m.answer_latencies.append(time.monotonic() - t0)
         violations = validate_answer(
-            answer, verified=verified, max_words=answer_max_words,
+            answer,
+            verified=verified,
+            max_words=answer_max_words,
         )
         m.answer_violation_counts.append(len(violations))
         if not violations:
@@ -515,9 +543,7 @@ async def _bench_one_run(
         job_description=truncate(prep_ctx.job_description, MAX_DESC_CHARS),
         applicant_salary_expectation=salary,
         applicant_work_auth_canada=str(cfg.applicant.work_auth_canada).lower(),
-        applicant_requires_visa_sponsorship=str(
-            cfg.applicant.requires_visa_sponsorship
-        ).lower(),
+        applicant_requires_visa_sponsorship=str(cfg.applicant.requires_visa_sponsorship).lower(),
         audit_summary="(no application yet)",
         cover_summary="(no cover letter drafted)",
         research_blob="(none)",
@@ -531,13 +557,19 @@ async def _bench_one_run(
     t0 = time.monotonic()
     try:
         praw = await complete_json(
-            base_url=base_url, model=model, system=pp.system, user=prep_user,
-            schema=pp.schema, temperature=pp.temperature, options=options,
+            base_url=base_url,
+            model=model,
+            system=pp.system,
+            user=prep_user,
+            schema=pp.schema,
+            temperature=pp.temperature,
+            options=options,
         )
         sections = _decode_sections(praw, model=model)
         m.prep_latencies.append(time.monotonic() - t0)
         prep_violations = validate_prep_sections(
-            sections, verified=verified,
+            sections,
+            verified=verified,
             job_description=job.description or "",
         )
         m.prep_violation_counts.append(len(prep_violations))
@@ -551,7 +583,10 @@ async def _bench_one_run(
     if tailored is not None and cover is not None:
         try:
             result = audit(
-                tailored=tailored, cover=cover, score=None, verified=verified,
+                tailored=tailored,
+                cover=cover,
+                score=None,
+                verified=verified,
                 company=job.company,
                 cover_max_words=cfg.pipeline.cover_max_words,
                 job_description=job.description,
@@ -565,7 +600,10 @@ async def _bench_one_run(
 
 
 async def _bench_one_run_production(
-    model: str, cfg: Config, m: ModelMetrics, kb_dir: Path,
+    model: str,
+    cfg: Config,
+    m: ModelMetrics,
+    kb_dir: Path,
     fixture: BenchFixture,
 ) -> None:
     """Run the real production pipeline once: score_job → tailor/cover/answer/
@@ -589,8 +627,7 @@ async def _bench_one_run_production(
         m.score_latencies.append(time.monotonic() - t0)
         m.score_schema_ok += 1  # score_job raises on schema failure; success = ok
         m.score_declines.append(
-            score_result.decline_reason is not None
-            or score_result.score < cfg.pipeline.min_score
+            score_result.decline_reason is not None or score_result.score < cfg.pipeline.min_score
         )
     except Exception as e:
         m.score_latencies.append(time.monotonic() - t0)
@@ -601,7 +638,9 @@ async def _bench_one_run_production(
     tailored = None
     try:
         tailored, tviol, tattempts = await tailor_resume_with_retry(
-            cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
+            cfg,
+            job,
+            max_attempts=cfg.pipeline.tailor_retry_attempts,
         )
         m.tailor_latencies.append(time.monotonic() - t0)
         m.tailor_attempts.append(tattempts)
@@ -623,8 +662,10 @@ async def _bench_one_run_production(
     cover = None
     try:
         cover, cviol, cattempts = await write_cover_with_retry(
-            cfg, job,
-            verified=verified, company=job.company,
+            cfg,
+            job,
+            verified=verified,
+            company=job.company,
             max_words=cfg.pipeline.cover_max_words,
             max_attempts=cfg.pipeline.cover_retry_attempts,
         )
@@ -669,7 +710,9 @@ async def _bench_one_run_production(
             stage="hiring_manager",
         )
         _, pviol, pattempts = await draft_prep_with_retry(
-            cfg, ctx=prep_ctx, verified=verified,
+            cfg,
+            ctx=prep_ctx,
+            verified=verified,
             max_attempts=cfg.pipeline.cover_retry_attempts,
         )
         m.prep_latencies.append(time.monotonic() - t0)
@@ -685,7 +728,10 @@ async def _bench_one_run_production(
     if tailored is not None and cover is not None:
         try:
             result = audit(
-                tailored=tailored, cover=cover, score=score_result, verified=verified,
+                tailored=tailored,
+                cover=cover,
+                score=score_result,
+                verified=verified,
                 company=job.company,
                 cover_max_words=cfg.pipeline.cover_max_words,
                 job_description=job.description,
@@ -710,6 +756,7 @@ def _verdict_summary(verdicts: list[str]) -> str:
     if not verdicts:
         return "n/a"
     from collections import Counter
+
     c = Counter(verdicts)
     return f"ship={c.get('ship', 0)} rev={c.get('revise', 0)} blk={c.get('block', 0)}"
 
@@ -738,9 +785,7 @@ def _guard_summary(m: ModelMetrics, runs: int, fixture: BenchFixture) -> str:
     return f"not-declined {runs - declined}/{runs}"
 
 
-def _print_table(
-    metrics: list[ModelMetrics], runs: int, mode: str, fixture: BenchFixture
-) -> None:
+def _print_table(metrics: list[ModelMetrics], runs: int, mode: str, fixture: BenchFixture) -> None:
     clean_label = "eventual-clean" if mode == "production" else "1st-pass clean"
     tags = []
     if fixture.expect_decline:
@@ -754,37 +799,59 @@ def _print_table(
     print(f"{'=' * 92}\n")
 
     rows = [
-        ("Model",        [m.label for m in metrics]),
-        ("Params src",   [m.param_src for m in metrics]),
-        ("Score lat",    [f"{_avg(m.score_latencies)}s" for m in metrics]),
-        ("Score JSON",   [_pct(m.score_schema_ok, runs) for m in metrics]),
-        ("Tailor lat",   [f"{_avg(m.tailor_latencies)}s" for m in metrics]),
+        ("Model", [m.label for m in metrics]),
+        ("Params src", [m.param_src for m in metrics]),
+        ("Score lat", [f"{_avg(m.score_latencies)}s" for m in metrics]),
+        ("Score JSON", [_pct(m.score_schema_ok, runs) for m in metrics]),
+        ("Tailor lat", [f"{_avg(m.tailor_latencies)}s" for m in metrics]),
         ("Tailor clean", [_pct(m.tailor_fab_clean, runs) for m in metrics]),
         ("Tailor attempts (avg)", [_avg_int(m.tailor_attempts) for m in metrics]),
-        ("Cover lat",    [f"{_avg(m.cover_latencies)}s" for m in metrics]),
-        ("Cover clean",  [_pct(m.cover_validator_clean, runs) for m in metrics]),
-        ("Cover violations (avg)",
-            [f"{round(sum(m.cover_violation_counts) / len(m.cover_violation_counts), 1)}"
-             if m.cover_violation_counts else "n/a" for m in metrics]),
+        ("Cover lat", [f"{_avg(m.cover_latencies)}s" for m in metrics]),
+        ("Cover clean", [_pct(m.cover_validator_clean, runs) for m in metrics]),
+        (
+            "Cover violations (avg)",
+            [
+                f"{round(sum(m.cover_violation_counts) / len(m.cover_violation_counts), 1)}"
+                if m.cover_violation_counts
+                else "n/a"
+                for m in metrics
+            ],
+        ),
         ("Cover attempts (avg)", [_avg_int(m.cover_attempts) for m in metrics]),
-        ("Answer lat",   [f"{_avg(m.answer_latencies)}s" for m in metrics]),
+        ("Answer lat", [f"{_avg(m.answer_latencies)}s" for m in metrics]),
         ("Answer clean", [_pct(m.answer_validator_clean, runs) for m in metrics]),
-        ("Answer violations (avg)",
-            [f"{round(sum(m.answer_violation_counts) / len(m.answer_violation_counts), 1)}"
-             if m.answer_violation_counts else "n/a" for m in metrics]),
+        (
+            "Answer violations (avg)",
+            [
+                f"{round(sum(m.answer_violation_counts) / len(m.answer_violation_counts), 1)}"
+                if m.answer_violation_counts
+                else "n/a"
+                for m in metrics
+            ],
+        ),
         ("Answer attempts (avg)", [_avg_int(m.answer_attempts) for m in metrics]),
-        ("Prep lat",     [f"{_avg(m.prep_latencies)}s" for m in metrics]),
-        ("Prep clean",   [_pct(m.prep_validator_clean, runs) for m in metrics]),
-        ("Prep violations (avg)",
-            [f"{round(sum(m.prep_violation_counts) / len(m.prep_violation_counts), 1)}"
-             if m.prep_violation_counts else "n/a" for m in metrics]),
+        ("Prep lat", [f"{_avg(m.prep_latencies)}s" for m in metrics]),
+        ("Prep clean", [_pct(m.prep_validator_clean, runs) for m in metrics]),
+        (
+            "Prep violations (avg)",
+            [
+                f"{round(sum(m.prep_violation_counts) / len(m.prep_violation_counts), 1)}"
+                if m.prep_violation_counts
+                else "n/a"
+                for m in metrics
+            ],
+        ),
         ("Prep attempts (avg)", [_avg_int(m.prep_attempts) for m in metrics]),
         ("Audit verdicts", [_verdict_summary(m.audit_verdicts) for m in metrics]),
-        ("Keyword cov (avg)",
-            [f"{_avg(m.audit_coverage_pcts)}%" if m.audit_coverage_pcts else "n/a"
-             for m in metrics]),
-        ("Guard",        [_guard_summary(m, runs, fixture) for m in metrics]),
-        ("Errors",       [str(len(m.errors)) for m in metrics]),
+        (
+            "Keyword cov (avg)",
+            [
+                f"{_avg(m.audit_coverage_pcts)}%" if m.audit_coverage_pcts else "n/a"
+                for m in metrics
+            ],
+        ),
+        ("Guard", [_guard_summary(m, runs, fixture) for m in metrics]),
+        ("Errors", [str(len(m.errors)) for m in metrics]),
     ]
     label_w = max(len(r[0]) for r in rows)
     col_w = 32  # wide enough for the Guard cell, e.g. "fab-safe 2/2 (clean 1 / rej 1)"
@@ -883,9 +950,7 @@ async def main() -> None:
             param_src = "router preset" if options else "default"
         print(f"\n>>> {label} ({model})  [mode: {mode}, params: {param_src}]")
         cfg = _make_cfg(model)
-        per_fixture = {
-            f.key: ModelMetrics(label=label, param_src=param_src) for f in fixtures
-        }
+        per_fixture = {f.key: ModelMetrics(label=label, param_src=param_src) for f in fixtures}
         for fixture in fixtures:
             m = per_fixture[fixture.key]
             for i in range(runs):

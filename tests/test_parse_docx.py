@@ -112,8 +112,7 @@ def test_parse_baseline_round_trip(tmp_path: Path, live_resume: Path):
     # so assert the honesty property rather than the bucket (Phase A12).
     assert "Python" not in facts.skills_familiar
     assert any(
-        "Python" in s
-        for s in facts.skills_core + facts.skills_data_devops + facts.skills_ai
+        "Python" in s for s in facts.skills_core + facts.skills_data_devops + facts.skills_ai
     )
 
     # PB1: when the resume carries a "Project Stack:" row, it populates a
@@ -426,9 +425,7 @@ def test_em_dash_project_header_parses(tmp_path: Path):
     assert facts.projects[0].name == "Widget — A Small Tool"
     assert facts.projects[0].url == "github.com/jane/widget"
     # The em-dash inside a prose bullet must not read as a header.
-    assert facts.projects[0].bullets == [
-        "Built it — and shipped it to production users."
-    ]
+    assert facts.projects[0].bullets == ["Built it — and shipped it to production users."]
 
 
 def test_classifies_generic_certs(tmp_path: Path):
@@ -743,24 +740,32 @@ class TestTwoLineLayout:
         doc.add_paragraph("Summary")
         doc.add_paragraph("A developer.")
         doc.add_paragraph("Experience")
-        for kind, text in experience if experience is not None else (
-            ("p", "Web Developer  |  Apr 2023 – Present"),
-            ("p", "Acme Corp  |  Toronto, ON  |  Sole developer for a small brand"),
-            ("b", "Launched the store."),
-            ("b", "Wrote the theme."),
-            ("p", "CMS Developer (Contract)  |  Jan 2026 – Apr 2026"),
-            ("p", "Beta Labs  |  Toronto, ON"),
-            ("b", "Built the modules."),
+        for kind, text in (
+            experience
+            if experience is not None
+            else (
+                ("p", "Web Developer  |  Apr 2023 – Present"),
+                ("p", "Acme Corp  |  Toronto, ON  |  Sole developer for a small brand"),
+                ("b", "Launched the store."),
+                ("b", "Wrote the theme."),
+                ("p", "CMS Developer (Contract)  |  Jan 2026 – Apr 2026"),
+                ("p", "Beta Labs  |  Toronto, ON"),
+                ("b", "Built the modules."),
+            )
         ):
             if kind == "b":
                 self._bullet(doc, text)
             else:
                 doc.add_paragraph(text)
         doc.add_paragraph("Education and Certification")
-        for text in education if education is not None else (
-            "Advanced Diploma, Software Engineering  |  Sep 2019 – Apr 2022",
-            "Example Polytechnic  |  Dean's List, all terms  |  Capstone: React front ends",
-            "Example Cloud Certified Practitioner  |  Oct 2024",
+        for text in (
+            education
+            if education is not None
+            else (
+                "Advanced Diploma, Software Engineering  |  Sep 2019 – Apr 2022",
+                "Example Polytechnic  |  Dean's List, all terms  |  Capstone: React front ends",
+                "Example Cloud Certified Practitioner  |  Oct 2024",
+            )
         ):
             doc.add_paragraph(text)
         doc.add_paragraph("Additional Experience")
@@ -1011,16 +1016,12 @@ class TestSupplement:
             tmp_path, '[[core]]\nskill = "Java"\nsource = "Familiar"\n', "Java", "Familiar"
         )
 
-    def test_employment_type_matches_the_employer_as_the_resume_writes_it(
-        self, tmp_path: Path
-    ):
+    def test_employment_type_matches_the_employer_as_the_resume_writes_it(self, tmp_path: Path):
         facts = self._apply(tmp_path, '[employment_type]\n"Acme Corp" = "part-time"\n')
         assert facts.work_history[0].employment_type == "part-time"
         assert facts.work_history[1].employment_type is None
 
-    def test_employment_type_for_an_unknown_employer_lists_the_names(
-        self, tmp_path: Path
-    ):
+    def test_employment_type_for_an_unknown_employer_lists_the_names(self, tmp_path: Path):
         self._rejects(
             tmp_path,
             '[employment_type]\n"Acme" = "part-time"\n',
@@ -1128,9 +1129,7 @@ class TestSupplement:
         write_kb_markdown(facts, tmp_path / "kb" / "profile")
         profile = tmp_path / "kb" / "profile"
         assert "part-time" in (profile / "work-history.md").read_text(encoding="utf-8")
-        assert "Source: alpha/README.md" in (profile / "projects.md").read_text(
-            encoding="utf-8"
-        )
+        assert "Source: alpha/README.md" in (profile / "projects.md").read_text(encoding="utf-8")
 
 
 class TestProjectsHeadingGuard:

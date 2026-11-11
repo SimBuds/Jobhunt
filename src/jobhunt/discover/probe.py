@@ -155,9 +155,7 @@ def _company_rows(conn: sqlite3.Connection, limit: int) -> list[tuple[str, int]]
     return [(r[0], r[1]) for r in rows]
 
 
-def _cached_misses(
-    conn: sqlite3.Connection, company: str
-) -> set[tuple[str, str]]:
+def _cached_misses(conn: sqlite3.Connection, company: str) -> set[tuple[str, str]]:
     """(ats, slug) pairs previously probed for this company that did NOT hit
     AND are still inside the TTL window. Misses older than _MISS_TTL_DAYS
     re-probe automatically — companies stand up new ATS boards over time.
@@ -171,9 +169,7 @@ def _cached_misses(
     return {(r[0], r[1]) for r in rows}
 
 
-def _cached_hits(
-    conn: sqlite3.Connection, atses: list[str]
-) -> list[ProbeOutcome]:
+def _cached_hits(conn: sqlite3.Connection, atses: list[str]) -> list[ProbeOutcome]:
     """Previously-discovered hits, regardless of company. Used to re-surface
     findings the user hasn't applied yet."""
     placeholders = ",".join("?" * len(atses))
@@ -185,9 +181,7 @@ def _cached_hits(
     return [ProbeOutcome(r[0], r[1], r[2], 200, r[3]) for r in rows]
 
 
-def _persist_outcomes(
-    conn: sqlite3.Connection, outcomes: list[ProbeOutcome]
-) -> None:
+def _persist_outcomes(conn: sqlite3.Connection, outcomes: list[ProbeOutcome]) -> None:
     with conn:
         # Explicit CURRENT_TIMESTAMP on probed_at — INSERT OR REPLACE drops
         # the prior row entirely, but the column DEFAULT only fires when the
@@ -203,9 +197,7 @@ def _persist_outcomes(
         )
 
 
-def harvest_urls(
-    conn: sqlite3.Connection, atses: list[str]
-) -> list[ProbeOutcome]:
+def harvest_urls(conn: sqlite3.Connection, atses: list[str]) -> list[ProbeOutcome]:
     """Scan jobs.url for confirmed ATS slugs. Offline, deterministic — no HTTP.
 
     Returns one ProbeOutcome(status=200, job_count=N) per (ats, slug) pair
@@ -240,8 +232,8 @@ def harvest_urls(
 class ProgressEvent(NamedTuple):
     company: str
     outcomes: list[ProbeOutcome]
-    probed: int   # companies finished so far
-    total: int    # total companies queued
+    probed: int  # companies finished so far
+    total: int  # total companies queued
 
 
 async def discover(
@@ -284,15 +276,11 @@ async def discover(
         async with sem:
             try:
                 return await asyncio.wait_for(
-                    probe_company(
-                        client, limiter, company, atses=atses, slugs_to_try=slugs
-                    ),
+                    probe_company(client, limiter, company, atses=atses, slugs_to_try=slugs),
                     timeout=_COMPANY_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
-                return [
-                    ProbeOutcome(company, ats, slugs[0], 0, None) for ats in atses
-                ]
+                return [ProbeOutcome(company, ats, slugs[0], 0, None) for ats in atses]
 
     tasks: list[asyncio.Task[list[ProbeOutcome]]] = []
     for company, _count in _company_rows(conn, limit):
@@ -331,11 +319,7 @@ async def discover(
     for h in fresh_hits:
         by_key[(h.ats, h.slug)] = h  # fresh wins on tie
 
-    unapplied = [
-        h
-        for h in by_key.values()
-        if h.slug not in known.get(h.ats, set())
-    ]
+    unapplied = [h for h in by_key.values() if h.slug not in known.get(h.ats, set())]
     unapplied.sort(key=lambda o: (-(o.job_count or 0), o.ats, o.slug))
     return unapplied
 

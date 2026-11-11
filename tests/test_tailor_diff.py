@@ -64,7 +64,8 @@ def _tailored(
                 title="Web Developer (Contract)",
                 employer="Harbour Loom",
                 dates="2023 – Present",
-                bullets=bullets or [
+                bullets=bullets
+                or [
                     "Built 14+ page Shopify storefront.",
                     "Shipped ring builder app.",
                 ],
@@ -79,8 +80,11 @@ def _tailored(
 
 def test_diff_header_includes_job_metadata() -> None:
     out = build_tailor_diff(
-        verified=VERIFIED, tailored=_tailored(), score=_score(),
-        job_title="Frontend Dev", job_company="Acme",
+        verified=VERIFIED,
+        tailored=_tailored(),
+        score=_score(),
+        job_title="Frontend Dev",
+        job_company="Acme",
     )
     assert "# Tailor diff" in out
     assert "Frontend Dev @ Acme" in out
@@ -89,7 +93,8 @@ def test_diff_header_includes_job_metadata() -> None:
 
 def test_diff_marks_lead_category() -> None:
     out = build_tailor_diff(
-        verified=VERIFIED, tailored=_tailored(lead_name="Frontend Engineering"),
+        verified=VERIFIED,
+        tailored=_tailored(lead_name="Frontend Engineering"),
         score=_score(),
     )
     assert "**Lead category:** `Frontend Engineering`" in out
@@ -100,7 +105,9 @@ def test_diff_flags_promoted_skills() -> None:
     """Node.js is verified under Core but the tailored lead is named
     'Frontend' — should annotate as promoted from Core."""
     out = build_tailor_diff(
-        verified=VERIFIED, tailored=_tailored(), score=_score(),
+        verified=VERIFIED,
+        tailored=_tailored(),
+        score=_score(),
     )
     # Node.js was placed in 'Frontend' but origin is 'Core' → promoted note
     assert "`Node.js` (promoted from `Core`)" in out
@@ -118,10 +125,12 @@ def test_diff_flags_unknown_skill() -> None:
 def test_diff_marks_verbatim_vs_reworded_bullets() -> None:
     out = build_tailor_diff(
         verified=VERIFIED,
-        tailored=_tailored(bullets=[
-            "Built 14+ page Shopify storefront.",            # verbatim
-            "Reworded: shipped a configurator on Shopify.",  # reworded
-        ]),
+        tailored=_tailored(
+            bullets=[
+                "Built 14+ page Shopify storefront.",  # verbatim
+                "Reworded: shipped a configurator on Shopify.",  # reworded
+            ]
+        ),
         score=_score(),
     )
     assert "*(verbatim)*" in out
@@ -131,10 +140,12 @@ def test_diff_marks_verbatim_vs_reworded_bullets() -> None:
 def test_diff_detects_reordered_bullet() -> None:
     out = build_tailor_diff(
         verified=VERIFIED,
-        tailored=_tailored(bullets=[
-            "Shipped ring builder app.",            # was index 1, now index 0
-            "Built 14+ page Shopify storefront.",  # was index 0, now index 1
-        ]),
+        tailored=_tailored(
+            bullets=[
+                "Shipped ring builder app.",  # was index 1, now index 0
+                "Built 14+ page Shopify storefront.",  # was index 0, now index 1
+            ]
+        ),
         score=_score(),
     )
     assert "verbatim + reordered" in out
@@ -152,7 +163,9 @@ def test_diff_surfaces_coursework_changes() -> None:
 
 def test_diff_score_summary_includes_matched_and_gaps() -> None:
     out = build_tailor_diff(
-        verified=VERIFIED, tailored=_tailored(), score=_score(),
+        verified=VERIFIED,
+        tailored=_tailored(),
+        score=_score(),
     )
     assert "score=78" in out
     assert "TypeScript, React" in out
@@ -161,7 +174,9 @@ def test_diff_score_summary_includes_matched_and_gaps() -> None:
 
 def test_diff_handles_missing_score() -> None:
     out = build_tailor_diff(
-        verified=VERIFIED, tailored=_tailored(), score=None,
+        verified=VERIFIED,
+        tailored=_tailored(),
+        score=None,
     )
     assert "(no score on file)" in out
 
@@ -170,12 +185,14 @@ def test_diff_handles_role_not_in_baseline() -> None:
     """Defensive — should never happen post-fabrication-check, but the
     diff should not crash if it does."""
     t = _tailored()
-    t.roles.append(TailoredRole(
-        title="Imaginary",
-        employer="Made Up Co",
-        dates="2099",
-        bullets=["never happened"],
-    ))
+    t.roles.append(
+        TailoredRole(
+            title="Imaginary",
+            employer="Made Up Co",
+            dates="2099",
+            bullets=["never happened"],
+        )
+    )
     out = build_tailor_diff(verified=VERIFIED, tailored=t, score=_score())
     assert "role not in baseline" in out
 

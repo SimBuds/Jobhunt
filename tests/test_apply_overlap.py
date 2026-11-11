@@ -4,6 +4,7 @@ Asserts the next job's LLM phase starts BEFORE the current job's IO phase
 finishes. Uses sleep-instrumented stubs so timing is deterministic and we
 can observe ordering via a shared event list.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -85,18 +86,19 @@ async def test_next_llm_phase_starts_before_current_io_completes(
     idx_llm_end_b = rec.events.index("llm-end:job-B")
     idx_io_end_a = rec.events.index("io-end:job-A")
     assert idx_llm_end_b < idx_io_end_a, (
-        f"job-B's LLM phase should finish during job-A's IO phase "
-        f"(got: {rec.events})"
+        f"job-B's LLM phase should finish during job-A's IO phase (got: {rec.events})"
     )
     # Sequential (no overlap) would have looked like:
     #   llm-A, llm-A end, io-A, io-A end, llm-B, llm-B end, io-B, io-B end
     # — which we should NOT see.
-    sequential_pattern = ["llm-start:job-A", "llm-end:job-A",
-                          "io-start:job-A", "io-end:job-A",
-                          "llm-start:job-B"]
-    sequential_indices = [
-        rec.events.index(e) for e in sequential_pattern
+    sequential_pattern = [
+        "llm-start:job-A",
+        "llm-end:job-A",
+        "io-start:job-A",
+        "io-end:job-A",
+        "llm-start:job-B",
     ]
+    sequential_indices = [rec.events.index(e) for e in sequential_pattern]
     assert sequential_indices != sorted(sequential_indices), (
         f"pipeline ran sequentially — no overlap detected: {rec.events}"
     )
@@ -188,4 +190,5 @@ class _StubPhase:
     def audit_result(self) -> Any:
         class _R:
             verdict = "ship"
+
         return _R()

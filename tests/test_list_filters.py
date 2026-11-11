@@ -1,4 +1,5 @@
 """Phase 2 tests — list verdict / no-reply / older-than filters."""
+
 from __future__ import annotations
 
 import inspect
@@ -158,6 +159,7 @@ def test_parse_older_than_none() -> None:
 
 def test_parse_older_than_invalid_exits(capsys) -> None:
     import click
+
     with pytest.raises((SystemExit, click.exceptions.Exit)):
         _parse_older_than("two weeks")
 
@@ -194,8 +196,13 @@ def test_no_reply_excludes_drafted(conn) -> None:
 
     rows = _query(
         conn,
-        week_label=None, status=None, min_score=None, source=None,
-        no_reply=True, applied_before=None, limit=20,
+        week_label=None,
+        status=None,
+        min_score=None,
+        source=None,
+        no_reply=True,
+        applied_before=None,
+        limit=20,
     )
     assert rows == []
 
@@ -210,8 +217,13 @@ def test_older_than_filters_recent(conn) -> None:
 
     rows = _query(
         conn,
-        week_label=None, status=None, min_score=None, source=None,
-        no_reply=False, applied_before=far_past, limit=20,
+        week_label=None,
+        status=None,
+        min_score=None,
+        source=None,
+        no_reply=False,
+        applied_before=far_past,
+        limit=20,
     )
     assert rows == []
 
@@ -227,8 +239,13 @@ def test_older_than_includes_old(conn) -> None:
 
     rows = _query(
         conn,
-        week_label=None, status=None, min_score=None, source=None,
-        no_reply=False, applied_before=cutoff, limit=20,
+        week_label=None,
+        status=None,
+        min_score=None,
+        source=None,
+        no_reply=False,
+        applied_before=cutoff,
+        limit=20,
     )
     assert {r["id"] for r in rows} == {"greenhouse:acme:a"}
 
@@ -287,9 +304,7 @@ def test_action_board_counts_the_three_queues(conn) -> None:
     # declined + scored: not ready
     upsert_job(conn, _job("c"))
     _score(conn, "greenhouse:acme:c", 90)
-    conn.execute(
-        "UPDATE jobs SET decline_reason = 'wrong_domain' WHERE id = 'greenhouse:acme:c'"
-    )
+    conn.execute("UPDATE jobs SET decline_reason = 'wrong_domain' WHERE id = 'greenhouse:acme:c'")
     # below the floor: not ready
     upsert_job(conn, _job("d"))
     _score(conn, "greenhouse:acme:d", 30)

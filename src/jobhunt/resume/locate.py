@@ -52,9 +52,7 @@ def _rank(path: Path) -> tuple[int, int, float, str]:
     )
 
 
-def find_baseline_resume(
-    root: Path | None = None, *, explicit: Path | None = None
-) -> Path:
+def find_baseline_resume(root: Path | None = None, *, explicit: Path | None = None) -> Path:
     """Return the resume to parse.
 
     An `explicit` path always wins and is returned even if it does not match
@@ -88,9 +86,7 @@ def describe_choice(chosen: Path, root: Path | None = None) -> str:
     search = root or Path()
     # With an explicit --docx the search root (the profile dir) may not exist
     # yet on a first run. There is nothing to list then, not an error.
-    others = (
-        [p.name for p in _candidates(search) if p != chosen] if search.is_dir() else []
-    )
+    others = [p.name for p in _candidates(search) if p != chosen] if search.is_dir() else []
     if not others:
         return f"resume: {chosen}"
     return f"resume: {chosen}  (also found: {', '.join(others)})"

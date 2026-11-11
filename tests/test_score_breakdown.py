@@ -37,8 +37,13 @@ def _breakdown(**over: object) -> ScoreBreakdown:
         "computed": 80,
         "final": 70,
         "caps_applied": ["thin_jd"],
-        "weights": {"base": 30, "tier1": 50, "tier2": 10, "ai_bonus": 5,
-                    "transferable_credit": 0.7},
+        "weights": {
+            "base": 30,
+            "tier1": 50,
+            "tier2": 10,
+            "ai_bonus": 5,
+            "transferable_credit": 0.7,
+        },
     }
     base.update(over)
     return ScoreBreakdown(**base)  # type: ignore[arg-type]
@@ -107,8 +112,14 @@ class TestMigration:
         )
         with conn:
             write_score(
-                conn, job_id="t:1", score=70, reasons=["React"], red_flags=[],
-                must_clarify=["Rust"], model="qwen3.5:9b", prompt_hash="abc",
+                conn,
+                job_id="t:1",
+                score=70,
+                reasons=["React"],
+                red_flags=[],
+                must_clarify=["Rust"],
+                model="qwen3.5:9b",
+                prompt_hash="abc",
                 breakdown=_breakdown().to_json(),
             )
         stored = conn.execute("SELECT breakdown FROM scores").fetchone()["breakdown"]
@@ -126,8 +137,14 @@ class TestMigration:
         )
         with conn:
             write_score(
-                conn, job_id="t:1", score=70, reasons=[], red_flags=[],
-                must_clarify=[], model="m", prompt_hash="abc",
+                conn,
+                job_id="t:1",
+                score=70,
+                reasons=[],
+                red_flags=[],
+                must_clarify=[],
+                model="m",
+                prompt_hash="abc",
             )
         assert conn.execute("SELECT breakdown FROM scores").fetchone()["breakdown"] is None
         conn.close()
@@ -136,10 +153,16 @@ class TestMigration:
 class TestCoverageParsing:
     @pytest.mark.parametrize(
         "raw",
-        [None, "", "not json", "{}", '{"tier1": {}}',
-         '{"tier1": {"total": 0, "credit": 0}}',       # empty tier, not 0% fit
-         '{"tier1": {"total": 4}}',                     # credit missing
-         '{"tier1": {"total": "x", "credit": 1}}'],     # wrong type
+        [
+            None,
+            "",
+            "not json",
+            "{}",
+            '{"tier1": {}}',
+            '{"tier1": {"total": 0, "credit": 0}}',  # empty tier, not 0% fit
+            '{"tier1": {"total": 4}}',  # credit missing
+            '{"tier1": {"total": "x", "credit": 1}}',
+        ],  # wrong type
     )
     def test_unusable_breakdowns_are_unknown_not_zero(self, raw: str | None) -> None:
         """Every one of these must be excluded from calibration, not counted as
@@ -159,14 +182,20 @@ class TestCalibrationOutput:
         thin snippet capped down from 90, the other an honest 60%. The score
         table would put them in one band; the coverage table separates them."""
         rows = [
-            {"score": 70, "status": "interviewing",
-             "breakdown": _breakdown(tier1_matched=4, tier1_total=4,
-                                     tier1_credit=4.0, computed=90,
-                                     final=70).to_json()},
-            {"score": 70, "status": "applied",
-             "breakdown": _breakdown(tier1_matched=3, tier1_total=5,
-                                     tier1_credit=3.0, computed=70,
-                                     final=70).to_json()},
+            {
+                "score": 70,
+                "status": "interviewing",
+                "breakdown": _breakdown(
+                    tier1_matched=4, tier1_total=4, tier1_credit=4.0, computed=90, final=70
+                ).to_json(),
+            },
+            {
+                "score": 70,
+                "status": "applied",
+                "breakdown": _breakdown(
+                    tier1_matched=3, tier1_total=5, tier1_credit=3.0, computed=70, final=70
+                ).to_json(),
+            },
         ]
         _echo_coverage_calibration(rows, {"interviewing", "offer", "rejected"})
         out = capsys.readouterr().out
@@ -179,17 +208,13 @@ class TestCalibrationOutput:
         assert lines["75-89%"].split()[1] == "0"
         assert lines["<"].split()[2] == "0"
 
-    def test_reports_when_no_breakdowns_exist(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_reports_when_no_breakdowns_exist(self, capsys: pytest.CaptureFixture[str]) -> None:
         _echo_coverage_calibration(
             [{"score": 82, "status": "applied", "breakdown": None}], {"applied"}
         )
         assert "No score breakdowns recorded yet" in capsys.readouterr().out
 
-    def test_counts_excluded_legacy_rows(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_counts_excluded_legacy_rows(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Legacy rows must be reported as excluded, not silently dropped —
         otherwise the sample size looks larger than it is."""
         rows = [
@@ -207,8 +232,12 @@ def test_score_result_defaults_breakdown_to_none() -> None:
     from jobhunt.pipeline.score import ScoreResult
 
     r = ScoreResult(
-        score=70, matched_must_haves=[], gaps=[], decline_reason=None,
-        ai_bonus_present=False, model="m",
+        score=70,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="m",
     )
     assert r.breakdown is None
 
@@ -257,9 +286,7 @@ class TestPreMigrationDatabases:
     from under the user.
     """
 
-    def test_write_score_with_breakdown_needs_the_migration(
-        self, tmp_path: Path
-    ) -> None:
+    def test_write_score_with_breakdown_needs_the_migration(self, tmp_path: Path) -> None:
         """Pins the failure this phase would otherwise have shipped, so the
         `apply` migrate call below cannot be removed without a red test."""
         db = _pre_0010_db(tmp_path)
@@ -270,8 +297,14 @@ class TestPreMigrationDatabases:
         )
         with pytest.raises(sqlite3.OperationalError, match="breakdown"), conn:
             write_score(
-                conn, job_id="t:1", score=70, reasons=[], red_flags=[],
-                must_clarify=[], model="m", prompt_hash="h",
+                conn,
+                job_id="t:1",
+                score=70,
+                reasons=[],
+                red_flags=[],
+                must_clarify=[],
+                model="m",
+                prompt_hash="h",
                 breakdown=_breakdown().to_json(),
             )
         conn.close()

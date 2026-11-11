@@ -285,8 +285,12 @@ def test_audit_short_jd_uses_peer_families(verified: dict) -> None:
     extraction through PEER_FAMILIES. A JD that names 'Vue' should surface
     'React' as an inferred must-have for Casey (React is verified)."""
     empty_score = ScoreResult(
-        score=72, matched_must_haves=[], gaps=[],
-        decline_reason=None, ai_bonus_present=False, model="test",
+        score=72,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="test",
     )
     short_jd = "Frontend role: Vue, TypeScript, REST APIs."  # < 800 chars
     result = audit(
@@ -315,8 +319,12 @@ def test_audit_peer_broadening_suppressed_when_sibling_already_matched(
     dropped to 80%. Dedupe: when a family sibling is already directly matched,
     suppress the peer-broadened add."""
     empty_score = ScoreResult(
-        score=82, matched_must_haves=[], gaps=[],
-        decline_reason=None, ai_bonus_present=False, model="test",
+        score=82,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="test",
     )
     short_jd = (
         "AWS Cloud Developer: design serverless apps using AWS Lambda, "
@@ -355,8 +363,12 @@ def test_audit_peer_broadening_still_fires_when_no_sibling_matched(
     JD names Vue (no AWS/Azure equivalent overlap), verified has React but no
     Vue. Peer-broadening should still add React as an inferred must-have."""
     empty_score = ScoreResult(
-        score=72, matched_must_haves=[], gaps=[],
-        decline_reason=None, ai_bonus_present=False, model="test",
+        score=72,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="test",
     )
     short_jd = "Frontend role: Vue, TypeScript, REST APIs."
     result = audit(
@@ -377,8 +389,12 @@ def test_audit_long_jd_does_not_use_peer_broadening(verified: dict) -> None:
     enough surface text to name canonical tech directly, and broadening would
     create false positives on roles that intentionally call out non-peers."""
     empty_score = ScoreResult(
-        score=72, matched_must_haves=[], gaps=[],
-        decline_reason=None, ai_bonus_present=False, model="test",
+        score=72,
+        matched_must_haves=[],
+        gaps=[],
+        decline_reason=None,
+        ai_bonus_present=False,
+        model="test",
     )
     long_jd = "Senior frontend engineer needed. " + ("We use Vue 3 in production. " * 40)
     assert len(long_jd) >= 800
@@ -392,9 +408,7 @@ def test_audit_long_jd_does_not_use_peer_broadening(verified: dict) -> None:
         job_description=long_jd,
     )
     # Without broadening, React should NOT surface as matched.
-    assert not any(
-        m.lower().strip() == "react" for m in result.matched_keywords
-    )
+    assert not any(m.lower().strip() == "react" for m in result.matched_keywords)
 
 
 def test_audit_alignment_flags_drift_between_resume_and_cover(verified: dict) -> None:
@@ -440,9 +454,7 @@ def test_audit_alignment_passes_when_both_anchor_on_same_project(
         title=tailored.roles[0].title,
         employer=tailored.roles[0].employer,
         dates=tailored.roles[0].dates,
-        bullets=[
-            "Built the Harbour Loom ring builder on Shopify with Stripe payments."
-        ],
+        bullets=["Built the Harbour Loom ring builder on Shopify with Stripe payments."],
     )
     cover = _good_cover()
     cover.body[1] = (
@@ -544,24 +556,35 @@ def test_audit_topics_categorisation(verified: dict) -> None:
     from jobhunt.commands.apply_cmd import _audit_topics
 
     clean = AuditResult(
-        keyword_coverage_pct=90, matched_keywords=["TypeScript"],
-        missing_must_haves=[], fabrication_flags=[],
-        cover_letter_violations=[], alignment_flags=[], verdict="ship",
+        keyword_coverage_pct=90,
+        matched_keywords=["TypeScript"],
+        missing_must_haves=[],
+        fabrication_flags=[],
+        cover_letter_violations=[],
+        alignment_flags=[],
+        verdict="ship",
     )
     assert _audit_topics(clean) == []
 
     low_coverage = AuditResult(
-        keyword_coverage_pct=40, matched_keywords=["TypeScript"],
-        missing_must_haves=["React", "GraphQL", "Vue"], fabrication_flags=[],
-        cover_letter_violations=[], alignment_flags=[], verdict="revise",
+        keyword_coverage_pct=40,
+        matched_keywords=["TypeScript"],
+        missing_must_haves=["React", "GraphQL", "Vue"],
+        fabrication_flags=[],
+        cover_letter_violations=[],
+        alignment_flags=[],
+        verdict="revise",
     )
     assert _audit_topics(low_coverage) == ["coverage"]
 
     everything = AuditResult(
-        keyword_coverage_pct=40, matched_keywords=[], missing_must_haves=["X"],
+        keyword_coverage_pct=40,
+        matched_keywords=[],
+        missing_must_haves=["X"],
         fabrication_flags=["fake employer"],
         cover_letter_violations=["banned phrase"],
-        alignment_flags=["drift"], verdict="block",
+        alignment_flags=["drift"],
+        verdict="block",
     )
     topics = _audit_topics(everything)
     assert set(topics) == {"fabrication", "cover-violation", "coverage", "alignment"}

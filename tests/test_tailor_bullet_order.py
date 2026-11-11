@@ -57,16 +57,21 @@ def _resume(roles: list[TailoredRole]) -> TailoredResume:
 
 def _job(description: str, title: str = "AI Automation Developer") -> Job:
     return Job(
-        id="test:1", source="test", external_id="1",
-        title=title, company="Acme", description=description,
+        id="test:1",
+        source="test",
+        external_id="1",
+        title=title,
+        company="Acme",
+        description=description,
     )
 
 
 def test_the_jd_relevant_bullet_leads_after_reordering() -> None:
     """The AI-lane scenario: the storefront bullet was emitted first, the
     pipeline bullet carries the JD's skills, so it moves to the lead."""
-    role = TailoredRole("Dev", "Harbour Loom", "2023 – Present",
-                        [STOREFRONT_BULLET, PIPELINE_BULLET])
+    role = TailoredRole(
+        "Dev", "Harbour Loom", "2023 – Present", [STOREFRONT_BULLET, PIPELINE_BULLET]
+    )
     resume = _resume([role])
     _order_bullets_by_jd(resume, _job(AI_JD), VERIFIED)
     assert resume.roles[0].bullets[0] == PIPELINE_BULLET
@@ -77,8 +82,9 @@ def test_the_surviving_bullet_is_the_relevant_one_after_the_ladder() -> None:
     leaves the pipeline bullet, which is what the lane render lost."""
     from jobhunt.pipeline.tailor import _try_drop_weakest_bullet
 
-    role = TailoredRole("Dev", "Harbour Loom", "2023 – Present",
-                        [STOREFRONT_BULLET, PIPELINE_BULLET])
+    role = TailoredRole(
+        "Dev", "Harbour Loom", "2023 – Present", [STOREFRONT_BULLET, PIPELINE_BULLET]
+    )
     resume = _resume([role])
     _order_bullets_by_jd(resume, _job(AI_JD), VERIFIED)
     assert _try_drop_weakest_bullet(resume) is True
@@ -96,8 +102,9 @@ def test_ties_keep_the_models_original_order() -> None:
 
 def test_single_bullet_and_unmatched_jd_are_left_alone() -> None:
     single = TailoredRole("Dev", "Acme", "2023 – Present", [STOREFRONT_BULLET])
-    unmatched = TailoredRole("Chef", "JOEY", "2015 – 2025",
-                             ["Led kitchen teams.", "Ran food-cost budgeting."])
+    unmatched = TailoredRole(
+        "Chef", "JOEY", "2015 – 2025", ["Led kitchen teams.", "Ran food-cost budgeting."]
+    )
     resume = _resume([single, unmatched])
     _order_bullets_by_jd(resume, _job("Embedded firmware in Rust and C."), VERIFIED)
     assert resume.roles[0].bullets == [STOREFRONT_BULLET]
@@ -123,8 +130,9 @@ def test_prose_bullet_outranks_a_keyword_bullet_from_another_lane() -> None:
         "Build LLM automation: agents, prompt pipelines with deterministic "
         "validation, and human-in-the-loop content review that audits output."
     )
-    role = TailoredRole("Dev", "Harbour Loom", "2023 – Present",
-                        [seo_bullet, prose_pipeline_bullet])
+    role = TailoredRole(
+        "Dev", "Harbour Loom", "2023 – Present", [seo_bullet, prose_pipeline_bullet]
+    )
     resume = _resume([role])
     _order_bullets_by_jd(resume, _job(jd), VERIFIED)
     assert resume.roles[0].bullets[0] == prose_pipeline_bullet
@@ -150,8 +158,9 @@ def test_equal_relevance_puts_the_quantified_bullet_first() -> None:
 
 
 def test_relevance_still_beats_a_figure() -> None:
-    role = TailoredRole("Dev", "Harbour Loom", "2023 – Present",
-                        [STOREFRONT_BULLET, PIPELINE_BULLET])
+    role = TailoredRole(
+        "Dev", "Harbour Loom", "2023 – Present", [STOREFRONT_BULLET, PIPELINE_BULLET]
+    )
     resume = _resume([role])
     _order_bullets_by_jd(resume, _job(AI_JD), VERIFIED)
     assert resume.roles[0].bullets[0] == PIPELINE_BULLET

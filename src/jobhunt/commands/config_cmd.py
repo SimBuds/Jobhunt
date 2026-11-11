@@ -59,12 +59,8 @@ def _load_seeds() -> dict[str, list[str]]:
 
 @app.command("seed")
 def seed(
-    preview: bool = typer.Option(
-        False, "--preview", help="Print seeds without writing to config."
-    ),
-    apply: bool = typer.Option(
-        False, "--apply", help="Append seeds not already in config.toml."
-    ),
+    preview: bool = typer.Option(False, "--preview", help="Print seeds without writing to config."),
+    apply: bool = typer.Option(False, "--apply", help="Append seeds not already in config.toml."),
 ) -> None:
     """Import the repo-curated GTA employer seed list into config.toml.
 
@@ -151,11 +147,13 @@ async def _reprobe_async(
 @app.command("reprobe")
 def reprobe(
     prune: bool = typer.Option(
-        False, "--prune",
+        False,
+        "--prune",
         help="Remove stale slugs from config.toml. Without --force, prompts before writing.",
     ),
     force: bool = typer.Option(
-        False, "--force",
+        False,
+        "--force",
         help="With --prune, skip the confirmation prompt.",
     ),
 ) -> None:
@@ -172,9 +170,7 @@ def reprobe(
     if prune and not force:
         from jobhunt.commands import require_tty
 
-        require_tty(
-            "config reprobe --prune asks to confirm. Pass --force or run it in a terminal"
-        )
+        require_tty("config reprobe --prune asks to confirm. Pass --force or run it in a terminal")
 
     cfg = load_config()
 
@@ -198,15 +194,10 @@ def reprobe(
         BarColumn(),
         MofNCompleteColumn(),
         TimeElapsedColumn(),
-        TextColumn(
-            "[green]{task.fields[live]} live "
-            "[red]{task.fields[stale]} stale"
-        ),
+        TextColumn("[green]{task.fields[live]} live [red]{task.fields[stale]} stale"),
         transient=False,
     ) as progress:
-        task_id = progress.add_task(
-            "probing …", total=pre_total, live=0, stale=0
-        )
+        task_id = progress.add_task("probing …", total=pre_total, live=0, stale=0)
 
         def _on_progress(done: int, total: int, current: str, status: int) -> None:
             nonlocal live, miss
@@ -224,9 +215,7 @@ def reprobe(
                 stale=miss,
             )
 
-        outcomes = asyncio.run(
-            _reprobe_async(cfg, _PROBEABLE_ATSES, on_progress=_on_progress)
-        )
+        outcomes = asyncio.run(_reprobe_async(cfg, _PROBEABLE_ATSES, on_progress=_on_progress))
         progress.update(task_id, description="done")
 
     if not outcomes:
@@ -263,8 +252,7 @@ def reprobe(
 
     total_probed = sum(len(v) for v in by_ats.values())
     typer.echo(
-        f"\nsummary: {total_hits} live, {total_stale} stale across "
-        f"{total_probed} configured slugs."
+        f"\nsummary: {total_hits} live, {total_stale} stale across {total_probed} configured slugs."
     )
 
     if not stale_by_ats:
@@ -368,8 +356,7 @@ def calibrate() -> None:
     total_interviews = sum(1 for r in rows if r["status"] in interview_statuses)
     typer.echo("-" * 42)
     typer.echo(
-        f"{'TOTAL':<12} {total:>8} {total_interviews:>11} "
-        f"{100 * total_interviews / total:.0f}%"
+        f"{'TOTAL':<12} {total:>8} {total_interviews:>11} {100 * total_interviews / total:.0f}%"
         if total
         else ""
     )
@@ -404,9 +391,7 @@ def _tier1_coverage(breakdown_json: str | None) -> float | None:
     return float(credit) / total
 
 
-def _echo_coverage_calibration(
-    rows: list[Any], interview_statuses: set[str]
-) -> None:
+def _echo_coverage_calibration(rows: list[Any], interview_statuses: set[str]) -> None:
     """Interview rate by tier-1 coverage, which is what the weights control.
 
     The score bands above mix earned scores with capped ones: a thin-JD posting
@@ -424,8 +409,12 @@ def _echo_coverage_calibration(
         )
         return
 
-    bands = [(0.9, 1.01, "90-100%"), (0.75, 0.9, "75-89%"),
-             (0.6, 0.75, "60-74%"), (0.0, 0.6, "< 60%")]
+    bands = [
+        (0.9, 1.01, "90-100%"),
+        (0.75, 0.9, "75-89%"),
+        (0.6, 0.75, "60-74%"),
+        (0.0, 0.6, "< 60%"),
+    ]
     typer.echo(f"\n{'Tier-1 coverage':<16} {'Applied':>8} {'Interviews':>11} {'Rate':>7}")
     typer.echo("-" * 46)
     for lo, hi, label in bands:

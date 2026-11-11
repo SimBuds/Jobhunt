@@ -64,9 +64,7 @@ def build() -> Path:
     roles = []
     for r in v["work_history"]:
         keep = 1 if r["title"].lower().startswith("sous chef") else 3
-        roles.append(
-            TailoredRole(r["title"], r["employer"], r["dates"], list(r["bullets"])[:keep])
-        )
+        roles.append(TailoredRole(r["title"], r["employer"], r["dates"], list(r["bullets"])[:keep]))
     # PROJECTS dropped on the one-pager so >= 3 bullets/role fits one page; the
     # comprehensive baseline keeps them, and the merged AI & Tooling skill row
     # still carries the project tech (FastAPI, Redis, Claude API, ...).

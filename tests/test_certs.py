@@ -71,28 +71,30 @@ def test_known_certs(text: str, expected: list[str]) -> None:
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("AWS Certified AI Practitioner preferred.",
-         ["AWS Certified AI Practitioner"]),
+        ("AWS Certified AI Practitioner preferred.", ["AWS Certified AI Practitioner"]),
         ("AIF-C01 holders welcome.", ["AWS Certified AI Practitioner"]),
-        ("AWS Certified Machine Learning Engineer – Associate required.",
-         ["AWS Certified Machine Learning Engineer – Associate"]),
-        ("MLA-C01 a plus.",
-         ["AWS Certified Machine Learning Engineer – Associate"]),
-        ("AWS Certified Machine Learning – Specialty desired.",
-         ["AWS Certified Machine Learning – Specialty"]),
-        ("MLS-C01 holders preferred.",
-         ["AWS Certified Machine Learning – Specialty"]),
+        (
+            "AWS Certified Machine Learning Engineer – Associate required.",
+            ["AWS Certified Machine Learning Engineer – Associate"],
+        ),
+        ("MLA-C01 a plus.", ["AWS Certified Machine Learning Engineer – Associate"]),
+        (
+            "AWS Certified Machine Learning – Specialty desired.",
+            ["AWS Certified Machine Learning – Specialty"],
+        ),
+        ("MLS-C01 holders preferred.", ["AWS Certified Machine Learning – Specialty"]),
         ("AI-102 certification needed.", ["Azure AI Engineer Associate"]),
-        ("Azure AI Engineer Associate preferred.",
-         ["Azure AI Engineer Associate"]),
-        ("Databricks Certified Generative AI Engineer Associate a bonus.",
-         ["Databricks Certified Generative AI Engineer Associate"]),
-        ("NCA-GENL certified.",
-         ["NVIDIA-Certified Associate: Generative AI LLMs"]),
-        ("Google Cloud Generative AI Leader credential.",
-         ["Google Cloud Generative AI Leader"]),
-        ("Google Professional Machine Learning Engineer required.",
-         ["Google Professional Machine Learning Engineer"]),
+        ("Azure AI Engineer Associate preferred.", ["Azure AI Engineer Associate"]),
+        (
+            "Databricks Certified Generative AI Engineer Associate a bonus.",
+            ["Databricks Certified Generative AI Engineer Associate"],
+        ),
+        ("NCA-GENL certified.", ["NVIDIA-Certified Associate: Generative AI LLMs"]),
+        ("Google Cloud Generative AI Leader credential.", ["Google Cloud Generative AI Leader"]),
+        (
+            "Google Professional Machine Learning Engineer required.",
+            ["Google Professional Machine Learning Engineer"],
+        ),
     ],
 )
 def test_ai_llm_certs(text: str, expected: list[str]) -> None:
@@ -103,9 +105,7 @@ def test_databricks_genai_wins_over_generic() -> None:
     # The specific GenAI Engineer entry is ordered before the generic
     # "Databricks Certified" so the overlap-filter keeps the longer match —
     # the generic name must NOT also appear.
-    result = extract_certs(
-        "Databricks Certified Generative AI Engineer Associate required."
-    )
+    result = extract_certs("Databricks Certified Generative AI Engineer Associate required.")
     assert result == ["Databricks Certified Generative AI Engineer Associate"]
     assert "Databricks Certified" not in result
 
@@ -118,11 +118,11 @@ def test_databricks_genai_wins_over_generic() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "PMPro is a WordPress plugin.",          # PMPro must not match PMP
-        "ASEC+ protocol.",                       # ASEC+ must not match Sec+
-        "We use CCNAS library.",                 # CCNAS must not match CCNA
-        "The CCNPX router.",                     # CCNPX must not match CCNP
-        "Visit cfasite.com for details.",        # cfasite must not match CFA
+        "PMPro is a WordPress plugin.",  # PMPro must not match PMP
+        "ASEC+ protocol.",  # ASEC+ must not match Sec+
+        "We use CCNAS library.",  # CCNAS must not match CCNA
+        "The CCNPX router.",  # CCNPX must not match CCNP
+        "Visit cfasite.com for details.",  # cfasite must not match CFA
     ],
 )
 def test_no_false_positives(text: str) -> None:
@@ -203,6 +203,7 @@ def test_tally_none_description() -> None:
 
 def test_extract_certs_split_separates_known_and_generic() -> None:
     from jobhunt.analyze.certs import extract_certs_split
+
     text = (
         "CISSP required. Azure Security Engineer Certification a plus. "
         "Certified Banana Specialist preferred."
@@ -219,6 +220,7 @@ def test_extract_certs_split_drops_generic_collision_with_known() -> None:
     """If a generic phrase happens to equal a known cert name, only the known
     side keeps it — the generic list must not duplicate."""
     from jobhunt.analyze.certs import extract_certs_split
+
     text = "CISSP required."
     known, generic = extract_certs_split(text)
     assert known == ["CISSP"]
@@ -227,6 +229,7 @@ def test_extract_certs_split_drops_generic_collision_with_known() -> None:
 
 def test_tally_split_counts_per_job() -> None:
     from jobhunt.analyze.certs import tally_split
+
     rows = [
         {"title": "A", "description": "CISSP required. Certified Banana Specialist preferred."},
         {"title": "B", "description": "Certified Banana Specialist preferred."},
@@ -245,6 +248,7 @@ def test_tally_split_counts_per_job() -> None:
 
 def test_classify_emerging_threshold() -> None:
     from jobhunt.commands.analyze_cmd import _classify
+
     # cur >= 3 with prev=0 → emerging.
     _, label = _classify(0, 5)
     assert "emerging" in label
@@ -255,9 +259,10 @@ def test_classify_emerging_threshold() -> None:
 
 def test_classify_rising_falling_stable() -> None:
     from jobhunt.commands.analyze_cmd import _classify
+
     pct, label = _classify(10, 20)  # +100%
     assert label == "📈 rising"
-    pct, label = _classify(20, 5)   # -75%
+    pct, label = _classify(20, 5)  # -75%
     assert label == "📉 falling"
     pct, label = _classify(10, 12)  # +20%, stable
     assert label == "stable"
@@ -265,6 +270,7 @@ def test_classify_rising_falling_stable() -> None:
 
 def test_classify_dropped() -> None:
     from jobhunt.commands.analyze_cmd import _classify
+
     pct, label = _classify(10, 0)
     assert pct == -100.0
     assert label == "dropped"
@@ -277,18 +283,21 @@ def test_classify_dropped() -> None:
 
 def test_classify_verdict_strong_emerging() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     v = _classify_verdict(fit_cur=8, cur=8, trend_label="🚀 emerging", demand_rank=5)
     assert v == "Strong emerging signal"
 
 
 def test_classify_verdict_worth_pursuing() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     v = _classify_verdict(fit_cur=14, cur=28, trend_label="📈 rising", demand_rank=2)
     assert v == "Worth pursuing"
 
 
 def test_classify_verdict_wrong_direction() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     # High market demand, zero fit → not for you.
     v = _classify_verdict(fit_cur=0, cur=25, trend_label="stable", demand_rank=1)
     assert v == "Wrong direction"
@@ -296,6 +305,7 @@ def test_classify_verdict_wrong_direction() -> None:
 
 def test_classify_verdict_skip_low_fit() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     # fit < 3 always skips, even if rising in the market.
     v = _classify_verdict(fit_cur=2, cur=8, trend_label="🚀 emerging", demand_rank=4)
     assert v == "Skip"
@@ -303,12 +313,14 @@ def test_classify_verdict_skip_low_fit() -> None:
 
 def test_classify_verdict_late_diminishing() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     v = _classify_verdict(fit_cur=5, cur=10, trend_label="📉 falling", demand_rank=8)
     assert v == "Late — diminishing"
 
 
 def test_classify_verdict_stable_staple() -> None:
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     v = _classify_verdict(fit_cur=15, cur=40, trend_label="stable", demand_rank=3)
     assert v == "Stable staple"
     # Stable but outside top 10 demand → Marginal.
@@ -319,6 +331,7 @@ def test_classify_verdict_stable_staple() -> None:
 def test_classify_verdict_wrong_direction_threshold() -> None:
     """`fit_cur=0` only flags 'Wrong direction' when cur >= 5; otherwise Skip."""
     from jobhunt.commands.analyze_cmd import _classify_verdict
+
     v = _classify_verdict(fit_cur=0, cur=4, trend_label="stable", demand_rank=20)
     assert v == "Skip"
 
@@ -326,6 +339,7 @@ def test_classify_verdict_wrong_direction_threshold() -> None:
 def test_analyze_certs_min_score_snapshot_runs(tmp_path) -> None:
     """Integration: --min-score path round-trips through the snapshot render."""
     import sqlite3
+
     db = tmp_path / "j.db"
     con = sqlite3.connect(db)
     con.row_factory = sqlite3.Row

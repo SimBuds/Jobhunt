@@ -55,8 +55,7 @@ def ensure_profile(cfg: Config) -> None:
     verified = cfg.paths.profile_dir / "verified.json"
     if not verified.is_file():
         raise InputError(
-            f"missing {verified}. Run `jobhunt convert-resume` first to parse "
-            "your baseline resume."
+            f"missing {verified}. Run `jobhunt convert-resume` first to parse your baseline resume."
         )
 
 

@@ -43,9 +43,13 @@ def _jobhunt(
     """Run the installed script. With `open_pipe`, stdin is a pipe that stays
     open and empty, which is what makes a prompt hang rather than abort."""
     proc = subprocess.Popen(
-        [str(SCRIPT), *args], cwd=REPO, env=_env(tmp_path), text=True,
+        [str(SCRIPT), *args],
+        cwd=REPO,
+        env=_env(tmp_path),
+        text=True,
         stdin=subprocess.PIPE if open_pipe else subprocess.DEVNULL,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     try:
         proc.wait(timeout=TIMEOUT)

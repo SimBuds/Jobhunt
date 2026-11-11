@@ -200,9 +200,7 @@ def _resume(path: Path, *, skill_label: str, role_line: str) -> Path:
     # convert-resume separately exits 1 on missing applicant fields, which
     # would mask the guard's own exit code.
     doc.add_paragraph("Toronto, ON  |  416-555-0100  |  jane@example.com")
-    doc.add_paragraph(
-        "linkedin.com/in/jane-dev  |  janedev.com  |  github.com/janedev"
-    )
+    doc.add_paragraph("linkedin.com/in/jane-dev  |  janedev.com  |  github.com/janedev")
     doc.add_paragraph("TECHNICAL SKILLS")
     doc.add_paragraph(f"{skill_label}: TypeScript, React")
     doc.add_paragraph("PROFESSIONAL EXPERIENCE")
@@ -321,27 +319,21 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_data_devops": ["Docker", "AWS"]}))
 
-        blocking, advisory = _bucket_regressions(
-            self._facts(skills_data_devops=[]), snapshot
-        )
+        blocking, advisory = _bucket_regressions(self._facts(skills_data_devops=[]), snapshot)
 
         assert len(blocking) == 1
         assert "Data & DevOps" in blocking[0]
         assert "2 item(s)" in blocking[0]
         assert advisory == []
 
-    def test_emptied_familiar_advises_instead_of_blocking(
-        self, tmp_path: Path
-    ) -> None:
+    def test_emptied_familiar_advises_instead_of_blocking(self, tmp_path: Path) -> None:
         """Familiar is optional: report it, but let the write through."""
         from jobhunt.commands.convert_resume_cmd import _bucket_regressions
 
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_familiar": ["Java", "Spring Boot"]}))
 
-        blocking, advisory = _bucket_regressions(
-            self._facts(skills_familiar=[]), snapshot
-        )
+        blocking, advisory = _bucket_regressions(self._facts(skills_familiar=[]), snapshot)
 
         assert blocking == []
         assert len(advisory) == 1
@@ -364,9 +356,7 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_familiar": ["Java"]}))
 
-        blocking, advisory = _bucket_regressions(
-            self._facts(skills_familiar=[]), snapshot
-        )
+        blocking, advisory = _bucket_regressions(self._facts(skills_familiar=[]), snapshot)
         assert advisory, "no advisory produced, so this proves nothing"
         assert _dropped_content_warnings(blocking) == []
 
@@ -427,13 +417,9 @@ class TestBucketRegressions:
         snapshot = tmp_path / "verified.json"
         snapshot.write_text(json.dumps({"skills_familiar": ["Java"]}))
 
-        assert _bucket_regressions(
-            self._facts(skills_familiar=["Java"]), snapshot
-        ) == ([], [])
+        assert _bucket_regressions(self._facts(skills_familiar=["Java"]), snapshot) == ([], [])
 
-    def test_vanished_required_row_blocks_the_write_end_to_end(
-        self, env: Path
-    ) -> None:
+    def test_vanished_required_row_blocks_the_write_end_to_end(self, env: Path) -> None:
         """The regression an absent row causes, driven through the real command."""
         from jobhunt.commands import convert_resume_cmd
 
@@ -496,9 +482,7 @@ class TestBucketRegressions:
 
         profile = env / "kb" / "profile"
         profile.mkdir(parents=True, exist_ok=True)
-        (profile / "verified.json").write_text(
-            json.dumps({"skills_data_devops": ["Docker"]})
-        )
+        (profile / "verified.json").write_text(json.dumps({"skills_data_devops": ["Docker"]}))
 
         docx = _resume(
             env,
@@ -519,9 +503,7 @@ class TestSupplementWiring:
 
         profile = env / "kb" / "profile"
         profile.mkdir(parents=True, exist_ok=True)
-        (profile / "supplement.toml").write_text(
-            '[[core]]\nskill = "Rust"\nsource = "nowhere"\n'
-        )
+        (profile / "supplement.toml").write_text('[[core]]\nskill = "Rust"\nsource = "nowhere"\n')
         docx = _resume(
             env,
             skill_label="Languages & Frameworks",

@@ -21,9 +21,7 @@ SCORE_PROMPT = KB / "prompts" / "score.md"
 
 def _public_kb_files() -> list[Path]:
     return sorted(
-        p
-        for p in KB.rglob("*")
-        if p.is_file() and "profile" not in p.relative_to(KB).parts
+        p for p in KB.rglob("*") if p.is_file() and "profile" not in p.relative_to(KB).parts
     )
 
 
@@ -32,8 +30,7 @@ def test_ollama_appears_only_on_the_score_peer_line() -> None:
         f"{p.relative_to(KB)}:{n}"
         for p in _public_kb_files()
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if "ollama" in line.lower()
-        and not (p == SCORE_PROMPT and "AI SDKs / hosts" in line)
+        if "ollama" in line.lower() and not (p == SCORE_PROMPT and "AI SDKs / hosts" in line)
     ]
     assert hits == []
 

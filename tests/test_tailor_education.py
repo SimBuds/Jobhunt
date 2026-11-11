@@ -82,8 +82,7 @@ def test_a_model_rewrite_is_replaced_by_the_verbatim_line() -> None:
     and the AI lane rewrote the diploma with a city the profile does not
     hold. The verified entry always wins."""
     model_line = (
-        "Advanced Diploma, Computer Programming & Analysis (Diploma), "
-        "Elm Ridge, Toronto (Apr 2024)"
+        "Advanced Diploma, Computer Programming & Analysis (Diploma), Elm Ridge, Toronto (Apr 2024)"
     )
     resume = _resume([model_line])
     _ensure_education(resume, VERIFIED)

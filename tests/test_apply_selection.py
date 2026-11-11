@@ -154,7 +154,9 @@ def test_apply_migrates_before_selecting(args: list[str]) -> None:
     result = CliRunner().invoke(cli.app, ["apply", *args, "--no-browser"])
     assert not isinstance(result.exception, sqlite3.Error), result.output
     assert "no such table" not in result.output
-    tables = sqlite3.connect(cfg.paths.db_path).execute(
-        "SELECT count(*) FROM sqlite_master WHERE name = 'jobs'"
-    ).fetchone()
+    tables = (
+        sqlite3.connect(cfg.paths.db_path)
+        .execute("SELECT count(*) FROM sqlite_master WHERE name = 'jobs'")
+        .fetchone()
+    )
     assert tables == (1,)

@@ -76,15 +76,22 @@ async def _run_one(cfg, verified: dict, job: Job) -> dict:
         row["secs"] = round(time.monotonic() - t0)
         return row
     cover, c_viol, c_attempts = await write_cover_with_retry(
-        cfg, job,
-        verified=verified, company=job.company,
+        cfg,
+        job,
+        verified=verified,
+        company=job.company,
         max_words=cfg.pipeline.cover_max_words,
         max_attempts=cfg.pipeline.cover_retry_attempts,
     )
     result = audit(
-        tailored=tailored, cover=cover, score=score, verified=verified,
-        company=job.company, cover_max_words=cfg.pipeline.cover_max_words,
-        job_description=job.description, job_title=job.title,
+        tailored=tailored,
+        cover=cover,
+        score=score,
+        verified=verified,
+        company=job.company,
+        cover_max_words=cfg.pipeline.cover_max_words,
+        job_description=job.description,
+        job_title=job.title,
     )
     rule_ids = sorted({categorize_violation(v) for v in result.cover_letter_violations})
     row.update(
@@ -130,9 +137,7 @@ async def main() -> int:
     print("\n" + header)
     print("-" * len(header))
     for r in rows:
-        att = (
-            f"{r.get('tailor_attempts', '-')}/{r.get('cover_attempts', '-')}"
-        )
+        att = f"{r.get('tailor_attempts', '-')}/{r.get('cover_attempts', '-')}"
         cov = r.get("coverage")
         print(
             f"{r['fixture']:<26} {r['score']:>5} {r['outcome']:<13} "

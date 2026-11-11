@@ -56,9 +56,7 @@ def _exact_sql(scope: str) -> str:
     return "SELECT id FROM jobs WHERE id = ?"
 
 
-def resolve_job_ref(
-    conn: sqlite3.Connection, ref: str, *, scope: str = "applied"
-) -> str:
+def resolve_job_ref(conn: sqlite3.Connection, ref: str, *, scope: str = "applied") -> str:
     """Resolve a job reference to a job id.
 
     Exact id wins; otherwise a case-insensitive substring match over company +

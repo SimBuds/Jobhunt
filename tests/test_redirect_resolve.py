@@ -34,9 +34,7 @@ async def test_happy_path_chain_returns_final_url() -> None:
         return httpx.Response(200)
 
     async with _client(handler) as client:
-        result = await resolve_redirect(
-            client, "https://www.adzuna.ca/details/1", RateLimiter(0)
-        )
+        result = await resolve_redirect(client, "https://www.adzuna.ca/details/1", RateLimiter(0))
     assert result == "https://employer.example.com/apply/123"
 
 
@@ -59,9 +57,7 @@ async def test_network_error_returns_original_url() -> None:
         raise httpx.ConnectError("boom")
 
     async with _client(handler) as client:
-        result = await resolve_redirect(
-            client, "https://broken.test/", RateLimiter(0)
-        )
+        result = await resolve_redirect(client, "https://broken.test/", RateLimiter(0))
     assert result == "https://broken.test/"
 
 
@@ -75,9 +71,7 @@ async def test_head_405_falls_back_to_streaming_get() -> None:
         return httpx.Response(200)
 
     async with _client(handler) as client:
-        result = await resolve_redirect(
-            client, "https://no-head.test/initial", RateLimiter(0)
-        )
+        result = await resolve_redirect(client, "https://no-head.test/initial", RateLimiter(0))
     assert result == "https://final.test/job"
 
 
@@ -88,9 +82,7 @@ async def test_max_hops_exhausted_returns_original() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         counter["n"] += 1
         # Always redirect to a brand-new URL so loop detection doesn't trigger.
-        return httpx.Response(
-            302, headers={"Location": f"https://hop.test/{counter['n']}"}
-        )
+        return httpx.Response(302, headers={"Location": f"https://hop.test/{counter['n']}"})
 
     async with _client(handler) as client:
         result = await resolve_redirect(

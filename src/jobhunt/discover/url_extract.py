@@ -29,18 +29,16 @@ from urllib.parse import urlparse
 
 class ExtractedSlug(NamedTuple):
     ats: str
-    slug: str           # tenant for Workday, board slug elsewhere
-    site: str | None    # Workday site path segment; None for everything else
-    host: str | None    # Workday wd-host segment ("wd1", "wd3", "wd5"); None elsewhere
+    slug: str  # tenant for Workday, board slug elsewhere
+    site: str | None  # Workday site path segment; None for everything else
+    host: str | None  # Workday wd-host segment ("wd1", "wd3", "wd5"); None elsewhere
 
 
 _GREENHOUSE_HOSTS = {"boards.greenhouse.io", "job-boards.greenhouse.io"}
 _LEVER_HOSTS = {"jobs.lever.co"}
 _ASHBY_HOSTS = {"jobs.ashbyhq.com"}
 _SMARTRECRUITERS_HOSTS = {"jobs.smartrecruiters.com", "careers.smartrecruiters.com"}
-_WORKDAY_HOST_RE = re.compile(
-    r"^(?P<tenant>[a-z0-9-]+)\.(?P<host>wd\d+)\.myworkdayjobs\.com$"
-)
+_WORKDAY_HOST_RE = re.compile(r"^(?P<tenant>[a-z0-9-]+)\.(?P<host>wd\d+)\.myworkdayjobs\.com$")
 _ICIMS_HOST_RE = re.compile(r"^careers-(?P<tenant>[a-z0-9-]+)\.icims\.com$")
 _WORKABLE_APPLY_HOST = "apply.workable.com"
 _WORKABLE_SUBDOMAIN_RE = re.compile(r"^(?P<slug>[a-z0-9][a-z0-9-]{0,60})\.workable\.com$")

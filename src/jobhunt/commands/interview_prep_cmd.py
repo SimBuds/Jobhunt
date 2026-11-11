@@ -51,17 +51,12 @@ app = typer.Typer(
 def run(
     job_id: str | None = typer.Argument(
         None,
-        help=(
-            "Existing job ID. Omit when using --url or --stdin for a job not "
-            "yet in the DB."
-        ),
+        help=("Existing job ID. Omit when using --url or --stdin for a job not yet in the DB."),
     ),
     url: str | None = typer.Option(
         None,
         "--url",
-        help=(
-            "Fetch one JD from a URL, create a manual job, then prep it."
-        ),
+        help=("Fetch one JD from a URL, create a manual job, then prep it."),
     ),
     title: str | None = typer.Option(
         None, "--title", help="Override/supply the job title (with --url or paste)."
@@ -73,9 +68,7 @@ def run(
         False,
         "--stdin",
         "--description-from-stdin",
-        help=(
-            "Read JD body from stdin. Requires --title and --company."
-        ),
+        help=("Read JD body from stdin. Requires --title and --company."),
     ),
     stage: str = typer.Option(
         "agency",
@@ -145,7 +138,9 @@ def run(
     research_blob = ""
     if research:
         research_blob = _fetch_research(
-            cfg, job_row["url"], force_robots=force_robots,
+            cfg,
+            job_row["url"],
+            force_robots=force_robots,
             refresh=refresh_research,
         )
 
@@ -154,9 +149,7 @@ def run(
         cfg.applicant.salary_expectation_cad,
     )
 
-    effective_recruiter_type = _resolve_recruiter_type(
-        cfg, job_id, override=recruiter_type
-    )
+    effective_recruiter_type = _resolve_recruiter_type(cfg, job_id, override=recruiter_type)
 
     ctx = PrepContext(
         job_id=job_id,
@@ -245,8 +238,7 @@ def _resolve_job_id(
     intake = bool(url) or description_from_stdin
     if job_id and intake:
         typer.echo(
-            "error: pass either a job-id OR --url/--description-from-stdin, "
-            "not both.",
+            "error: pass either a job-id OR --url/--description-from-stdin, not both.",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -364,21 +356,15 @@ def _load_application_context(cfg: Config, job_id: str) -> tuple[str, str]:
 def _load_verified(cfg: Config) -> dict[str, Any]:
     verified_path = cfg.paths.profile_dir / "verified.json"
     if not verified_path.is_file():
-        raise PipelineError(
-            f"missing {verified_path} — run `jobhunt convert-resume` first"
-        )
+        raise PipelineError(f"missing {verified_path} — run `jobhunt convert-resume` first")
     data: dict[str, Any] = json.loads(verified_path.read_text(encoding="utf-8"))
     return data
 
 
-_VALID_RECRUITER_TYPES_CLI = (
-    "internal_recruiter", "hiring_manager", "external_agency", "unknown"
-)
+_VALID_RECRUITER_TYPES_CLI = ("internal_recruiter", "hiring_manager", "external_agency", "unknown")
 
 
-def _resolve_recruiter_type(
-    cfg: Config, job_id: str, *, override: str | None
-) -> str:
+def _resolve_recruiter_type(cfg: Config, job_id: str, *, override: str | None) -> str:
     """Resolve which recruiter_type to use for biasing the LLM prompt.
 
     Precedence: CLI --recruiter-type > applications.recruiter_type > 'unknown'.
@@ -406,9 +392,7 @@ def _resolve_recruiter_type(
     return str(row["recruiter_type"])
 
 
-def _fetch_research(
-    cfg: Config, job_url: str, *, force_robots: bool, refresh: bool = False
-) -> str:
+def _fetch_research(cfg: Config, job_url: str, *, force_robots: bool, refresh: bool = False) -> str:
     """Best-effort fetch of the JD URL + company root. Returns a single
     concatenated string for the LLM prompt. Robots-checked; non-fatal on
     any error (research is opt-in nice-to-have).
@@ -508,11 +492,11 @@ def _research_urls(job_url: str) -> list[str]:
 _RESEARCH_PER_SOURCE_CHARS = 9000
 
 _NUMERIC_SCRUB_RE = _re.compile(
-    r"(?<![A-Za-z_])"            # not after a word char (preserves q5_0, ES6, etc.)
+    r"(?<![A-Za-z_])"  # not after a word char (preserves q5_0, ES6, etc.)
     r"(?:"
-    r"\$\d[\d,]*(?:\.\d+)?\b"    # $1,234.56 / $99
-    r"|\d+\.\d+%?"               # 17.32 / 28.86%
-    r"|\d+(?:,\d{3})+"           # 1,247 / 50,000 (1+ prefix digits + comma groups)
+    r"\$\d[\d,]*(?:\.\d+)?\b"  # $1,234.56 / $99
+    r"|\d+\.\d+%?"  # 17.32 / 28.86%
+    r"|\d+(?:,\d{3})+"  # 1,247 / 50,000 (1+ prefix digits + comma groups)
     r")"
 )
 

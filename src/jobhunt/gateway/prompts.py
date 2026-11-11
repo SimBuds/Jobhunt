@@ -46,9 +46,7 @@ class Prompt:
         try:
             return self.system.format(**vars)
         except KeyError as e:
-            raise PipelineError(
-                f"prompt {self.name!r} system missing variable: {e}"
-            ) from e
+            raise PipelineError(f"prompt {self.name!r} system missing variable: {e}") from e
 
 
 def load_prompt(kb_dir: Path, name: str) -> Prompt:

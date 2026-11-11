@@ -19,31 +19,40 @@ def _pat(r: str, flags: int = _I) -> re.Pattern[str]:
 
 _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     # --- Cloud: AWS (specific first, then base) ---
-    ("AWS Certified Solutions Architect – Professional", _pat(
-        r"\bAWS\s+Certified\s+Solutions\s+Architect[\s–-]+Professional\b"
-    )),
-    ("AWS Certified Solutions Architect – Associate", _pat(
-        r"\bAWS\s+Certified\s+Solutions\s+Architect[\s–-]+Associate\b"
-    )),
-    ("AWS Certified Solutions Architect", _pat(
-        r"\bAWS\s+Certified\s+Solutions\s+Architect\b"
-    )),
+    (
+        "AWS Certified Solutions Architect – Professional",
+        _pat(r"\bAWS\s+Certified\s+Solutions\s+Architect[\s–-]+Professional\b"),
+    ),
+    (
+        "AWS Certified Solutions Architect – Associate",
+        _pat(r"\bAWS\s+Certified\s+Solutions\s+Architect[\s–-]+Associate\b"),
+    ),
+    ("AWS Certified Solutions Architect", _pat(r"\bAWS\s+Certified\s+Solutions\s+Architect\b")),
     ("AWS Certified Developer", _pat(r"\bAWS\s+Certified\s+Developer\b")),
     ("AWS Certified DevOps Engineer", _pat(r"\bAWS\s+Certified\s+DevOps\s+Engineer\b")),
     ("AWS Certified SysOps Administrator", _pat(r"\bAWS\s+Certified\s+SysOps\s+Administrator\b")),
     ("AWS Cloud Practitioner", _pat(r"\bAWS\s+Cloud\s+Practitioner\b")),
     # --- Cloud: GCP ---
-    ("GCP Professional Cloud Architect", _pat(
-        r"\bGCP\s+Professional\s+Cloud\s+Architect\b|\bGoogle\s+Professional\s+Cloud\s+Architect\b"
-    )),
-    ("GCP Professional Data Engineer", _pat(
-        r"\bGCP\s+Professional\s+Data\s+Engineer\b|\bGoogle\s+Professional\s+Data\s+Engineer\b"
-    )),
-    ("GCP Associate Cloud Engineer", _pat(
-        r"\bGCP\s+Associate\s+Cloud\s+Engineer\b"
-        r"|\bGoogle\s+Associate\s+Cloud\s+Engineer\b"
-        r"|\bGCP\s+ACE\b"
-    )),
+    (
+        "GCP Professional Cloud Architect",
+        _pat(
+            r"\bGCP\s+Professional\s+Cloud\s+Architect\b|\bGoogle\s+Professional\s+Cloud\s+Architect\b"
+        ),
+    ),
+    (
+        "GCP Professional Data Engineer",
+        _pat(
+            r"\bGCP\s+Professional\s+Data\s+Engineer\b|\bGoogle\s+Professional\s+Data\s+Engineer\b"
+        ),
+    ),
+    (
+        "GCP Associate Cloud Engineer",
+        _pat(
+            r"\bGCP\s+Associate\s+Cloud\s+Engineer\b"
+            r"|\bGoogle\s+Associate\s+Cloud\s+Engineer\b"
+            r"|\bGCP\s+ACE\b"
+        ),
+    ),
     # --- Cloud: Azure ---
     ("Azure AZ-900", _pat(r"\bAZ-?900\b")),
     ("Azure AZ-104", _pat(r"\bAZ-?104\b")),
@@ -62,18 +71,24 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     ("MCSE", _pat(r"\bMCSE\b")),
     ("MCSA", _pat(r"\bMCSA\b")),
     # --- Kubernetes / Cloud-native ---
-    ("CKS", _pat(r"\bCKS\b")),           # specific before CKA/CKAD
+    ("CKS", _pat(r"\bCKS\b")),  # specific before CKA/CKAD
     ("CKAD", _pat(r"\bCKAD\b")),
     ("CKA", _pat(r"\bCKA\b")),
     # --- HashiCorp / Infrastructure ---
-    ("Terraform Associate", _pat(
-        r"\bHashiCorp\s+Certified\s*:\s*Terraform\s+Associate\b"
-        r"|\bTerraform\s+Associate\b"
-    )),
-    ("Vault Associate", _pat(
-        r"\bHashiCorp\s+Certified\s*:\s*Vault\s+Associate\b"
-        r"|\bVault\s+Associate\b"
-    )),
+    (
+        "Terraform Associate",
+        _pat(
+            r"\bHashiCorp\s+Certified\s*:\s*Terraform\s+Associate\b"
+            r"|\bTerraform\s+Associate\b"
+        ),
+    ),
+    (
+        "Vault Associate",
+        _pat(
+            r"\bHashiCorp\s+Certified\s*:\s*Vault\s+Associate\b"
+            r"|\bVault\s+Associate\b"
+        ),
+    ),
     # --- Security ---
     ("CISSP", _pat(r"\bCISSP\b")),
     ("CISM", _pat(r"\bCISM\b")),
@@ -82,11 +97,14 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     ("OSCP", _pat(r"\bOSCP\b")),
     ("GIAC GSEC", _pat(r"\bGSEC\b|\bGIAC\s+GSEC\b")),
     # Security+ ends in '+' (non-word char) so \b won't work after it; use lookahead.
-    ("Security+", _pat(
-        r"\bSecurity\+(?=\s|$|[,;.()\[\]])"
-        r"|CompTIA\s+Security\+?(?=\s|$|[,;.()\[\]])"
-        r"|\bSec\+(?=\s|$|[,;.()\[\]])"
-    )),
+    (
+        "Security+",
+        _pat(
+            r"\bSecurity\+(?=\s|$|[,;.()\[\]])"
+            r"|CompTIA\s+Security\+?(?=\s|$|[,;.()\[\]])"
+            r"|\bSec\+(?=\s|$|[,;.()\[\]])"
+        ),
+    ),
     # --- PM / Agile ---
     ("PMP", _pat(r"\bPMP\b")),
     ("CAPM", _pat(r"\bCAPM\b")),
@@ -109,20 +127,15 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     ("OCP", _pat(r"\bOCP\b")),
     ("OCA", _pat(r"\bOCA\b")),
     # --- Salesforce (specific before generic anchor) ---
-    ("Salesforce Certified Administrator", _pat(
-        r"\bSalesforce\s+Certified\s+Administrator\b"
-    )),
-    ("Salesforce Certified Developer", _pat(
-        r"\bSalesforce\s+Certified\s+(?:Platform\s+)?Developer\b"
-    )),
+    ("Salesforce Certified Administrator", _pat(r"\bSalesforce\s+Certified\s+Administrator\b")),
+    (
+        "Salesforce Certified Developer",
+        _pat(r"\bSalesforce\s+Certified\s+(?:Platform\s+)?Developer\b"),
+    ),
     ("Salesforce Certified", _pat(r"\bSalesforce\s+Certified\b")),
     # --- Six Sigma ---
-    ("Six Sigma Black Belt", _pat(
-        r"\bSix\s+Sigma\s+Black\s+Belt\b|\bCSSBB\b"
-    )),
-    ("Six Sigma Green Belt", _pat(
-        r"\bSix\s+Sigma\s+Green\s+Belt\b|\bCSSGB\b"
-    )),
+    ("Six Sigma Black Belt", _pat(r"\bSix\s+Sigma\s+Black\s+Belt\b|\bCSSBB\b")),
+    ("Six Sigma Green Belt", _pat(r"\bSix\s+Sigma\s+Green\s+Belt\b|\bCSSGB\b")),
     ("Six Sigma Yellow Belt", _pat(r"\bSix\s+Sigma\s+Yellow\s+Belt\b")),
     # --- Google Marketing ---
     ("Google Analytics Certification", _pat(r"\bGoogle\s+Analytics\s+Cert(?:ification)?\b")),
@@ -131,38 +144,49 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     # Canonical name OR exam code only (curated-precision: no loose shorthand).
     # Databricks specifics MUST precede the generic "Databricks Certified" below
     # so the overlap-filter keeps the longer match.
-    ("AWS Certified AI Practitioner", _pat(
-        r"\bAWS\s+Certified\s+AI\s+Practitioner\b|\bAIF-?C01\b"
-    )),
-    ("AWS Certified Machine Learning Engineer – Associate", _pat(
-        r"\bAWS\s+Certified\s+Machine\s+Learning\s+Engineer[\s–-]+Associate\b"
-        r"|\bMLA-?C01\b"
-    )),
-    ("AWS Certified Machine Learning – Specialty", _pat(
-        r"\bAWS\s+Certified\s+Machine\s+Learning[\s–-]+Specialty\b|\bMLS-?C01\b"
-    )),
-    ("Azure AI Engineer Associate", _pat(
-        r"\bAI-?102\b|\bAzure\s+AI\s+Engineer\b"
-    )),
-    ("Databricks Certified Generative AI Engineer Associate", _pat(
-        r"\bDatabricks\s+Certified\s+Generative\s+AI\s+Engineer(?:\s+Associate)?\b"
-    )),
-    ("Databricks Certified Machine Learning Professional", _pat(
-        r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Professional\b"
-    )),
-    ("Databricks Certified Machine Learning Associate", _pat(
-        r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Associate\b"
-    )),
-    ("NVIDIA-Certified Associate: Generative AI LLMs", _pat(
-        r"\bNCA-?GENL\b"
-        r"|\bNVIDIA[\s-]+Certified\s+Associate[:\s–-]+Generative\s+AI\b"
-    )),
-    ("Google Cloud Generative AI Leader", _pat(
-        r"\b(?:Google\s+Cloud|GCP)\s+Generative\s+AI\s+Leader\b"
-    )),
-    ("Google Professional Machine Learning Engineer", _pat(
-        r"\b(?:GCP|Google)\s+(?:Cloud\s+)?Professional\s+Machine\s+Learning\s+Engineer\b"
-    )),
+    (
+        "AWS Certified AI Practitioner",
+        _pat(r"\bAWS\s+Certified\s+AI\s+Practitioner\b|\bAIF-?C01\b"),
+    ),
+    (
+        "AWS Certified Machine Learning Engineer – Associate",
+        _pat(
+            r"\bAWS\s+Certified\s+Machine\s+Learning\s+Engineer[\s–-]+Associate\b"
+            r"|\bMLA-?C01\b"
+        ),
+    ),
+    (
+        "AWS Certified Machine Learning – Specialty",
+        _pat(r"\bAWS\s+Certified\s+Machine\s+Learning[\s–-]+Specialty\b|\bMLS-?C01\b"),
+    ),
+    ("Azure AI Engineer Associate", _pat(r"\bAI-?102\b|\bAzure\s+AI\s+Engineer\b")),
+    (
+        "Databricks Certified Generative AI Engineer Associate",
+        _pat(r"\bDatabricks\s+Certified\s+Generative\s+AI\s+Engineer(?:\s+Associate)?\b"),
+    ),
+    (
+        "Databricks Certified Machine Learning Professional",
+        _pat(r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Professional\b"),
+    ),
+    (
+        "Databricks Certified Machine Learning Associate",
+        _pat(r"\bDatabricks\s+Certified\s+Machine\s+Learning\s+Associate\b"),
+    ),
+    (
+        "NVIDIA-Certified Associate: Generative AI LLMs",
+        _pat(
+            r"\bNCA-?GENL\b"
+            r"|\bNVIDIA[\s-]+Certified\s+Associate[:\s–-]+Generative\s+AI\b"
+        ),
+    ),
+    (
+        "Google Cloud Generative AI Leader",
+        _pat(r"\b(?:Google\s+Cloud|GCP)\s+Generative\s+AI\s+Leader\b"),
+    ),
+    (
+        "Google Professional Machine Learning Engineer",
+        _pat(r"\b(?:GCP|Google)\s+(?:Cloud\s+)?Professional\s+Machine\s+Learning\s+Engineer\b"),
+    ),
     # --- Data / ML ---
     ("Databricks Certified", _pat(r"\bDatabricks\s+Certified\b")),
     ("Snowflake SnowPro", _pat(r"\bSnowPro\b|\bSnowflake\s+SnowPro\b")),
@@ -176,15 +200,21 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
     ("RHCSA", _pat(r"\bRHCSA\b")),
     ("LPIC", _pat(r"\bLPIC\b")),
     # Network+/Linux+ end in '+' — same lookahead trick.
-    ("CompTIA Network+", _pat(
-        r"\bNetwork\+(?=\s|$|[,;.()\[\]])"
-        r"|CompTIA\s+Network\+?(?=\s|$|[,;.()\[\]])"
-    )),
+    (
+        "CompTIA Network+",
+        _pat(
+            r"\bNetwork\+(?=\s|$|[,;.()\[\]])"
+            r"|CompTIA\s+Network\+?(?=\s|$|[,;.()\[\]])"
+        ),
+    ),
     ("CompTIA A+", _pat(r"\bCompTIA\s+A\+(?=\s|$|[,;.()\[\]])")),
-    ("CompTIA Linux+", _pat(
-        r"\bLinux\+(?=\s|$|[,;.()\[\]])"
-        r"|CompTIA\s+Linux\+?(?=\s|$|[,;.()\[\]])"
-    )),
+    (
+        "CompTIA Linux+",
+        _pat(
+            r"\bLinux\+(?=\s|$|[,;.()\[\]])"
+            r"|CompTIA\s+Linux\+?(?=\s|$|[,;.()\[\]])"
+        ),
+    ),
     # --- Finance / business ---
     ("CFA", _pat(r"\bCFA\b")),
     ("CPA", _pat(r"\bCPA\b")),
@@ -198,21 +228,41 @@ _KNOWN: list[tuple[str, re.Pattern[str]]] = [
 # single-word matches from slash-delimited skill lists landing on the last capitalized
 # token before "certification". Multi-word unknown certs (e.g. "Azure Security Engineer
 # Certification") are the real target here.
-_GENERIC_CERTIFIED = re.compile(
-    r"\bCertified\s+([A-Z][A-Za-z+.]*(?:\s+[A-Z][A-Za-z+.]*){1,2})\b"
-)
+_GENERIC_CERTIFIED = re.compile(r"\bCertified\s+([A-Z][A-Za-z+.]*(?:\s+[A-Z][A-Za-z+.]*){1,2})\b")
 _GENERIC_CERTIFICATION = re.compile(
     r"\b([A-Z][A-Za-z+.]*(?:\s+[A-Z][A-Za-z+.]*){1,2})\s+[Cc]ertification\b"
 )
 
 # Reject any generic match whose phrase contains one of these words (word-level check,
 # not phrase-level) — they indicate job-requirement boilerplate, not cert names.
-_GENERIC_STOPWORDS = frozenset({
-    "The", "A", "An", "Our", "Your", "This", "We", "You",
-    "Developer", "Engineer", "Job", "Description", "Required", "Preferred",
-    "Desired", "Requirement", "Experience", "Skills", "Knowledge", "Role",
-    "Position", "Management", "Development", "Engineering",
-})
+_GENERIC_STOPWORDS = frozenset(
+    {
+        "The",
+        "A",
+        "An",
+        "Our",
+        "Your",
+        "This",
+        "We",
+        "You",
+        "Developer",
+        "Engineer",
+        "Job",
+        "Description",
+        "Required",
+        "Preferred",
+        "Desired",
+        "Requirement",
+        "Experience",
+        "Skills",
+        "Knowledge",
+        "Role",
+        "Position",
+        "Management",
+        "Development",
+        "Engineering",
+    }
+)
 
 
 def extract_certs(text: str) -> list[str]:

@@ -52,9 +52,11 @@ VERIFIED_BLOB = json.dumps(
 def test_coerce_phrase_list_known_keys() -> None:
     from jobhunt.pipeline.score import _coerce_phrase_list
 
-    assert _coerce_phrase_list(
-        ["React", {"phrase": "Node.js"}, {"skill": "TypeScript"}]
-    ) == ["React", "Node.js", "TypeScript"]
+    assert _coerce_phrase_list(["React", {"phrase": "Node.js"}, {"skill": "TypeScript"}]) == [
+        "React",
+        "Node.js",
+        "TypeScript",
+    ]
 
 
 def test_coerce_phrase_list_recovers_unknown_dict_keys() -> None:
@@ -121,9 +123,7 @@ def test_verify_credits_peer_family_member() -> None:
 def test_verify_credits_annotated_bridge_without_family() -> None:
     """Zustand has no PEER_FAMILIES entry, but the LLM annotated the bridge
     (React) and React is verified — the annotation path must credit it."""
-    assert _tier(["Zustand (transferable: React)"]).matched == [
-        "Zustand (transferable: React)"
-    ]
+    assert _tier(["Zustand (transferable: React)"]).matched == ["Zustand (transferable: React)"]
 
 
 def test_verify_credits_school_project_bridge_form() -> None:
@@ -384,7 +384,7 @@ async def test_score_job_demotes_unverified_claims(
                 "React",
                 "Next.js",
                 "Front-end frameworks",  # not in profile
-                "AI/LLM tools",          # not fully in profile
+                "AI/LLM tools",  # not fully in profile
             ],
             ai_bonus=True,
         ),
@@ -436,17 +436,13 @@ async def test_score_job_thin_jd_cap_never_raises(
 ) -> None:
     """The cap only lowers. A thin posting whose computed score is already
     under the ceiling keeps it: 1 of 2 verified is 30 + 60*0.5 = 60."""
-    monkeypatch.setattr(
-        score_mod, "complete_json", _extraction(["React", "GraphQL"])
-    )
+    monkeypatch.setattr(score_mod, "complete_json", _extraction(["React", "GraphQL"]))
     result = await score_job(_cfg(kb_dir), _job())
     assert result.score == 60  # below cap (70) → unchanged
 
 
 @pytest.mark.asyncio
-async def test_score_job_long_jd_not_capped(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_score_job_long_jd_not_capped(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The ceiling is length-gated. A fully-described JD with the same full
     coverage keeps its 90 — this is the discrimination the thin cap exists to
     create, and the reason a real posting can now outrank a snippet."""
@@ -497,9 +493,7 @@ async def test_score_job_promotes_nice_to_haves_when_no_must_haves(
     """A posting that hedges every requirement still has a real bar. Promote
     tier-2 rather than scoring it out of the queue on a phrasing quirk, so
     2 of 2 verified is 30 + 60*1.0 = 90, not the base."""
-    monkeypatch.setattr(
-        score_mod, "complete_json", _extraction([], ["React", "TypeScript"])
-    )
+    monkeypatch.setattr(score_mod, "complete_json", _extraction([], ["React", "TypeScript"]))
     result = await score_job(_cfg(kb_dir), _full_jd_job())
     assert result.score == 90
 
@@ -610,9 +604,7 @@ async def test_score_job_junior_title_outranks_senior_at_equal_coverage(
     Before the fix the backlog ran the other way: senior titles carried a
     median of 60 against 50 for explicit junior/mid ones."""
 
-    monkeypatch.setattr(
-        score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"])
-    )
+    monkeypatch.setattr(score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"]))
     common = dict(
         source="test",
         description="React and Node role. " * 60,
@@ -638,9 +630,7 @@ async def test_score_job_junior_bonus_cannot_escape_thin_jd_cap(
     """The junior bonus is added before the ceilings, so a signal-poor snippet
     stays capped rather than riding the bonus past it."""
 
-    monkeypatch.setattr(
-        score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"])
-    )
+    monkeypatch.setattr(score_mod, "complete_json", _extraction(["TypeScript", "React", "Node.js"]))
     job = Job(
         id="test:jr-thin",
         source="test",
@@ -669,9 +659,7 @@ async def test_score_job_keeps_senior_band_decline_when_opted_out(
     monkeypatch.setattr(
         score_mod,
         "complete_json",
-        _extraction(
-            [], decline_reason="Senior-band title; candidate YoE under typical floor"
-        ),
+        _extraction([], decline_reason="Senior-band title; candidate YoE under typical floor"),
     )
     cfg = Config(
         paths=PathsConfig(kb_dir=kb_dir, profile_dir=kb_dir / "profile"),

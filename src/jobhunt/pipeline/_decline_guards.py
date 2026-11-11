@@ -42,8 +42,19 @@ _NUMBER_WORDS = {
     w: i
     for i, w in enumerate(
         [
-            "zero", "one", "two", "three", "four", "five", "six",
-            "seven", "eight", "nine", "ten", "eleven", "twelve",
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
         ]
     )
 }

@@ -38,9 +38,7 @@ def test_no_jobhunt_env_var_reaches_a_test() -> None:
     assert [k for k in os.environ if k.startswith("JOBHUNT_")] == []
 
 
-def test_falls_back_to_home_local_share(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_falls_back_to_home_local_share(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     paths = Config().paths
@@ -275,9 +273,7 @@ def test_unset_work_auth_leaves_form_fields_blank() -> None:
 def test_set_work_auth_maps_to_yes_no(auth: bool, sponsor: bool, expected: tuple[str, str]) -> None:
     from jobhunt.config import ApplicantProfile
 
-    fields = _field_map(
-        ApplicantProfile(work_auth_canada=auth, requires_visa_sponsorship=sponsor)
-    )
+    fields = _field_map(ApplicantProfile(work_auth_canada=auth, requires_visa_sponsorship=sponsor))
     assert (fields["work_auth_canada"], fields["requires_visa_sponsorship"]) == expected
 
 

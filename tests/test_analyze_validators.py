@@ -1,4 +1,5 @@
 """Phase 10 tests — analyze validators + categorize_violation."""
+
 from __future__ import annotations
 
 import json
@@ -34,35 +35,42 @@ def _write_audit(data_dir: Path, job_safe_id: str, violations: list[str]) -> Pat
     d = data_dir / "applications" / job_safe_id
     d.mkdir(parents=True, exist_ok=True)
     p = d / "audit.json"
-    p.write_text(json.dumps({
-        "verdict": "revise",
-        "keyword_coverage_pct": 80,
-        "matched_keywords": [],
-        "missing_must_haves": [],
-        "fabrication_flags": [],
-        "cover_letter_violations": violations,
-        "alignment_flags": [],
-    }))
+    p.write_text(
+        json.dumps(
+            {
+                "verdict": "revise",
+                "keyword_coverage_pct": 80,
+                "matched_keywords": [],
+                "missing_must_haves": [],
+                "fabrication_flags": [],
+                "cover_letter_violations": violations,
+                "alignment_flags": [],
+            }
+        )
+    )
     return p
 
 
 # --- categorize_violation --------------------------------------------------
 
 
-@pytest.mark.parametrize("msg,expected", [
-    ("banned phrase: 'spearheaded'", "banned_phrase"),
-    ("form-letter opener: 'i am writing to'", "banned_opener"),
-    ("unverified number: '42'", "unverified_number"),
-    ("unverified tech claim: 'kubernetes'", "unverified_tech"),
-    ("body is 320 words; max is 280", "word_count_over"),
-    ("expected 3-4 paragraphs; got 5", "paragraph_count"),
-    ("lead paragraph does not name company 'Acme'", "company_missing"),
-    ("salutation: 'To whom it may concern' is banned", "banned_salutation"),
-    ("body contains an exclamation mark", "exclamation"),
-    ("body contains an unfilled template placeholder", "template_placeholder"),
-    ("body recaps resume material: 'dean's list'", "recap_in_body"),
-    ("paragraph 2 ends with a sign-off line", "sign_off_in_body"),
-])
+@pytest.mark.parametrize(
+    "msg,expected",
+    [
+        ("banned phrase: 'spearheaded'", "banned_phrase"),
+        ("form-letter opener: 'i am writing to'", "banned_opener"),
+        ("unverified number: '42'", "unverified_number"),
+        ("unverified tech claim: 'kubernetes'", "unverified_tech"),
+        ("body is 320 words; max is 280", "word_count_over"),
+        ("expected 3-4 paragraphs; got 5", "paragraph_count"),
+        ("lead paragraph does not name company 'Acme'", "company_missing"),
+        ("salutation: 'To whom it may concern' is banned", "banned_salutation"),
+        ("body contains an exclamation mark", "exclamation"),
+        ("body contains an unfilled template placeholder", "template_placeholder"),
+        ("body recaps resume material: 'dean's list'", "recap_in_body"),
+        ("paragraph 2 ends with a sign-off line", "sign_off_in_body"),
+    ],
+)
 def test_categorize_known_prefixes(msg: str, expected: str) -> None:
     assert categorize_violation(msg) == expected
 
@@ -84,18 +92,24 @@ def test_categorize_strips_to_80_chars() -> None:
 # --- analyze validators ----------------------------------------------------
 
 
-def test_analyze_validators_aggregates_by_rule(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_validators_aggregates_by_rule(tmp_config_dir: Path, tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     _seed_minimal_config(tmp_config_dir, data_dir)
-    _write_audit(data_dir, "job1", [
-        "banned phrase: 'spearheaded'",
-        "unverified number: '42'",
-    ])
-    _write_audit(data_dir, "job2", [
-        "banned phrase: 'leveraged'",
-    ])
+    _write_audit(
+        data_dir,
+        "job1",
+        [
+            "banned phrase: 'spearheaded'",
+            "unverified number: '42'",
+        ],
+    )
+    _write_audit(
+        data_dir,
+        "job2",
+        [
+            "banned phrase: 'leveraged'",
+        ],
+    )
     _write_audit(data_dir, "job3", [])  # clean
 
     runner = CliRunner()
@@ -107,9 +121,7 @@ def test_analyze_validators_aggregates_by_rule(
     assert "67%" in result.output or "66%" in result.output
 
 
-def test_analyze_validators_no_audits_in_window(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_validators_no_audits_in_window(tmp_config_dir: Path, tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     _seed_minimal_config(tmp_config_dir, data_dir)
     # Write an audit but backdate its mtime to 60 days ago.
@@ -123,9 +135,7 @@ def test_analyze_validators_no_audits_in_window(
     assert "no audit files modified in the last 30d" in result.output
 
 
-def test_analyze_validators_no_applications_dir(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_validators_no_applications_dir(tmp_config_dir: Path, tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     _seed_minimal_config(tmp_config_dir, data_dir)
@@ -136,9 +146,7 @@ def test_analyze_validators_no_applications_dir(
     assert "no applications" in result.output
 
 
-def test_analyze_validators_healthy_run(
-    tmp_config_dir: Path, tmp_path: Path
-) -> None:
+def test_analyze_validators_healthy_run(tmp_config_dir: Path, tmp_path: Path) -> None:
     """All audits clean → 'Healthy!' message."""
     data_dir = tmp_path / "data"
     _seed_minimal_config(tmp_config_dir, data_dir)

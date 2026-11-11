@@ -148,9 +148,7 @@ async def test_returns_first_attempt_when_clean(
 
 
 @pytest.mark.asyncio
-async def test_retries_until_clean(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Attempt 1 leaks Redux; attempt 2 returns a clean payload. Retry loop
     must surface the clean result with attempts=2 and no Redux in output."""
     responses = [_redux_payload(), _clean_payload()]
@@ -169,9 +167,7 @@ async def test_retries_until_clean(
 
 
 @pytest.mark.asyncio
-async def test_falls_back_after_max_attempts(
-    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_falls_back_after_max_attempts(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When every attempt leaks Redux, the loop must re-raise rather than
     ship a fabricated resume. apply_cmd's `except JobHuntError` will then
     surface the failure and skip the job — matches today's UX exactly."""
@@ -291,9 +287,7 @@ def test_check_summary_accepts_verbatim_verified_label() -> None:
 
 def test_check_summary_rejects_ungrounded_label_token() -> None:
     with pytest.raises(FabricationError) as exc:
-        tailor_mod._check_summary(
-            "Django developer with 2+ years of client work.", VERIFIED
-        )
+        tailor_mod._check_summary("Django developer with 2+ years of client work.", VERIFIED)
     v = exc.value.violations[0]
     assert v.kind == "summary-label-ungrounded"
     assert v.detail == "django"
@@ -302,9 +296,7 @@ def test_check_summary_rejects_ungrounded_label_token() -> None:
 def test_check_summary_rejects_familiar_grounded_label() -> None:
     # Java is Familiar-only in VERIFIED; an identity label may not rest on it.
     with pytest.raises(FabricationError) as exc:
-        tailor_mod._check_summary(
-            "Java developer with 2+ years of client work.", VERIFIED
-        )
+        tailor_mod._check_summary("Java developer with 2+ years of client work.", VERIFIED)
     assert exc.value.violations[0].kind == "summary-label-ungrounded"
     assert exc.value.violations[0].detail == "java"
 
@@ -353,7 +345,6 @@ def test_fabrication_error_subclasses_pipeline_error() -> None:
     )
     assert isinstance(e, PipelineError)
     assert "not in verified facts" in str(e)
-
 
 
 # --- Phase 6c.3 (2026-11-10): one bullet per project -------------------------

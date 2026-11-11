@@ -214,17 +214,42 @@ _APOSTROPHE_RE = re.compile(r"[‘’‛ʼ`´]")
 def _normalize(text: str) -> str:
     return _APOSTROPHE_RE.sub("'", text).lower()
 
+
 # Company-name match: drop corporate suffixes, descriptors, and TLD fragments
 # so the lead-paragraph check doesn't fail when the model writes "Appnovation"
 # instead of "Appnovation Technologies", or "Astra North" instead of
 # "Astra North Infoteck Inc.".
-_COMPANY_STOPWORDS: frozenset[str] = frozenset({
-    "inc", "ltd", "llc", "corp", "corporation", "company", "co",
-    "technologies", "technology", "solutions", "systems", "services",
-    "group", "holdings", "labs", "studio", "studios", "ventures",
-    "the", "and", "of", "for",
-    "io", "ai", "com", "net", "org",
-})
+_COMPANY_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "inc",
+        "ltd",
+        "llc",
+        "corp",
+        "corporation",
+        "company",
+        "co",
+        "technologies",
+        "technology",
+        "solutions",
+        "systems",
+        "services",
+        "group",
+        "holdings",
+        "labs",
+        "studio",
+        "studios",
+        "ventures",
+        "the",
+        "and",
+        "of",
+        "for",
+        "io",
+        "ai",
+        "com",
+        "net",
+        "org",
+    }
+)
 _COMPANY_SPLIT_RE = re.compile(r"[\s/,&|\-.()]+| and ")
 
 
@@ -508,10 +533,7 @@ def validate_cover(
     if cover.body and company:
         first_lower = _normalize(cover.body[0])
         raw_tokens = [t.strip().lower() for t in _COMPANY_SPLIT_RE.split(company)]
-        company_tokens = [
-            t for t in raw_tokens
-            if len(t) >= 3 and t not in _COMPANY_STOPWORDS
-        ]
+        company_tokens = [t for t in raw_tokens if len(t) >= 3 and t not in _COMPANY_STOPWORDS]
         if not company_tokens:
             company_tokens = [company.strip().lower()]
         if not any(t in first_lower for t in company_tokens):

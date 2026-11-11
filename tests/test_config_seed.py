@@ -25,9 +25,7 @@ def _seed_config_and_kb(
         joined = ", ".join(f'"{e}"' for e in entries)
         ingest_lines.append(f"{ats} = [{joined}]")
     cfg_path.write_text(
-        "[paths]\n"
-        f'kb_dir = "{kb_dir}"\n'
-        "[ingest]\n" + "\n".join(ingest_lines) + "\n"
+        f'[paths]\nkb_dir = "{kb_dir}"\n[ingest]\n' + "\n".join(ingest_lines) + "\n"
     )
 
     seed_path = kb_dir / "seeds" / "gta-employers.toml"
@@ -46,9 +44,7 @@ def _load_ingest(cfg_path: Path) -> dict[str, Any]:
 
 
 def test_config_seed_preview_does_not_write(tmp_config_dir: Path) -> None:
-    cfg_path, _ = _seed_config_and_kb(
-        tmp_config_dir, seeds={"greenhouse": ["shopify", "faire"]}
-    )
+    cfg_path, _ = _seed_config_and_kb(tmp_config_dir, seeds={"greenhouse": ["shopify", "faire"]})
     original = cfg_path.read_bytes()
 
     runner = CliRunner()
@@ -93,9 +89,7 @@ def test_config_seed_apply_idempotent(tmp_config_dir: Path) -> None:
 
 
 def test_config_seed_apply_creates_bak(tmp_config_dir: Path) -> None:
-    cfg_path, _ = _seed_config_and_kb(
-        tmp_config_dir, seeds={"greenhouse": ["shopify"]}
-    )
+    cfg_path, _ = _seed_config_and_kb(tmp_config_dir, seeds={"greenhouse": ["shopify"]})
     original = cfg_path.read_bytes()
 
     runner = CliRunner()

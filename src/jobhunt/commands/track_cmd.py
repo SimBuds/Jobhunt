@@ -73,23 +73,28 @@ def applied(
         "Omit for --no-jd backfill of an expired posting with no URL.",
     ),
     channel: str = typer.Option(
-        ..., "--channel", "-c",
+        ...,
+        "--channel",
+        "-c",
         help=f"Where you applied: {', '.join(CHANNELS)}.",
     ),
     title: str | None = typer.Option(None, "--title", help="Job title (paste path)."),
     company: str | None = typer.Option(None, "--company", help="Company (paste path)."),
     jd_from_stdin: bool = typer.Option(
-        False, "--jd-from-stdin",
+        False,
+        "--jd-from-stdin",
         help="Read the JD body from stdin (requires --title and --company). "
         "Strongly recommended — postings expire and interview-prep needs it.",
     ),
     no_jd: bool = typer.Option(
-        False, "--no-jd",
+        False,
+        "--no-jd",
         help="Historical backfill: log without a JD (requires --title and "
         "--company). Scoring and interview-prep stay unavailable for the row.",
     ),
     paste: bool = typer.Option(
-        False, "--paste",
+        False,
+        "--paste",
         help="Read a LinkedIn job-page paste from stdin and auto-extract "
         "title/company/location — paste the whole page (header + 'About the "
         "job') to store the JD too. Explicit --title/--company override.",
@@ -197,9 +202,7 @@ def applied(
         else:
             assert ref is not None
             if not ref.lower().startswith(("http://", "https://")):
-                typer.echo(
-                    f"error: {ref!r} is neither a known job id nor a URL.", err=True
-                )
+                typer.echo(f"error: {ref!r} is neither a known job id nor a URL.", err=True)
                 raise typer.Exit(code=2)
             description: str | None = None
             if jd_from_stdin:
@@ -258,7 +261,8 @@ def response(
     ref: str = typer.Argument(..., help="Job id, or a company/title fragment."),
     when: str | None = typer.Option(None, "--when", help="YYYY-MM-DD (default today)."),
     recruiter_type: str | None = typer.Option(
-        None, "--recruiter-type",
+        None,
+        "--recruiter-type",
         help="internal_recruiter | hiring_manager | external_agency | unknown",
     ),
 ) -> None:
@@ -305,9 +309,7 @@ def interview(
     )
 
 
-def _stale_no_response(
-    conn: sqlite3.Connection, cutoff_iso: str
-) -> list[sqlite3.Row]:
+def _stale_no_response(conn: sqlite3.Connection, cutoff_iso: str) -> list[sqlite3.Row]:
     """Applications submitted before `cutoff_iso` that never drew a response.
 
     Deliberately narrow: `status = 'applied'` only. A row already moved to

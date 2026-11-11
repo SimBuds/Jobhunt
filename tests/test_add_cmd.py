@@ -27,9 +27,7 @@ def _seed_config(config_dir: Path, **overrides: list[str]) -> Path:
         "[paths]\n"
         f'kb_dir = "{config_dir / "kb"}"\n'
         f'profile_dir = "{config_dir / "kb" / "profile"}"\n'
-        "[ingest]\n"
-        + "\n".join(ingest_lines)
-        + "\n"
+        "[ingest]\n" + "\n".join(ingest_lines) + "\n"
     )
     # Satisfy ensure_profile()
     profile = config_dir / "kb" / "profile"
@@ -119,9 +117,7 @@ def test_add_already_configured_is_noop(
     assert _load_ingest(cfg_path)["greenhouse"] == ["braze"]
 
 
-def test_add_writes_bak_snapshot(
-    tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_writes_bak_snapshot(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg_path = _seed_config(tmp_config_dir)
     original = cfg_path.read_bytes()
     _stub_probe_hit(monkeypatch)
