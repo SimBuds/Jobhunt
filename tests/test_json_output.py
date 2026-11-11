@@ -136,23 +136,23 @@ def test_list_json_usage_exit_inside_the_command(migrations_dir: Path) -> None:
     assert "verdict must be one of" in result.stderr
 
 
-def test_list_without_json_is_unchanged(migrations_dir: Path) -> None:
-    """Pinned against a capture of HEAD's output on the same fixture."""
+def test_list_human_output_is_pinned(migrations_dir: Path) -> None:
+    """The whole human output on the fixture, pinned exactly. Rewritten
+    2026-11-10 (Phase O2) for the one-line-per-job format; `--json` is
+    pinned separately and did not change."""
     _seed(migrations_dir)
     result = _invoke(["list"])
     assert result.exit_code == 0
     lines = result.stdout.splitlines()
-    assert lines[:7] == [
+    assert lines[:5] == [
         "ready to apply: 1  |  drafted, not submitted: 0  |  no reply >14d: 0",
         "",
         "showing 1 job(s)",
-        "  [ 80] [—            ] Developer 1 @ Acme  ship",
-        "           greenhouse | Toronto, ON | greenhouse:acme:1",
-        "           https://example.com/1",
+        "   80  Developer 1 · Acme · Toronto, ON  ship",
         "",
     ]
-    assert re.fullmatch(r"\d{4}-W\d\d: \| scanned=2 \| .* \| withdrawn=0", lines[7])
-    assert len(lines) == 8
+    assert re.fullmatch(r"This week \(\d{4}-W\d\d\): 2 scanned, 0 declined\.", lines[5])
+    assert len(lines) == 6
     assert result.stderr == ""
 
 

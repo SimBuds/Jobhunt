@@ -30,23 +30,20 @@ ready to apply: 48  |  drafted, not submitted: 1  |  no reply >14d: 0
   → `list --drafted`
 
 showing 3 job(s)
-  [ 70] [drafted      ] CRM specialist program/website developer @ VDI Networks  revise  cov=60%
-           adzuna_ca | Stoney Creek, Hamilton region | adzuna_ca:5884554418
-           https://www.adzuna.ca/details/5884554418
-  [ 76] [—            ] Software Developer  @ geotab
-           greenhouse | Oakville, Ontario - Canada | greenhouse:geotab:5386820008
-           https://job-boards.greenhouse.io/geotab/jobs/5386820008
-  [ 70] [—            ] JavaScript Developer @ Turing
-           adzuna_ca | North York, Toronto | adzuna_ca:5885854056
-           https://www.adzuna.ca/details/5885854056
+   70  CRM specialist program/website developer · VDI Networks · Stoney Creek, Hamilton region  drafted · revise · 60% keywords
+   76  Software Developer · geotab · Oakville, Ontario - Canada
+   70  JavaScript Developer · Turing · North York, Toronto
 
-2026-W38: | scanned=342 | declined=158 | drafted=1 | applied=0 | interviewing=0 | offer=0 | rejected=0 | withdrawn=1
+This week (2026-W38): 342 scanned, 158 declined, 1 drafted, 1 withdrawn.
 ```
 
-The bracketed number is the fit score and the second bracket is the
-application status. A drafted row also shows its audit verdict and keyword
-coverage. Adzuna tracking parameters are trimmed from the URLs above. The weekly funnel line is the same data `jobhunt analyze funnel`
-breaks down by channel.
+The first number is the fit score (`--` for a declined job), then title,
+company and location. After them come only the tags that apply: the
+application status, the audit verdict and keyword coverage of a drafted
+row, and "no reply" for a submitted one with no response. Add `-v`
+(`jobhunt -v list`) for a second line with the job id and URL, which commands
+like `jobhunt apply <id>` take. The weekly line is the same data `jobhunt
+analyze funnel` breaks down by channel.
 
 ## Architecture
 

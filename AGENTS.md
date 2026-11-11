@@ -1319,6 +1319,7 @@ src/jobhunt/
 │   ├── db_cmd.py, config_cmd.py
 │   ├── _manual_intake.py      # shared manual-job synth
 │   ├── _refs.py               # resolve_job_ref: the ONE job-reference resolver
+│   ├── _job_line.py           # one readable line per job (score, title · company)
 │   └── _config_write.py       # atomic .bak-then-tmp-rename config writer
 ├── resume/
 │   ├── locate.py              # baseline .docx discovery

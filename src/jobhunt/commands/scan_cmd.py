@@ -24,6 +24,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from jobhunt.commands._job_line import job_line, job_line_label
 from jobhunt.commands._json_out import json_output
 from jobhunt.config import Config, load_config
 from jobhunt.db import (
@@ -65,6 +66,7 @@ app = typer.Typer(help="Ingest GTA-scoped jobs and score them.", invoke_without_
 
 @app.callback(invoke_without_command=True)
 def run(
+    ctx: typer.Context,
     skip_score: bool = typer.Option(False, "--skip-score", help="Ingest only; don't score."),
     skip_ingest: bool = typer.Option(False, "--skip-ingest", help="Score backlog only."),
     limit: int | None = typer.Option(None, "--limit", help="Cap how many jobs to score."),
@@ -123,6 +125,7 @@ def run(
                 max_age_days=effective_max_age,
                 no_discover=no_discover,
                 out=out,
+                verbose=bool((ctx.obj or {}).get("verbose")),
             )
         )
 
@@ -137,8 +140,12 @@ async def _run(
     max_age_days: int = 7,
     no_discover: bool = False,
     out: dict[str, Any] | None = None,
+    verbose: bool = False,
 ) -> None:
-    """`out` collects the `--json` payload as the run goes, so a run that
+    """`verbose` restores the full job id and decline reason on each scored
+    line; standard output leads with score, title and company (Phase O1).
+
+    `out` collects the `--json` payload as the run goes, so a run that
     stops partway still reports what it did. Error text never goes in it: a
     message can carry a URL, a response body or model output."""
     out = {} if out is None else out
@@ -236,7 +243,8 @@ async def _run(
                 if stops_batch(e):
                     typer.echo(f"score: {ok}/{total} scored, stopped at {job.id}")
                     raise
-                typer.echo(f"  ! {job.id}: {e}", err=True)
+                who = job.id if verbose else job_line_label(job.title, job.company)
+                typer.echo(f"  ! {who}: {e}", err=True)
                 score_counts["failed"] += 1
                 failures.append({"id": job.id, "error": {"class": type(e).__name__}})
                 continue
@@ -263,12 +271,24 @@ async def _run(
                 "score": result.score,
                 "declined": bool(result.decline_reason),
             })
-            tag = (
-                f"DECLINE: {result.decline_reason}"
-                if result.decline_reason
-                else f"score={result.score}"
-            )
-            typer.echo(f"  [{i}/{total}] {job.id} [{tag}] {job.title or ''}")
+            if verbose:
+                tag = (
+                    f"DECLINE: {result.decline_reason}"
+                    if result.decline_reason
+                    else f"score={result.score}"
+                )
+                typer.echo(f"  [{i}/{total}] {job.id} [{tag}] {job.title or ''}")
+            else:
+                counter = f"  [{i:>{len(str(total))}}/{total}] "
+                width = shutil.get_terminal_size((100, 24)).columns - len(counter)
+                line = job_line(
+                    title=job.title,
+                    company=job.company,
+                    score=result.score,
+                    declined=bool(result.decline_reason),
+                    width=width,
+                )
+                typer.echo(counter + line)
         typer.echo(f"score: {ok}/{len(rows)} scored")
     finally:
         conn.close()

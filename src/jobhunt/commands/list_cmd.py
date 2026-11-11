@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from datetime import date, timedelta
 
 import typer
 
+from jobhunt.commands._job_line import job_line
 from jobhunt.commands._json_out import json_output
 from jobhunt.commands.apply_cmd import _safe_id
 from jobhunt.config import Config, load_config
@@ -32,8 +34,12 @@ app = typer.Typer(
 )
 
 
+_ROW_INDENT = "  "
+
+
 @app.callback(invoke_without_command=True)
 def run(
+    ctx: typer.Context,
     week: int | None = typer.Option(
         None, "--week", help="Filter applications to a week. 0=current, 1=last, ..."
     ),
@@ -150,9 +156,12 @@ def run(
 
             out["count"] = len(rows_with_audit)
             out["jobs"] = [_job_json(r, a) for r, a in rows_with_audit]
-            _render_rows(rows_with_audit, target_week)
+            verbose = bool((ctx.obj or {}).get("verbose"))
+            _render_rows(rows_with_audit, target_week, verbose=verbose)
             typer.echo("")
-            _render_weekly_footer(conn, target_week or _iso_week_label(0))
+            _render_weekly_footer(
+                conn, target_week or _iso_week_label(0), current=target_week is None
+            )
         finally:
             conn.close()
 
@@ -295,30 +304,38 @@ def _query(
 def _render_rows(
     rows: list[tuple[sqlite3.Row, _AuditSummary]],
     target_week: str | None,
+    *,
+    verbose: bool = False,
 ) -> None:
+    """One line per job: score, title · company · location, then only the
+    tags that are set. `--verbose` adds the job id and URL (Phase O2)."""
     header = f"showing {len(rows)} job(s)"
     if target_week:
         header += f" for {target_week}"
     typer.echo(header)
     if not rows:
         return
+    width = shutil.get_terminal_size((100, 24)).columns - len(_ROW_INDENT)
     for r, audit in rows:
-        score = r["score"] if r["score"] is not None else "—"
-        status = r["status"] or ("DECLINE" if r["decline_reason"] else "—")
-        verdict_tag = f"  {audit.verdict}" if audit.verdict else ""
-        cov_tag = (
-            f"  cov={audit.coverage_pct}%" if audit.coverage_pct is not None else ""
-        )
-        reply_tag = ""
+        tags = [r["status"]] if r["status"] else []
+        if audit.verdict:
+            tags.append(audit.verdict)
+        if audit.coverage_pct is not None:
+            tags.append(f"{audit.coverage_pct}% keywords")
         if r["applied_at"] is not None and r["response_received_at"] is None:
-            reply_tag = "  no-reply"
-        typer.echo(
-            f"  [{score!s:>3}] [{status:<13}] {r['title']} @ {r['company']}"
-            f"{verdict_tag}{cov_tag}{reply_tag}"
+            tags.append("no reply")
+        line = job_line(
+            title=r["title"],
+            company=r["company"],
+            score=r["score"],
+            declined=bool(r["decline_reason"]),
+            location=r["location"],
+            tags=" · ".join(tags),
+            width=width,
         )
-        typer.echo(f"           {r['source']} | {r['location']} | {r['id']}")
-        if r["url"]:
-            typer.echo(f"           {r['url']}")
+        typer.echo(_ROW_INDENT + line)
+        if verbose:
+            typer.echo(f"{_ROW_INDENT}     {r['id']}  {r['url'] or ''}".rstrip())
 
 
 def _action_board_counts(conn: sqlite3.Connection, min_score: int) -> dict[str, int]:
@@ -374,7 +391,11 @@ def _render_action_board(conn: sqlite3.Connection, min_score: int) -> None:
     typer.echo("")
 
 
-def _render_weekly_footer(conn: sqlite3.Connection, week_label: str) -> None:
+def _render_weekly_footer(
+    conn: sqlite3.Connection, week_label: str, *, current: bool = True
+) -> None:
+    """'This week (2026-W46): 250 scanned, 147 declined, 2 applied.' Zero
+    application counts are left out (Phase O2)."""
     counts: dict[str, int] = {}
     rows = conn.execute(
         "SELECT status, COUNT(*) AS n FROM applications WHERE applied_week = ? GROUP BY status",
@@ -393,9 +414,12 @@ def _render_weekly_footer(conn: sqlite3.Connection, week_label: str) -> None:
         (week_label,),
     ).fetchone()
 
-    parts = [f"{week_label}:"]
-    parts.append(f"scanned={scanned['n'] if scanned else 0}")
-    parts.append(f"declined={declined['n'] if declined else 0}")
+    label = f"This week ({week_label})" if current else f"Week {week_label}"
+    parts = [
+        f"{scanned['n'] if scanned else 0} scanned",
+        f"{declined['n'] if declined else 0} declined",
+    ]
     for s in ("drafted", "applied", "interviewing", "offer", "rejected", "withdrawn"):
-        parts.append(f"{s}={counts.get(s, 0)}")
-    typer.echo(" | ".join(parts))
+        if counts.get(s):
+            parts.append(f"{counts[s]} {s}")
+    typer.echo(f"{label}: {', '.join(parts)}.")
