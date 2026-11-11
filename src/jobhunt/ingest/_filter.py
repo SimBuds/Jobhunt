@@ -205,16 +205,21 @@ _NON_ENG_TITLE_RE = re.compile(
     r"\b(?:"
     # sales / business development
     r"account\s+executive|sales\s+(?:representative|associate|consultant|rep)"
-    r"|business\s+development\s+(?:representative|rep)|inside\s+sales|outside\s+sales"
+    r"|business\s+development\s+(?:representative|rep|associate)|inside\s+sales|outside\s+sales"
+    r"|account\s+specialist|bid\s+coordinator|revenue\s+enablement"
     # admin / office
     r"|administrative\s+assistant|office\s+administrator|receptionist"
     r"|executive\s+assistant|data\s+entry"
     # legal
-    r"|legal\s+counsel|\bcounsel\b|paralegal|attorney|solicitor"
+    r"|legal\s+counsel|\bcounsel\b|paralegal|attorney|solicitor|\blegal\b"
     # finance / accounting
     r"|accountant|bookkeeper|accounts\s+(?:payable|receivable)|payroll|underwriter|teller"
+    r"|strategic\s+finance|broker\s+training"
     # HR / recruiting
     r"|recruiter|talent\s+acquisition|human\s+resources|hr\s+generalist"
+    r"|talent\s+(?:operations|success)"
+    # product / design / teaching (2026-11-11: each leaked to a full score call)
+    r"|product\s+designer|product\s+management|sessional\s+lecturer"
     # marketing / comms
     r"|performance\s+marketing|content\s+writer|copywriter"
     r"|communications?\s+specialist|public\s+relations|brand\s+ambassador"
@@ -222,6 +227,8 @@ _NON_ENG_TITLE_RE = re.compile(
     r"|\bbuyer\b|procurement|supply\s+(?:planner|chain)|logistics"
     r"|warehouse|production\s+(?:supervisor|associate|worker)|machine\s+operator"
     r"|forklift|dispatcher|merchandiser"
+    r"|hub\s+coordinator|quality\s+control\s+associate|inventory\s+photographer"
+    r"|sustainability\s+analyst|noise\s+management"
     # trades / facilities
     r"|maintenance\s+technician|millwright|electrician|plumber|hvac|welder"
     r"|machinist|assembler|fabricator|custodian|janitor|sanitation|groundskeeper"
@@ -251,6 +258,7 @@ _NON_ENG_TITLE_RE = re.compile(
     # security (physical) / retail / service
     r"|security\s+(?:guard|officer)|loss\s+prevention|event\s+security"
     r"|cashier|retail\s+associate|store\s+associate|stocker|delivery\s+driver|courier"
+    r"|support\s+advisor|key\s+lead"
     # 2026-11-11: leaked past the filter on a live scan (23 of 61 non-eng
     # declines). Bare `benefits` is excluded: it matched a Solutions Architect.
     r"|shuttler|detailer|vehicle\s+(?:inspector|quality)|automotive\s+technician"

@@ -350,3 +350,140 @@ async def test_peer_through_familiar_earns_nothing(tmp_path, monkeypatch) -> Non
 async def test_peer_through_core_still_earns_transferable(tmp_path, monkeypatch) -> None:
     t1 = await _breakdown(tmp_path, monkeypatch, ["Vue"], familiar=[], core=["React"])
     assert t1["credit"] == pytest.approx(SCORE_TRANSFERABLE_CREDIT)
+
+
+# --- 2026-11-11: thin-JD matches the posting never mentions are dropped ------
+#
+# On thin snippets `lite` padded the extraction with skills copied from the
+# profile (Pontosense: 12 of 12 matches absent from its 500-char snippet,
+# scored 62). A matched phrase whose requirement is not in the title or
+# description is removed from both numerator and denominator. Gaps are kept:
+# an ungrounded gap is usually a paraphrase of a real ask.
+
+
+async def _scored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    must: list[str],
+    *,
+    core: list[str],
+    description: str,
+    nice: list[str] | None = None,
+    title: str = "Web Developer",
+):
+    from jobhunt.models import Job
+    from jobhunt.pipeline import score as score_mod
+
+    async def fake(**_: object) -> dict:
+        return {
+            "must_haves": must,
+            "nice_to_haves": nice or [],
+            "decline_reason": None,
+            "ai_bonus_present": False,
+        }
+
+    monkeypatch.setattr(score_mod, "complete_json", fake)
+    kb = _familiar_kb(tmp_path, [], core)
+    cfg = Config(
+        paths=PathsConfig(kb_dir=kb, profile_dir=kb / "profile"),
+        gateway=GatewayConfig(tasks={"score": "test"}),
+    )
+    job = Job(id="t:1", source="t", external_id="1", title=title, description=description)
+    result = await score_mod.score_job(cfg, job)
+    assert result.breakdown is not None
+    return result, json.loads(result.breakdown.to_json())
+
+
+THIN = "We are hiring. You will build things with Python and Docker on Kubernetes."
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_drops_matched_phrase_absent_from_posting(tmp_path, monkeypatch) -> None:
+    result, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Python", "Docker", "Go", "Kubernetes"],
+        core=["Python", "Docker", "Go"],
+        description=THIN,
+    )
+    assert bd["tier1"]["matched"] == 2
+    assert bd["tier1"]["total"] == 3
+    assert "Go" not in result.matched_must_haves
+    assert "ungrounded:1" in bd["caps_applied"]
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_all_matches_ungrounded_leaves_only_gaps(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Go", "Rust", "Kubernetes"],
+        core=["Go", "Rust"],
+        description=THIN,
+    )
+    assert bd["tier1"] == {"credit": 0.0, "matched": 0, "total": 1}
+    assert bd["final"] == SCORE_BASE
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_keeps_bridged_phrase_named_in_posting(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Vue (transferable: React)"],
+        core=["React"],
+        description="Frontend role using Vue.",
+    )
+    assert bd["tier1"]["matched"] == 1
+    assert bd["tier1"]["credit"] == pytest.approx(SCORE_TRANSFERABLE_CREDIT)
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_keeps_js_surface_variant(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path, monkeypatch, ["React"], core=["React"], description="Build UIs in React.js."
+    )
+    assert bd["tier1"]["matched"] == 1
+    assert not any(c.startswith("ungrounded") for c in bd["caps_applied"])
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_keeps_phrase_named_only_in_title(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Python"],
+        core=["Python"],
+        description="Join our small team.",
+        title="Python Developer",
+    )
+    assert bd["tier1"]["matched"] == 1
+
+
+@pytest.mark.asyncio
+async def test_thin_jd_everything_dropped_scores_base(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Go"],
+        nice=["Rust"],
+        core=["Go", "Rust"],
+        description="Join our small team.",
+    )
+    assert bd["tier1"]["total"] == 0
+    assert bd["tier2"]["total"] == 0
+    assert bd["final"] == SCORE_BASE
+    assert "ungrounded:2" in bd["caps_applied"]
+
+
+@pytest.mark.asyncio
+async def test_full_jd_keeps_ungrounded_match(tmp_path, monkeypatch) -> None:
+    _, bd = await _scored(
+        tmp_path,
+        monkeypatch,
+        ["Python", "Go"],
+        core=["Python", "Go"],
+        description="Python work. " + "A posting. " * 100,
+    )
+    assert bd["tier1"]["matched"] == 2
+    assert not any(c.startswith("ungrounded") for c in bd["caps_applied"])

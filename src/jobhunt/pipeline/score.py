@@ -263,12 +263,32 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     familiar = evidence.pop("skills_familiar", None) or []
     blob = json.dumps(evidence, ensure_ascii=False).lower()
     familiar_blob = "\n".join(str(s) for s in familiar).lower()
+    cert_blob = "\n".join(str(s) for s in evidence.get("certifications") or []).lower()
     tier1_phrases, tier2_phrases = _collapse_bridge_duplicates(
-        tier1_phrases, tier2_phrases, blob, weights, familiar_blob=familiar_blob
+        tier1_phrases,
+        tier2_phrases,
+        blob,
+        weights,
+        familiar_blob=familiar_blob,
+        cert_blob=cert_blob,
     )
+    ungrounded = 0
+    if len(job.description) < cfg.pipeline.thin_jd_chars:
+        jd_blob = f"{job.title or ''}\n{job.description}".lower()
+        tier1_phrases, n1 = _drop_ungrounded_matches(
+            tier1_phrases, jd_blob, blob, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+        )
+        tier2_phrases, n2 = _drop_ungrounded_matches(
+            tier2_phrases, jd_blob, blob, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+        )
+        ungrounded = n1 + n2
     seen: set[str] = set()
-    tier1 = _verify_tier(tier1_phrases, blob, seen, weights, familiar_blob=familiar_blob)
-    tier2 = _verify_tier(tier2_phrases, blob, seen, weights, familiar_blob=familiar_blob)
+    tier1 = _verify_tier(
+        tier1_phrases, blob, seen, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+    )
+    tier2 = _verify_tier(
+        tier2_phrases, blob, seen, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+    )
 
     matched = tier1.matched + tier2.matched
     gaps = tier1.gaps + tier2.gaps
@@ -279,6 +299,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # Which ceilings actually bound, recorded as they fire. A capped score must
     # never be mistaken for an earned one during calibration.
     caps_applied: list[str] = []
+    if ungrounded:
+        caps_applied.append(f"ungrounded:{ungrounded}")
 
     # Thin-JD confidence ceiling, gated on description LENGTH ALONE.
     #
@@ -673,12 +695,23 @@ def _bridge_of(phrase: str) -> str | None:
     return inner or None
 
 
+# "Certified" / "certification(s)" only. "Certificate" is left out on purpose:
+# it usually names an education credential ("College certificate in Computer
+# Programming"), which the education entries back.
+_CERT_WORD_RE = re.compile(r"\bcertif(?:ied|ications?)\b", re.IGNORECASE)
+
+
+def _is_certification_ask(phrase: str) -> bool:
+    return bool(_CERT_WORD_RE.search(phrase))
+
+
 def _phrase_credit(
     phrase: str,
     blob: str,
     weights: ScoreWeights = DEFAULT_WEIGHTS,
     *,
     familiar_blob: str = "",
+    cert_blob: str = "",
 ) -> float:
     """Graded evidence that the profile satisfies one JD requirement.
 
@@ -692,7 +725,15 @@ def _phrase_credit(
     in `familiar_blob`. A literal Familiar hit earns the transferable weight.
     Peers and bridges are checked against `blob` only, so a requirement that
     reaches the profile only through a Familiar skill earns nothing.
+
+    A certification ask is checked against `cert_blob` (the profile's
+    `certifications` list) alone, all or nothing (2026-11-11). Against the
+    whole profile, "Shopify Developer Certification" matched because
+    "shopify" and "developer" each appear somewhere in it.
     """
+    if _is_certification_ask(phrase):
+        named = _CERT_WORD_RE.sub(" ", _requirement_identity(phrase)).strip()
+        return 1.0 if named and phrase_present(named, cert_blob) else 0.0
     if phrase_present(phrase, blob):
         return 1.0
     if peer_match(phrase, blob):
@@ -722,6 +763,7 @@ def _collapse_bridge_duplicates(
     weights: ScoreWeights = DEFAULT_WEIGHTS,
     *,
     familiar_blob: str = "",
+    cert_blob: str = "",
 ) -> tuple[list[str], list[str]]:
     """Count a requirement once when the model lists it both bare and bridged.
 
@@ -744,7 +786,9 @@ def _collapse_bridge_duplicates(
             identity = _requirement_identity(phrase)
             if not identity:
                 continue
-            credit = _phrase_credit(phrase, blob, weights, familiar_blob=familiar_blob)
+            credit = _phrase_credit(
+                phrase, blob, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+            )
             if identity not in slots:
                 slots[identity] = (tier_idx, len(tiers[tier_idx]), credit)
                 tiers[tier_idx].append(phrase)
@@ -754,6 +798,42 @@ def _collapse_bridge_duplicates(
                 tiers[held_tier][held_idx] = phrase
                 slots[identity] = (held_tier, held_idx, credit)
     return tiers[0], tiers[1]
+
+
+def _drop_ungrounded_matches(
+    phrases: list[str],
+    jd_blob: str,
+    blob: str,
+    weights: ScoreWeights = DEFAULT_WEIGHTS,
+    *,
+    familiar_blob: str = "",
+    cert_blob: str = "",
+) -> tuple[list[str], int]:
+    """Remove matched phrases whose requirement the posting never names.
+
+    On thin snippets `lite` pads the extraction with skills copied from the
+    profile (2026-11-11: Pontosense scored 62 with 12 of 12 matches absent from
+    its 500-char snippet, and 40 of 137 thin-JD matches were ungrounded). A
+    padded match inflates both numerator and denominator, so it is dropped from
+    both. Gaps are kept: an ungrounded gap is usually the model paraphrasing a
+    real ask, and dropping it would raise the score. `score_job` calls this on
+    thin JDs only, where full JDs paraphrase often and pad rarely (3 of 190).
+    """
+    kept: list[str] = []
+    dropped = 0
+    for phrase in phrases:
+        grounded = phrase_present(_requirement_identity(phrase), jd_blob)
+        if (
+            not grounded
+            and _phrase_credit(
+                phrase, blob, weights, familiar_blob=familiar_blob, cert_blob=cert_blob
+            )
+            > 0
+        ):
+            dropped += 1
+            continue
+        kept.append(phrase)
+    return kept, dropped
 
 
 @dataclass(frozen=True)
@@ -783,6 +863,7 @@ def _verify_tier(
     weights: ScoreWeights = DEFAULT_WEIGHTS,
     *,
     familiar_blob: str = "",
+    cert_blob: str = "",
 ) -> _TierResult:
     """Partition one tier's phrases into matched/gaps with graded credit.
 
@@ -799,7 +880,7 @@ def _verify_tier(
         if not key or key in seen:
             continue
         seen.add(key)
-        c = _phrase_credit(phrase, blob, weights, familiar_blob=familiar_blob)
+        c = _phrase_credit(phrase, blob, weights, familiar_blob=familiar_blob, cert_blob=cert_blob)
         if c > 0:
             matched.append(phrase)
             credit += c

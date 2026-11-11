@@ -941,3 +941,85 @@ def test_tenure_only_denominator_entry_no_longer_lowers_coverage() -> None:
     assert score_mod._drop_pure_tenure_asks(
         ["TypeScript", "7+ years of professional experience"]
     ) == ["TypeScript"]
+
+
+# --- Phase S3 (2026-11-11): certification asks verify against certifications --
+#
+# "Shopify Developer Certification" scored as matched on a live posting: each
+# word sat somewhere in the profile ("shopify", "developer"), but the only
+# verified certification is Contentful. A certification ask now earns credit
+# only from the profile's `certifications` list, with no peer, bridge or
+# Familiar path.
+
+CERT_PROFILE = {
+    "summary": "Shopify developer.",
+    "skills_core": ["Shopify (Liquid)", "AWS", "Contentful"],
+    "education": ["Ontario College Certificate, Computer Programming"],
+    "certifications": ["Contentful Certified Professional  |  Oct 2025"],
+}
+
+
+async def _cert_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, must, profile=None):
+    kb = tmp_path / "kb"
+    (kb / "profile").mkdir(parents=True)
+    (kb / "policies").mkdir()
+    (kb / "prompts").mkdir()
+    (kb / "profile" / "verified.json").write_text(json.dumps(profile or CERT_PROFILE))
+    (kb / "policies" / "tailoring-rules.md").write_text("policy text")
+    (kb / "prompts" / "score.md").write_text(
+        "---\ntask: score\ntemperature: 0.0\nschema:\n  type: object\n---\n"
+        "## SYSTEM\nScore.\n## USER\n{{title}} {{description}}\n"
+    )
+    monkeypatch.setattr(score_mod, "complete_json", _extraction(must))
+    return await score_job(_cfg(kb), _full_jd_job())
+
+
+@pytest.mark.asyncio
+async def test_cert_ask_not_held_is_a_gap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = await _cert_score(
+        tmp_path,
+        monkeypatch,
+        [
+            "Shopify Developer Certification",
+            "Shopify Partner/Plus certification",
+            "AWS Solutions Architect certification",
+            "Shopify",
+        ],
+    )
+    assert result.matched_must_haves == ["Shopify"]
+    assert "Shopify Developer Certification" in result.gaps
+    assert "Shopify Partner/Plus certification" in result.gaps
+    assert "AWS Solutions Architect certification" in result.gaps
+
+
+@pytest.mark.asyncio
+async def test_cert_ask_held_is_matched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = await _cert_score(tmp_path, monkeypatch, ["Contentful certification", "Kubernetes"])
+    assert result.matched_must_haves == ["Contentful certification"]
+
+
+@pytest.mark.asyncio
+async def test_cert_ask_with_empty_certifications_is_a_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = {**CERT_PROFILE, "certifications": []}
+    result = await _cert_score(tmp_path, monkeypatch, ["Contentful certification"], profile)
+    assert result.gaps == ["Contentful certification"]
+
+
+@pytest.mark.asyncio
+async def test_bridged_cert_ask_is_still_a_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ask = "Shopify certification (transferable: Contentful Certified Professional)"
+    result = await _cert_score(tmp_path, monkeypatch, [ask])
+    assert result.gaps == [ask]
+
+
+@pytest.mark.asyncio
+async def test_education_certificate_ask_is_unaffected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # "Certificate" names a credential from education, not a certification.
+    result = await _cert_score(tmp_path, monkeypatch, ["Certificate in Computer Programming"])
+    assert result.matched_must_haves == ["Certificate in Computer Programming"]

@@ -1589,7 +1589,15 @@ missing. Fix the resume or the parser first.
      legal, payments, customer care and similar terms now drop 23 of them,
      0 others. Bare `benefits` is excluded (it matched a Solutions
      Architect). Marketing and content terms are deliberately left out,
-     because the SEO lane sits next to marketing.
+     because the SEO lane sits next to marketing (Casey, re-confirmed
+     2026-11-11). Extended again 2026-11-11 (Phase S2) with multi-word terms
+     such as product designer, product management, talent operations and
+     quality control associate, plus bare `legal` (the eng guard still
+     wins). Replayed over the live DB it catches 44 of 70 non-engineering
+     declines, up from 22, and drops 0 undeclined jobs.
+     Engineering-adjacent titles (Presales Engineer, Channel Solutions
+     Engineer, ServiceNow Architect, IT Operations Specialist) stay
+     scoreable on purpose.
    - **Senior titles** (`is_senior_title`), gated by
      `cfg.applicant.include_senior_roles` (default True). Independent of
      `applicant.years_experience`, which feeds the score prompt, not the
@@ -1778,6 +1786,17 @@ Every cap only lowers.
   was never the signal — how much JD text the model got to read is. A code-only
   change to `score.py` does NOT bump `prompt_hash`, so re-score the backlog to
   correct an existing queue.
+- **Thin-JD grounding drop (2026-11-11).** On the same thin JDs, a matched
+  phrase whose requirement is in neither the title nor the description is
+  removed from both numerator and denominator
+  (`score._drop_ungrounded_matches`, recorded as `ungrounded:<n>` in
+  `caps_applied`). `lite` pads snippets with skills copied from the profile:
+  40 of 137 thin-JD matches were ungrounded, against 3 of 190 on full JDs,
+  and Pontosense scored 62 with all 12 matches absent from its snippet. Gaps
+  are never dropped, because an ungrounded gap is usually a paraphrase of a
+  real ask and dropping it would raise the score. Full JDs are exempt
+  (Casey, 2026-11-11), because they paraphrase often and pad rarely. A live
+  replay of 54 thin undeclined jobs moved 9 and cut their queue from 7 to 5.
 - **Familiar-only-fit cap.** When every matched must-have resolves into
   `verified.skills_familiar` and not into any Core bucket
   (`_all_matched_are_familiar`), the cap splits by title band. Senior title:
@@ -1857,6 +1876,16 @@ profile only through a Familiar skill (Vue via Familiar React) earns 0. A
 skill listed in both Familiar and a Core bucket earns 1.0. This came with the
 2026-11-09 profile, where React and TypeScript moved to Familiar but still
 earned full credit.
+
+**Certification asks verify against `certifications` only (2026-11-11).**
+A phrase containing "certified" or "certification(s)" earns 1.0 only when
+its other words match the profile's `certifications` list, and 0 otherwise,
+with no peer, bridge or Familiar path (`score._is_certification_ask`,
+`cert_blob`). Against the whole profile, "Shopify Developer Certification"
+matched because "shopify" and "developer" each appear somewhere. On the five
+manual jobs of 2026-11-11 it flipped four such asks to gaps. "Certificate"
+is deliberately not a certification word, because it usually names an
+education credential.
 
 **Distinct technologies inside longer names (2026-11-10).** Matching is by
 substring, so `phrase_present("Java", ...)` used to match "JavaScript".

@@ -140,3 +140,57 @@ def test_leaked_titles_dropped(title: str) -> None:
 )
 def test_new_terms_do_not_drop_technical_roles(title: str) -> None:
     assert is_non_engineering_title(title) is False
+
+
+# Phase S2 (2026-11-11): titles from the same scan that the D11b terms still
+# missed. Marketing and content titles are deliberately absent (SEO lane).
+LEAKED_2026_11_S2 = [
+    "Junior Quality Control Associate",
+    "Quality Control Associate",
+    "Inventory Photographer",
+    "Hub Coordinator",
+    "Talent Operations Associate",
+    "Talent Success Specialist",
+    "Associate, Strategic Finance",
+    "Business Development Associate, Field Service",
+    "Account Specialist, Growth",
+    "Bid Coordinator",
+    "Broker Training Specialist",
+    "Premium Support Advisor (Portuguese Speaking)",
+    "Senior Product Designer - Enterprise Security",
+    "Intern - Product Management, Winter 2027",
+    "Sessional Lecturer - VPAC16H3S Contracts and Copyright",
+    "Sustainability Analyst",
+    "Senior Officer, Noise Management (Term Opportunity - Six Months)",
+    "Senior Revenue Enablement Specialist, Digital",
+    "AVP, Legal - Technology Enablement, Data Analytics and Reporting",
+    "Part-Time Key Lead (Toronto Premium Outlets)",
+]
+
+
+@pytest.mark.parametrize("title", LEAKED_2026_11_S2)
+def test_s2_leaked_titles_dropped(title: str) -> None:
+    assert is_non_engineering_title(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # Engineering-adjacent titles from the same scan stay scoreable.
+        "Presales Engineer",
+        "Channel Solutions Engineer",
+        "ServiceNow Architect",
+        "IT Operations Specialist",
+        "Business Analyst - Insurance /Mutual Fund,Process Automation & AI",
+        # Marketing and content stay (Casey, 2026-11-11: SEO lane).
+        "Content Marketing Specialist",
+        "Digital Marketing Specialist",
+        "Content Coordinator",
+        # The guard still wins over every new term.
+        "Software Engineer, Legal Platform",
+        "Frontend Developer, Product Designer Tools",
+        "QA Engineer, Quality Control Associate Tooling",
+    ],
+)
+def test_s2_terms_keep_technical_and_marketing_roles(title: str) -> None:
+    assert is_non_engineering_title(title) is False
