@@ -263,8 +263,8 @@ file changes nothing.
 # Move a skill the resume already lists into Core. It is moved, not copied.
 # `source` names the resume row it came from.
 [[core]]
-skill = "TypeScript"
-source = "Web/CMS"
+skill = "Python"
+source = "AI Automation"
 
 # A project the resume does not carry. `source` is required: the portfolio
 # entry or README that backs every bullet.
@@ -590,9 +590,9 @@ auto_discover        = true   # post-ingest probe new companies + append hits.
                               # `--no-discover` skips per-run.
 drop_research_titles = false  # opt-in: drop ML scientist / research
                               # engineer / data platform / quant titles at
-                              # ingest. Enable for frontend / CMS /
-                              # full-stack profiles where these roles never
-                              # fit. See `ingest._filter.is_research_title`.
+                              # ingest. Enable for frontend or CMS
+                              # profiles where these roles never fit.
+                              # See `ingest._filter.is_research_title`.
 drop_non_engineering_titles = true
                               # default-on: drop clearly non-engineering
                               # functions before scoring. A dev/eng title

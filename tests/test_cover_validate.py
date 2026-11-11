@@ -604,3 +604,13 @@ def test_ollama_is_watchlisted() -> None:
     with_ollama = {"skills_ai": ["Ollama (Local LLM hosting)"]}
     assert unverified_tech_claims("I serve models with Ollama.", without) == ["ollama"]
     assert unverified_tech_claims("I serve models with Ollama.", with_ollama) == []
+
+
+def test_google_tag_manager_is_verified_by_gtm(verified: dict) -> None:
+    """The 2026-11-09 profile lists "GTM". Spelling it out in a cover must not
+    read as an unverified claim, while a profile without GTM still flags it
+    (`test_removed_profile_skills_are_watchlisted`)."""
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    with_gtm = {**verified, "skills_cms": [*verified.get("skills_cms", []), "GTM"]}
+    assert unverified_tech_claims("Set up Google Tag Manager and GA4.", with_gtm) == []

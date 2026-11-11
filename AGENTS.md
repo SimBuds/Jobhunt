@@ -1932,6 +1932,8 @@ call to it without explicit discussion.
      that moves into `verified.json` must come off it, and a skill that leaves
      `verified.json` while postings still ask for it goes on (2026-11-01:
      Next.js, Node.js, Express, PostgreSQL, MySQL, Azure, GTM, Claude API).
+     GTM came back in the 2026-11-09 profile, so `_WATCHLIST_ALIASES` lets
+     "google tag manager" pass when the profile lists "GTM" (2026-11-10).
      `unverified_tech_claims` is the one implementation of the check, shared
      with `tailor._check_summary`.
    - `_NEGATION_PRECEDES_RE` suppresses the watchlist under legitimate

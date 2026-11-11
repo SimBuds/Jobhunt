@@ -289,7 +289,7 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "laravel",
     "c#",
     "dotnet",
-    # Frontend frameworks not in verified (React is)
+    # Frontend frameworks not in verified (React is Familiar)
     "next.js",
     "vue",
     "angular",
@@ -409,6 +409,12 @@ def _verified_numbers(verified: dict[str, Any]) -> set[str]:
     return set(_DIGIT_CLUSTER_RE.findall(blob))
 
 
+# A watchlist term also counts as verified when the profile holds its short
+# form. The 2026-11-09 profile lists "GTM", so "Google Tag Manager" in a cover
+# is a true claim, while a profile without GTM still flags it.
+_WATCHLIST_ALIASES: dict[str, tuple[str, ...]] = {"google tag manager": ("gtm",)}
+
+
 def unverified_tech_claims(text: str, verified: dict[str, Any]) -> list[str]:
     """Watchlisted tech named in `text` that the profile does not hold.
 
@@ -428,6 +434,11 @@ def unverified_tech_claims(text: str, verified: dict[str, Any]) -> list[str]:
         if not token_pattern.search(text):
             continue
         if token_pattern.search(verified_blob):
+            continue
+        if any(
+            re.search(r"\b" + re.escape(alias) + r"\b", verified_blob, re.IGNORECASE)
+            for alias in _WATCHLIST_ALIASES.get(token, ())
+        ):
             continue
         # Check whether every occurrence is in a negation context.
         all_negated = True
