@@ -129,9 +129,9 @@ Hard rules (from kb/policies/tailoring-rules.md):
       If `verified_facts` contains no AI/LLM work, skip this rule rather
       than inventing any. Do not treat vague phrases like
       "modern stack", "modern engineering", or "modern tools" as an AI
-      trigger by themselves. Mention the highest credential from
-      `verified_facts.education` (with academic honours, if any) once, but
-      in the closing sentence, not the lead.
+      trigger by themselves. Do NOT mention the diploma, the school, or
+      academic honours anywhere in the summary: the education line already
+      shows them, and repeating them spends a summary sentence on nothing new.
 7. Bullets must use strong verbs (built, designed, shipped, owned, led,
    integrated, migrated, optimized, deployed, configured, automated). No "I",
    no "responsible for", no "helped with".

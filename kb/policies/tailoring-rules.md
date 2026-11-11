@@ -1,8 +1,4 @@
-# Tailoring rules (prompt-injectable)
-
-Source of truth for the injected rules. Keep it short — this file is injected on
-every tailor call and feeds the score prompt hash. Agent-facing companion (not
-injected): `kb/policies/authoring.md`.
+# Tailoring rules
 
 ## Hard prohibitions (no fabrication)
 
@@ -30,7 +26,7 @@ injected): `kb/policies/authoring.md`.
 - **First skills-category matches the JD's primary stack.** CMS → CMS;
   frontend → frontend; technical SEO → SEO; AI/LLM → AI tooling. `Familiar`
   bucket is always last.
-- **Category sizes** (May 2026, Phase 8): first category 6–10 items,
+- **Category sizes**: first category 6–10 items,
   secondary categories 4–8 items, `Familiar` exactly the verified Familiar
   items. Don't cram every Core/DevOps
   skill into the lead category — a 16-item lead reads like a keyword wall.
@@ -70,7 +66,7 @@ If any of the following hold, mark the job `decline_reason` and skip:
   medical devices).
 - Not in Toronto/GTA + 100km and not Remote-Canada eligible.
 
-## AI/LLM differentiator (§6, May 2026)
+## AI/LLM differentiator (§6)
 
 When the JD explicitly mentions AI, LLM, RAG, generative AI, prompt
 engineering, ML, automation tooling, developer tooling, local-first tooling,
@@ -97,7 +93,7 @@ or infrastructure work:
 - For ordinary CMS, frontend, backend, or full-stack roles, lead with the
   strongest work-history project instead of forcing the local-LLM project.
 
-## Tone guardrails (June 2026)
+## Tone guardrails
 
 - Do not overstate adjacency between {candidate_name}'s projects and a JD.
 - Avoid exact-fit claims, proof language, and one-to-one bridge phrases such

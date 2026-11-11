@@ -116,11 +116,19 @@ def peer_match(verified_skill: str, jd_blob_lower: str) -> bool:
     Returns False when `verified_skill` has no peer family registered — in
     that case the caller falls back to plain substring presence via
     `phrase_present`.
+
+    A peer counts only as a whole word: no letter or digit may touch it on
+    either side (2026-11-11). As a bare substring, the Node.js family's "bun"
+    matched inside "ubuntu" and gave Node.js credit to a profile that never
+    claims it. A dot or space is a boundary, so "react.js" and "node.js"
+    still match.
     """
     family = peer_family_of(verified_skill)
     if family is None:
         return False
-    return any(peer in jd_blob_lower for peer in family)
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(peer)}(?![a-z0-9])", jd_blob_lower) for peer in family
+    )
 _STOPWORDS = frozenset(
     {
         "a", "an", "and", "or", "the", "of", "in", "on", "to", "for", "with",

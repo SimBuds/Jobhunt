@@ -250,3 +250,23 @@ def test_javascript_still_matches_itself() -> None:
 def test_java_and_javascript_needs_both() -> None:
     assert not phrase_present("Java and JavaScript", '["javascript"]')
     assert phrase_present("Java and JavaScript", '["javascript", "java"]')
+
+
+# --- Phase D4 (2026-11-11): peers match whole words only ----------------------
+#
+# Peers were found by substring, so the Node.js family's "bun" matched inside
+# "ubuntu" in the profile's project bullets, and a Node.js requirement earned
+# transferable credit against a profile that never claims Node.
+
+from jobhunt.pipeline._keywords import peer_match  # noqa: E402
+
+
+def test_peer_inside_a_longer_word_does_not_match() -> None:
+    assert not peer_match("Node.js", "provisions an ubuntu 24.04 instance")
+    assert not peer_match("REST APIs", "worked a restaurant line for ten years")
+
+
+def test_peer_with_a_dot_or_space_boundary_still_matches() -> None:
+    assert peer_match("Node.js", "built services on node.js and express")
+    assert peer_match("Vue", "react.js front ends")
+    assert peer_match("GitLab CI", "ci runs in github actions")

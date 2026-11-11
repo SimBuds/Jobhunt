@@ -1112,7 +1112,10 @@ Beyond the four pillars, these project docs are load-bearing:
 - `kb/policies/tailoring-rules.md` — honest-tailoring rules (no fabrication,
   ATS-safe formatting, auto-decline triggers). **Prompt-injected** on every
   tailor call and part of the score prompt hash, so edits re-score existing
-  jobs. Keep it short.
+  jobs. Keep it short: it is truncated to `MAX_POLICY_CHARS` (6000) before
+  it reaches a prompt, and `tests/test_policy_length.py` fails when the raw
+  file exceeds that. On 2026-11-11 it was 6180 and the last tone rule was
+  silently cut. It is 5918 now, so new rules need cuts elsewhere.
 - `kb/policies/authoring.md` — the longer agent-facing authoring policy
   (inputs, workflow, may-adjust table, pitfall audit). Deliberately **not**
   injected.
@@ -1855,8 +1858,11 @@ substring, so `phrase_present("Java", ...)` used to match "JavaScript".
 unless the text being matched names it too. It holds only java/javascript.
 Add an entry when a real case appears. A blanket word-boundary rule was
 rejected because it breaks "SQL" against SQLite, "LLM" against LLMs and "API"
-against APIs. `peer_match` does not use the mask yet (see IMPLEMENT.md
-Deferred).
+against APIs. `peer_match` takes a different fix (2026-11-11): each peer
+must be a whole word, with no letter or digit touching it, because "bun"
+(Node.js family) matched inside "ubuntu" and gave Node.js credit to a profile
+without it. A dot or space is a boundary, so "react.js" still matches. Known
+trade: "dockerized" no longer peer-matches Docker.
 
 **`pipeline.min_score` defaults to 55.** The 55-59 band is the "stretch,
 tailor required" zone where a strong AI/LLM cover hook can break through.
