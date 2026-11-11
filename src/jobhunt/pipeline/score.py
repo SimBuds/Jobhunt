@@ -15,7 +15,7 @@ from jobhunt.pipeline._decline_guards import (
     DECLINE_GUARDS_VERSION,
     decline_is_unsupported,
 )
-from jobhunt.pipeline._keywords import peer_match, phrase_present
+from jobhunt.pipeline._keywords import _PAREN_RE, TECH_ALIASES, peer_match, phrase_present
 from jobhunt.pipeline._profile import candidate_name, render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
 
@@ -705,6 +705,43 @@ def _is_certification_ask(phrase: str) -> bool:
     return bool(_CERT_WORD_RE.search(phrase))
 
 
+def _bracket_examples(phrase: str) -> list[str]:
+    """Items named inside a requirement's brackets.
+
+    "Coding agents (Claude Code/Cursor/Codex)" lists the tools that satisfy a
+    generic ask, and `phrase_present` drops brackets as commentary, so the
+    verified Claude Code never counted (2026-11-11). The transferable
+    annotation is removed first, so a bridge is never read as an example. A
+    bracket holding a colon is the model's own note ("matched: CMS/Shopify",
+    "gap: ...") and is skipped: a live replay credited those.
+    """
+    items: list[str] = []
+    for group in _PAREN_RE.findall(_requirement_identity(phrase)):
+        if ":" in group:
+            continue
+        items.extend(i.strip() for i in re.split(r"[/,]", group[1:-1]) if i.strip())
+    return items
+
+
+def _is_profile_entry(item: str, blob: str) -> bool:
+    """True when `item` is a whole string in the profile, such as the skill
+    "GitHub Actions". Token matching is too loose for bracket items: a live
+    replay credited "(push/pull/lift 50 lbs, standing)" because each word
+    appeared somewhere in the profile. `blob` is lower-cased JSON."""
+    return json.dumps(item, ensure_ascii=False) in blob
+
+
+def _alias_present(phrase: str, blob: str) -> bool:
+    """True when the phrase names a technology by a long form the profile
+    lists under its short form ("Google Tag Manager" against "GTM")."""
+    identity = _requirement_identity(phrase)
+    return any(
+        long in identity and phrase_present(identity.replace(long, short), blob)
+        for long, shorts in TECH_ALIASES.items()
+        for short in shorts
+    )
+
+
 def _phrase_credit(
     phrase: str,
     blob: str,
@@ -715,11 +752,11 @@ def _phrase_credit(
 ) -> float:
     """Graded evidence that the profile satisfies one JD requirement.
 
-    1.0 for a literal hit, `weights.transferable_credit` for a peer-family or
-    annotated-bridge hit, 0.0 for no path at all. Three acceptance routes in a
-    fixed order, fail-closed on bogus bridges (the named tech must itself
-    verify), returning strength rather than a boolean so an exact stack match
-    can outrank a bridged one.
+    1.0 for a literal or alias hit, `weights.transferable_credit` for a
+    peer-family, annotated-bridge or bracketed-example hit, 0.0 for no path at
+    all. The routes run in that fixed order, fail-closed on bogus bridges (the
+    named tech must itself verify), returning strength rather than a boolean so
+    an exact stack match can outrank a bridged one.
 
     `blob` is the profile without its Familiar skills, which arrive separately
     in `familiar_blob`. A literal Familiar hit earns the transferable weight.
@@ -734,12 +771,16 @@ def _phrase_credit(
     if _is_certification_ask(phrase):
         named = _CERT_WORD_RE.sub(" ", _requirement_identity(phrase)).strip()
         return 1.0 if named and phrase_present(named, cert_blob) else 0.0
-    if phrase_present(phrase, blob):
+    if phrase_present(phrase, blob) or _alias_present(phrase, blob):
         return 1.0
     if peer_match(phrase, blob):
         return weights.transferable_credit
     bridge = _bridge_of(phrase)
     if bridge is not None and phrase_present(bridge, blob):
+        return weights.transferable_credit
+    # One verified example of a broader ask is evidence, not a full match
+    # (Casey, 2026-11-11): "Shopify Plus (B2B, POS)" must not reach 1.0 on B2B.
+    if any(_is_profile_entry(item, blob) for item in _bracket_examples(phrase)):
         return weights.transferable_credit
     if familiar_blob and phrase_present(phrase, familiar_blob):
         return weights.transferable_credit

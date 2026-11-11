@@ -1023,3 +1023,63 @@ async def test_education_certificate_ask_is_unaffected(
     # "Certificate" names a credential from education, not a certification.
     result = await _cert_score(tmp_path, monkeypatch, ["Certificate in Computer Programming"])
     assert result.matched_must_haves == ["Certificate in Computer Programming"]
+
+
+# --- Phase S4 (2026-11-11): bracketed examples and known aliases -------------
+#
+# Live false gaps on the manual jobs: "CI/CD (GitHub Actions)" and "Coding
+# agents (Claude Code/Cursor/Codex)" (the matcher drops brackets), "Google Tag
+# Manager" against a profile listing GTM, and "Git version control". A
+# bracketed example earns the transferable credit (Casey: 0.7, not 1.0); an
+# alias is the same thing and earns 1.0. An example must be a whole profile
+# entry, and a bracket holding a colon is the model's own note (Casey, after a
+# live replay credited "(matched: CMS/HubSpot/Shopify)" and prose brackets).
+
+ALIAS_BLOB = json.dumps(
+    {
+        "summary": "5+ years of Shopify work, standing up stores.",
+        "skills_ai": ["Claude Code", "Codex"],
+        "skills_data_devops": ["Git", "GitHub Actions", "AWS", "Go", "Python"],
+        "skills_seo": ["GTM", "GA4"],
+        "skills_cms": ["Shopify (Liquid)"],
+    }
+).lower()
+
+
+def _credit(phrase: str, familiar: str = "") -> float:
+    return _verify_tier([phrase], ALIAS_BLOB, set(), familiar_blob=familiar).credit
+
+
+@pytest.mark.parametrize(
+    ("phrase", "expected"),
+    [
+        ("CI/CD (GitHub Actions)", score_mod.SCORE_TRANSFERABLE_CREDIT),
+        ("Coding agents (Claude Code/Cursor/Codex)", score_mod.SCORE_TRANSFERABLE_CREDIT),
+        ("Cloud deployment (AWS, GCP, Azure)", score_mod.SCORE_TRANSFERABLE_CREDIT),
+        ("Google Tag Manager", 1.0),
+        ("Git version control", 1.0),
+        # Head already matches: unchanged full credit.
+        ("Shopify (Liquid)", 1.0),
+        # No verified example in the brackets.
+        ("Payments (Stripe/Adyen)", 0.0),
+        # A years count is not an example, even when the profile has one.
+        ("Cloud leadership (5+ years)", 0.0),
+        # An exact short skill name counts: whole-entry matching is precise.
+        ("Backend services (Go)", score_mod.SCORE_TRANSFERABLE_CREDIT),
+        # The model's own notes are not examples, even naming a real skill.
+        ("Marketing platform depth (matched: CMS/Shopify/AWS)", 0.0),
+        ("Kotlin, Java (gap: candidate has PHP/Python)", 0.0),
+        # Prose whose words appear somewhere in the profile is not an example.
+        ("Physical labor (push/pull/lift 50 lbs, standing)", 0.0),
+        # Near-form miss, accepted: "Shopify" is not the entry "Shopify (Liquid)".
+        ("Ecommerce platform (Shopify)", 0.0),
+        # The alias fires only on the aliased words.
+        ("Tag management strategy", 0.0),
+    ],
+)
+def test_bracket_examples_and_aliases(phrase: str, expected: float) -> None:
+    assert _credit(phrase) == pytest.approx(expected)
+
+
+def test_bracket_example_only_in_familiar_earns_nothing() -> None:
+    assert _credit("Frontend framework (React)", familiar="react") == pytest.approx(0.0)

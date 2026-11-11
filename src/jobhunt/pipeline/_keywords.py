@@ -19,6 +19,16 @@ import re
 
 _TOKEN_RE = re.compile(r"[a-z0-9+#./-]+")
 
+# Two names for one thing: the long form a posting uses and the short form
+# a profile lists. The 2026-11-09 profile lists "GTM", so "Google Tag Manager"
+# in a cover is a true claim (cover_validate) and a matched requirement
+# (score), while a profile without GTM still flags it. "Version control" in a
+# requirement means Git (2026-11-11). Keys and values are lower-case.
+TECH_ALIASES: dict[str, tuple[str, ...]] = {
+    "google tag manager": ("gtm",),
+    "version control": ("git",),
+}
+
 
 # Peer-tech families, May 2026. Each key is a canonical lowercased member; the
 # value is the family it belongs to (including itself). Mirrors the families

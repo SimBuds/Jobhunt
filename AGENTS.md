@@ -1887,6 +1887,21 @@ manual jobs of 2026-11-11 it flipped four such asks to gaps. "Certificate"
 is deliberately not a certification word, because it usually names an
 education credential.
 
+**Aliases and bracketed examples (2026-11-11).** `_phrase_credit` gives 1.0
+when a requirement names a skill by a long form the profile lists under its
+short form (`_keywords.TECH_ALIASES`: Google Tag Manager is GTM, version
+control is Git). It gives the transferable credit, not 1.0 (Casey), when an
+item inside the requirement's brackets is a whole profile entry: "CI/CD
+(GitHub Actions)" and "Coding agents (Claude Code/Cursor/Codex)" were gaps
+because `phrase_present` drops brackets. Two limits came from a live replay,
+where the first version moved 41 of 283 scores, many wrongly. Items must
+equal a whole profile string, because token matching credited prose like
+"(push/pull/lift 50 lbs, standing)". Brackets holding a colon are skipped,
+because `lite` writes its own notes there ("(matched: CMS/HubSpot/Shopify)",
+"(gap: ...)"). The accepted miss: "Shopify" does not equal the entry
+"Shopify (Liquid)". This lives in `score.py` only, so audit coverage and the
+tailor stay strict.
+
 **Distinct technologies inside longer names (2026-11-10).** Matching is by
 substring, so `phrase_present("Java", ...)` used to match "JavaScript".
 `_keywords._DISTINCT_SUPERSTRINGS` masks the longer name out of the blob
@@ -1988,8 +2003,11 @@ call to it without explicit discussion.
      that moves into `verified.json` must come off it, and a skill that leaves
      `verified.json` while postings still ask for it goes on (2026-11-01:
      Next.js, Node.js, Express, PostgreSQL, MySQL, Azure, GTM, Claude API).
-     GTM came back in the 2026-11-09 profile, so `_WATCHLIST_ALIASES` lets
-     "google tag manager" pass when the profile lists "GTM" (2026-11-10).
+     GTM came back in the 2026-11-09 profile, so `_keywords.TECH_ALIASES`
+     lets "google tag manager" pass when the profile lists "GTM"
+     (2026-11-10). The table moved out of `cover_validate` on 2026-11-11 so
+     scoring shares it (`cover.py` imports `score.py`, so `score.py` cannot
+     import `cover_validate`).
      `unverified_tech_claims` is the one implementation of the check, shared
      with `tailor._check_summary`.
    - `_NEGATION_PRECEDES_RE` suppresses the watchlist under legitimate
