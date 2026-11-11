@@ -33,7 +33,7 @@ import click
 import typer
 
 from jobhunt.browser import autofill
-from jobhunt.commands._job_line import job_line, job_line_label
+from jobhunt.commands._job_line import display_url, job_line, job_line_label
 from jobhunt.commands._json_out import json_output
 from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.commands._refs import resolve_job_ref
@@ -1083,7 +1083,7 @@ async def _resolve_adzuna_url(cfg: Config, job: Job) -> Job:
             update_job_url(conn, job.id, final)
     finally:
         conn.close()
-    typer.echo(f"    resolved adzuna redirect -> {final}")
+    typer.echo(f"    resolved adzuna redirect -> {display_url(final)}")
     return job.model_copy(update={"url": final})
 
 

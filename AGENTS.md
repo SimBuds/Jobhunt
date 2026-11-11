@@ -1550,6 +1550,12 @@ missing. Fix the resume or the parser first.
    populated `queries` list bypasses the planner. Adding a new skill bucket to
    `verified.json` requires extending `_SKILL_QUERIES` or `_CATEGORY_TRIGGERS`
    to surface it.
+   Adzuna's `redirect_url` is stored exactly as sent, `utm_*` included:
+   Adzuna attributes clicks to the API account with `utm_source`, and
+   autofill opens the stored link. Printed URLs go through
+   `_job_line.display_url`, which drops `utm_*`, so `list -v` output or a
+   screenshot never carries the account id (Casey, 2026-11-10). Do not strip
+   it at ingest.
 9. **Pre-score chokepoint filters** run in `scan_cmd._ingest_all`'s drain loop,
    after dedupe and before `upsert_job`. All are pure and adapter-agnostic, and
    each reports its drop count in the per-scan summary:
@@ -2048,8 +2054,14 @@ call to it without explicit discussion.
    fixed order, and new content-density features must respect it:
    1. Trim summary down to >= 3 sentences.
    2. Trim Familiar skills down to >= 4 items.
-   3. Drop the last bullet of the role with the highest current line-cost (each
-      role keeps >= 1 bullet, the JD-relevant lead). Guard in
+   3. Drop one bullet from the role with the highest current line-cost (each
+      role keeps >= 1 bullet, the JD-relevant lead). Within that role the last
+      non-lead bullet without a figure goes first, and only when every
+      non-lead bullet has a figure does the last one go (2026-11-11). The lead
+      is never dropped for a figure: that was tried and brought back the
+      September regression. `_order_bullets_by_jd` breaks JD-overlap ties in
+      favour of the bullet with a figure. Figures come from
+      `_specificity.metrics`, years excluded. Guard in
       `_try_drop_weakest_bullet`: while any older role still has spare bullets,
       the role whose `dates` contains "Present" is skipped, because the current
       contract is the strongest JD-recent signal. Once all older roles are at

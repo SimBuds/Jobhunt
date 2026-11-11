@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 import typer
 
-from jobhunt.commands._job_line import job_line
+from jobhunt.commands._job_line import display_url, job_line
 from jobhunt.commands._json_out import json_output
 from jobhunt.commands.apply_cmd import _safe_id
 from jobhunt.config import Config, load_config
@@ -335,7 +335,7 @@ def _render_rows(
         )
         typer.echo(_ROW_INDENT + line)
         if verbose:
-            typer.echo(f"{_ROW_INDENT}     {r['id']}  {r['url'] or ''}".rstrip())
+            typer.echo(f"{_ROW_INDENT}     {r['id']}  {display_url(r['url'])}".rstrip())
 
 
 def _action_board_counts(conn: sqlite3.Connection, min_score: int) -> dict[str, int]:

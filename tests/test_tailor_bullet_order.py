@@ -135,3 +135,32 @@ def test_reordering_never_adds_drops_or_edits_a_bullet() -> None:
     resume = _resume([TailoredRole("Dev", "Acme", "2023 – Present", list(bullets))])
     _order_bullets_by_jd(resume, _job(AI_JD), VERIFIED)
     assert sorted(resume.roles[0].bullets) == sorted(bullets)
+
+
+# --- Phase D3 (2026-11-11): figures break relevance ties ---------------------
+
+
+def test_equal_relevance_puts_the_quantified_bullet_first() -> None:
+    plain = "Replaced manual product entry with a Python pipeline."
+    figure = "Wrote the Python pipeline in 20 hours after 100 hours of manual entry."
+    role = TailoredRole("Dev", "Acme", "2022 – 2023", [plain, figure])
+    resume = _resume([role])
+    _order_bullets_by_jd(resume, _job("We need Python."), VERIFIED)
+    assert resume.roles[0].bullets == [figure, plain]
+
+
+def test_relevance_still_beats_a_figure() -> None:
+    role = TailoredRole("Dev", "Harbour Loom", "2023 – Present",
+                        [STOREFRONT_BULLET, PIPELINE_BULLET])
+    resume = _resume([role])
+    _order_bullets_by_jd(resume, _job(AI_JD), VERIFIED)
+    assert resume.roles[0].bullets[0] == PIPELINE_BULLET
+
+
+def test_a_year_alone_does_not_break_the_tie() -> None:
+    dated = "Rebuilt the WordPress site in a 2024 redesign."
+    figure = "Cut the WordPress page size 40%."
+    role = TailoredRole("Dev", "Acme", "2023 – Present", [dated, figure])
+    resume = _resume([role])
+    _order_bullets_by_jd(resume, _job("WordPress developer."), VERIFIED)
+    assert resume.roles[0].bullets == [figure, dated]

@@ -10,10 +10,31 @@ this module only shapes text meant for a person.
 from __future__ import annotations
 
 import shutil
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _SEPARATOR = " · "
 _ELLIPSIS = "…"
 _DECLINED = "  declined"
+
+
+def display_url(url: str | None) -> str:
+    """`url` without its `utm_*` query parameters, for printing only.
+
+    Adzuna's `redirect_url` carries `utm_source=<API app id>`. The stored
+    URL keeps it, because Adzuna attributes clicks with it and autofill opens
+    the stored link; a printed copy (a screenshot, a pasted log) should not
+    carry the account id (Phase O6, 2026-11-10)."""
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    kept = [
+        (k, v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if not k.lower().startswith("utm_")
+    ]
+    return urlunsplit(parts._replace(query=urlencode(kept)))
 
 
 def job_line_label(title: str | None, company: str | None, location: str | None = None) -> str:

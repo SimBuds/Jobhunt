@@ -567,17 +567,23 @@ def _order_bullets_by_jd(
     sort, so the skill weighting is not blended back in. Known bias: a longer
     bullet has more chances to intersect the JD.
 
-    The sort is stable, so bullets the JD does not distinguish keep the order
-    the model chose, and it only permutes: no bullet is added, dropped or
-    rewritten.
+    Ties on JD overlap put a bullet with a figure first (2026-11-11), so a
+    role trimmed to one bullet keeps a number when relevance does not decide.
+    The sort is stable, so bullets that tie on both keep the order the model
+    chose, and it only permutes: no bullet is added, dropped or rewritten.
     """
+    from jobhunt.pipeline._specificity import metrics
+
     jd_tokens = _significant_tokens(f"{job.title or ''} {job.description or ''}")
     if not jd_tokens:
         return
     for role in tailored.roles:
         if len(role.bullets) < 2:
             continue
-        role.bullets.sort(key=lambda b: -len(_significant_tokens(b) & jd_tokens))
+        def rank(bullet: str) -> tuple[int, bool]:
+            return (-len(_significant_tokens(bullet) & jd_tokens), not metrics(bullet))
+
+        role.bullets.sort(key=rank)
 
 
 def _ensure_education(tailored: TailoredResume, verified: dict[str, Any]) -> None:
@@ -612,9 +618,18 @@ def _ensure_education(tailored: TailoredResume, verified: dict[str, Any]) -> Non
 
 
 def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
-    """Drop the last bullet of the role with the highest current line-cost.
-    Preserves each role's lead bullet (which the tailor places JD-first).
+    """Drop one bullet from the role with the highest current line-cost.
     Returns True if a bullet was dropped, False if no role has spare bullets.
+
+    The lead (the most JD-relevant bullet, placed first by
+    `_order_bullets_by_jd`) is never dropped. Among the others, the last one
+    with no figure goes first, and only when they all carry figures does the
+    last one go (Casey, 2026-11-11: relevance first, figures break ties).
+    Lane renders had kept 26% and 43% of the profile's figures because the
+    last bullet always went. Dropping the lead for a figure was tried and
+    rejected: it brought back the September regression, where the AI lane
+    kept a storefront bullet over its LLM pipeline bullet. Figures are counted
+    with `_specificity.metrics`, the audit's own test, which ignores years.
 
     May 2026 guard: never trim a role whose `dates` contains "Present" while
     any older role still has > 1 bullet to give. The candidate's current contract is
@@ -644,7 +659,11 @@ def _try_drop_weakest_bullet(tailored: TailoredResume) -> bool:
             worst_role = r
     if worst_role is None:
         return False
-    worst_role.bullets.pop()
+    from jobhunt.pipeline._specificity import metrics
+
+    bullets = worst_role.bullets
+    plain = [i for i in range(1, len(bullets)) if not metrics(bullets[i])]
+    bullets.pop(plain[-1] if plain else -1)
     return True
 
 

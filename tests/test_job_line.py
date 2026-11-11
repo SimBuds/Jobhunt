@@ -342,3 +342,47 @@ def test_warning_summary_reads_as_words() -> None:
     assert _warning_summary(Counter({"coverage": 2, "specificity": 1})) == (
         "most common warnings: coverage (2), specificity (1)"
     )
+
+
+# --- Phase O6: printed URLs drop utm_* ----------------------------------------
+#
+# Adzuna's redirect_url carries utm_source=<API app id>. It stays stored as
+# sent (Adzuna attributes clicks with it); only printed copies are cleaned.
+
+
+def test_display_url_drops_utm_and_keeps_other_params() -> None:
+    from jobhunt.commands._job_line import display_url
+
+    assert (
+        display_url("https://www.adzuna.ca/details/5955916591?utm_medium=api&utm_source=06287e36")
+        == "https://www.adzuna.ca/details/5955916591"
+    )
+    assert display_url("https://x.com/job?gh_jid=12&utm_source=a&ref=b") == (
+        "https://x.com/job?gh_jid=12&ref=b"
+    )
+
+
+def test_display_url_passes_through_plain_and_empty_values() -> None:
+    from jobhunt.commands._job_line import display_url
+
+    assert display_url("https://example.com/1") == "https://example.com/1"
+    assert display_url("") == ""
+    assert display_url(None) == ""
+
+
+def test_list_verbose_prints_clean_url_and_keeps_the_stored_one(migrations_dir: Path) -> None:
+    from jobhunt.config import Config
+    from jobhunt.db import connect
+
+    _harness._seed(migrations_dir)
+    conn = connect(Config().paths.db_path)
+    tracked = "https://www.adzuna.ca/details/1?utm_medium=api&utm_source=06287e36"
+    with conn:
+        conn.execute("UPDATE jobs SET url = ? WHERE id = 'greenhouse:acme:1'", (tracked,))
+    out = _invoke(["-v", "list"]).stdout
+    assert "https://www.adzuna.ca/details/1" in out
+    assert "06287e36" not in out
+    assert (
+        conn.execute("SELECT url FROM jobs WHERE id = 'greenhouse:acme:1'").fetchone()[0] == tracked
+    )
+    conn.close()

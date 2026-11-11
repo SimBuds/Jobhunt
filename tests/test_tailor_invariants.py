@@ -804,3 +804,52 @@ def test_earlier_career_defaults_false_without_the_key():
     t = _make()
     _mark_earlier_career(t, VERIFIED)
     assert [r.earlier_career for r in t.roles] == [False, False]
+
+
+# --- Phase D3 (2026-11-10): the ladder keeps a role's quantified bullet ------
+#
+# Lane renders kept 26% and 43% of the profile's figures: the ladder always
+# popped the last bullet, so a quantified bullet could go while an
+# unquantified one behind the lead stayed. Relevance still comes first: the
+# lead is never dropped (Casey, 2026-11-11).
+
+
+def _one_role(bullets: list[str]) -> TailoredResume:
+    return TailoredResume(
+        summary="x",
+        skills_categories=[TailoredCategory("Core", ["JavaScript"])],
+        roles=[TailoredRole("Dev", "BetaCo", "2021 – 2023", list(bullets))],
+        certifications=[], education=[], coursework=[], model="test",
+    )
+
+
+def _drop(bullets: list[str]) -> list[str]:
+    from jobhunt.pipeline.tailor import _try_drop_weakest_bullet
+
+    t = _one_role(bullets)
+    assert _try_drop_weakest_bullet(t) is True
+    return t.roles[0].bullets
+
+
+def test_unquantified_bullet_goes_before_a_later_quantified_one():
+    assert _drop(["Lead.", "Kept the site updated.", "Cut load time 25%."]) == [
+        "Lead.", "Cut load time 25%.",
+    ]
+
+
+def test_the_lead_survives_even_without_a_figure():
+    """Relevance first (Casey, 2026-11-11): the lead is the JD-relevant bullet
+    `_order_bullets_by_jd` placed there, so it is never the one dropped."""
+    lead = "Replaced manual product entry with a Python pipeline."
+    figure = "Built the pipeline in 20 hours after 100 hours of manual entry."
+    assert _drop([lead, figure]) == [lead]
+
+
+def test_all_quantified_drops_the_last_as_before():
+    assert _drop(["Moved position 38 to 13.", "Cut load time 25%."]) == [
+        "Moved position 38 to 13.",
+    ]
+
+
+def test_none_quantified_drops_the_last_and_keeps_the_lead():
+    assert _drop(["Lead.", "Second.", "Third."]) == ["Lead.", "Second."]
