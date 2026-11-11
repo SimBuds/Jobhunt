@@ -98,3 +98,45 @@ def test_eng_guard_wins_over_coincidental_non_eng_token() -> None:
 def test_none_and_empty() -> None:
     assert is_non_engineering_title(None) is False
     assert is_non_engineering_title("") is False
+
+
+# Phase D11b (2026-11-11): titles that leaked past the filter on a live scan
+# and were each declined as non-engineering after a full scoring call.
+LEAKED_2026_11 = [
+    "Corporate Legal Assistant",
+    "Customer Care Representative",
+    "Payouts Administrator",
+    "Jr. Payment Administrator (Full-Time)",
+    "Mortgage Broker (Independent Contractor)",
+    "Senior Specialist, Benefits",
+    "Medical Writer (RID00242)",
+    "Arrivals Vehicle Inspector",
+    "Car Detailer",
+    "Condition Report Writer",
+    "Licensed Automotive Technician – Evening Shift (Hourly Pay)",
+    "Shuttler Driver (6-Month Fixed-Term)",
+    "Vehicle Quality-Control Associate (Evening Shift)",
+    "Production Cook",
+    "Senior Financial Analyst",
+    "Estimator",
+    "Actuarial Analyst",
+    "Claims Advisor Commercial & Personal Auto",
+]
+
+
+@pytest.mark.parametrize("title", LEAKED_2026_11)
+def test_leaked_titles_dropped(title: str) -> None:
+    assert is_non_engineering_title(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # A technical role whose title names a benefits domain stays.
+        "Solutions Architect - Retirement & Benefits Solutions",
+        "Software Developer, Payments Administrator Portal",
+        "Web Developer, Automotive Technician Scheduling",
+    ],
+)
+def test_new_terms_do_not_drop_technical_roles(title: str) -> None:
+    assert is_non_engineering_title(title) is False

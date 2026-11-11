@@ -1584,6 +1584,12 @@ missing. Fix the resume or the parser first.
      signal (`_ENG_GUARD_RE`) **always wins**, so "Healthcare Software
      Engineer" survives. Validated 2026-06 against the live DB: 25/167
      dropped, **0 false positives** among score >= 55 roles.
+     Extended 2026-11-11 after 61 of 270 scored jobs were declined as
+     non-engineering with none caught: vehicle and auto service, finance,
+     legal, payments, customer care and similar terms now drop 23 of them,
+     0 others. Bare `benefits` is excluded (it matched a Solutions
+     Architect). Marketing and content terms are deliberately left out,
+     because the SEO lane sits next to marketing.
    - **Senior titles** (`is_senior_title`), gated by
      `cfg.applicant.include_senior_roles` (default True). Independent of
      `applicant.years_experience`, which feeds the score prompt, not the

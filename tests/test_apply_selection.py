@@ -133,3 +133,28 @@ def test_resolve_by_id_exact_id_wins_for_declined_job(conn) -> None:
         )
     rows = apply_cmd._resolve_by_id(conn, "greenhouse:acme:81")
     assert rows[0]["id"] == "greenhouse:acme:81"
+
+
+# Phase D6 (2026-11-11): `apply --top` and a job id used to query an
+# unmigrated database directly and crash with a sqlite error.
+@pytest.mark.parametrize("args", [["--top", "1"], ["greenhouse:acme:x"]])
+def test_apply_migrates_before_selecting(args: list[str]) -> None:
+    import sqlite3
+
+    from typer.testing import CliRunner
+
+    from jobhunt import cli
+    from jobhunt.config import Config
+
+    cfg = Config()
+    cfg.paths.profile_dir.mkdir(parents=True)
+    (cfg.paths.profile_dir / "verified.json").write_text("{}")
+    cfg.paths.db_path.parent.mkdir(parents=True, exist_ok=True)
+    sqlite3.connect(cfg.paths.db_path).close()  # exists, no tables
+    result = CliRunner().invoke(cli.app, ["apply", *args, "--no-browser"])
+    assert not isinstance(result.exception, sqlite3.Error), result.output
+    assert "no such table" not in result.output
+    tables = sqlite3.connect(cfg.paths.db_path).execute(
+        "SELECT count(*) FROM sqlite_master WHERE name = 'jobs'"
+    ).fetchone()
+    assert tables == (1,)

@@ -255,6 +255,13 @@ _NON_ENG_TITLE_RE = re.compile(
     # security (physical) / retail / service
     r"|security\s+(?:guard|officer)|loss\s+prevention|event\s+security"
     r"|cashier|retail\s+associate|store\s+associate|stocker|delivery\s+driver|courier"
+    # 2026-11-11: leaked past the filter on a live scan (23 of 61 non-eng
+    # declines). Bare `benefits` is excluded: it matched a Solutions Architect.
+    r"|shuttler|detailer|vehicle\s+(?:inspector|quality)|automotive\s+technician"
+    r"|condition\s+report\s+writer|medical\s+writer|actuarial|financial\s+analyst"
+    r"|legal\s+assistant|payments?\s+administrator|payouts?\s+administrator"
+    r"|customer\s+care\s+representative|claims\s+advisor|mortgage\s+broker"
+    r"|estimator|\bcook\b|specialist,\s+benefits|benefits\s+specialist"
     r")\b",
     re.IGNORECASE,
 )

@@ -320,6 +320,9 @@ def _run_apply(
         )
     else:
         conn = connect(cfg.paths.db_path)
+        # Same reason as `_resolve_manual`: apply can be the first command run
+        # against a database, and selection queries need the tables.
+        migrate(conn, cfg.paths.migrations_dir)
         try:
             if job_id is not None:
                 jobs = _resolve_by_id(conn, job_id)
