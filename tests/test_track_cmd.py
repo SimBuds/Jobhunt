@@ -492,3 +492,60 @@ def test_sweep_honors_older_than(isolated_env: Path) -> None:
     assert "Week old" in runner.invoke(
         track_cmd.app, ["sweep", "--older-than", "7d"]
     ).output
+
+
+# --- Phase O5 (2026-11-10): messages lead with title · company ---------------
+
+
+def test_resolve_ref_ambiguous_puts_the_id_last(conn, capsys) -> None:
+    _seed_application(conn, "greenhouse:acme:1", "Acme", "Backend Developer")
+    _seed_application(conn, "manual:xyz", "Globex", "Frontend Developer")
+    with pytest.raises(typer.Exit):
+        track_cmd._resolve_ref(conn, "developer")
+    err = capsys.readouterr().err.splitlines()
+    assert "  Backend Developer · Acme  (greenhouse:acme:1)" in err
+    assert "  Frontend Developer · Globex  (manual:xyz)" in err
+
+
+def test_no_job_match_hint_points_at_verbose_list(conn, capsys) -> None:
+    from jobhunt.commands._refs import resolve_job_ref
+
+    with pytest.raises(typer.Exit):
+        resolve_job_ref(conn, "nothing-like-this", scope="jobs")
+    assert "`jobhunt -v list`" in capsys.readouterr().err
+
+
+def test_sweep_lists_one_line_per_job_without_the_id(isolated_env: Path) -> None:
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_aged(conn, "greenhouse:a:1", "Stale Co", days_ago=30)
+    conn.close()
+
+    out = runner.invoke(track_cmd.app, ["sweep"]).output
+    assert any(line.endswith("  Dev · Stale Co") for line in out.splitlines())
+    assert "greenhouse:a:1" not in out
+
+
+def test_response_line_leads_with_title_and_company(isolated_env: Path) -> None:
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_aged(conn, "greenhouse:a:1", "Acme", days_ago=3)
+    conn.close()
+
+    out = runner.invoke(
+        track_cmd.app, ["response", "greenhouse:a:1", "--when", "2026-11-10"]
+    ).output
+    assert "Dev · Acme: response received 2026-11-10" in out
+    assert "greenhouse:a:1: response" not in out
+
+
+def test_lifecycle_label_falls_back_to_the_id(isolated_env: Path) -> None:
+    from jobhunt.commands.apply_cmd import _lifecycle_label
+
+    conn = connect(isolated_env / "jobhunt.db")
+    migrate(conn, Path(__file__).resolve().parent.parent / "migrations")
+    _seed_application(conn, "greenhouse:a:1", "Acme", "Dev")
+    with conn:
+        conn.execute("UPDATE jobs SET title = NULL, company = NULL")
+    assert _lifecycle_label(conn, "greenhouse:a:1") == "greenhouse:a:1"
+    conn.close()

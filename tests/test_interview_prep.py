@@ -933,7 +933,7 @@ def test_set_status_interviewing_prints_nudge(
         def execute(self, _q: str, _p: tuple[str, ...]) -> Any:
             class R:
                 def __getitem__(self, k: str) -> str:
-                    return {"id": 1, "status": "applied"}[k]
+                    return {"id": 1, "status": "applied", "title": "Dev", "company": "Acme"}[k]
             return _Cursor(R())
 
         def __enter__(self) -> FakeConn:
@@ -986,7 +986,7 @@ def test_set_status_applied_no_nudge(
         def execute(self, _q: str, _p: tuple[str, ...]) -> Any:
             class R:
                 def __getitem__(self, k: str) -> str:
-                    return {"id": 1, "status": "drafted"}[k]
+                    return {"id": 1, "status": "drafted", "title": "Dev", "company": "Acme"}[k]
             class _C:
                 _row = R()
                 def fetchone(self) -> Any:

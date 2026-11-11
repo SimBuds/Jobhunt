@@ -468,7 +468,7 @@ def employers(
     try:
         rows = conn.execute(
             """
-            SELECT id, source FROM jobs
+            SELECT id, source, company FROM jobs
             WHERE COALESCE(posted_at, ingested_at) >= ?
             """,
             (cutoff,),
@@ -476,10 +476,18 @@ def employers(
     finally:
         conn.close()
 
-    # Aggregate by (source, slug).
+    # Aggregate by (source, employer). A slug-bearing id (`greenhouse:acme:1`)
+    # names its employer; a two-part id from an aggregator
+    # (`adzuna_ca:5959381580`) does not, so it groups by the posting's
+    # company. Grouping those by id listed every posting as its own employer
+    # (Phase O4, 2026-11-10).
     counts: Counter[tuple[str, str]] = Counter()
     for r in rows:
-        counts[(r["source"], _slug_from_job_id(r["id"]))] += 1
+        if r["id"].count(":") >= 2:
+            employer = _slug_from_job_id(r["id"])
+        else:
+            employer = (r["company"] or "").strip() or "unknown company"
+        counts[(r["source"], employer)] += 1
 
     # Configured but absent slugs — these are "no posts in window".
     configured: list[tuple[str, str]] = []
@@ -495,7 +503,7 @@ def employers(
         return
 
     typer.echo(f"\nwindow: last {window_days}d\n")
-    typer.echo(f"{'ATS':<18} {'Slug':<32} {'Posts':>6}")
+    typer.echo(f"{'ATS':<18} {'Employer':<32} {'Posts':>6}")
     typer.echo("-" * 60)
     for (ats, slug), n in sorted(counts.items(), key=lambda kv: -kv[1]):
         typer.echo(f"{ats:<18} {slug:<32} {n:>6}")

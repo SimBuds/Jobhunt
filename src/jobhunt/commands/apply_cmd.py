@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 import sqlite3
 import sys
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import asdict, dataclass
@@ -31,6 +33,7 @@ import click
 import typer
 
 from jobhunt.browser import autofill
+from jobhunt.commands._job_line import job_line, job_line_label
 from jobhunt.commands._json_out import json_output
 from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.commands._refs import resolve_job_ref
@@ -66,9 +69,13 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
+_PICK_BULLET = "  • "
+_ID_INDENT = "        "
+
 
 @app.callback(invoke_without_command=True)
 def run(
+    ctx: typer.Context,
     job_id: str | None = typer.Argument(None, help="Specific job id from `jobhunt list`."),
     top: int | None = typer.Option(
         None, "--top", min=1, max=20, help="Auto-pick the N best-fit unapplied jobs (1..20)."
@@ -262,6 +269,7 @@ def run(
             include_borderline=include_borderline, no_browser=no_browser,
             drafted_by=drafted_by, manual_mode=manual_mode,
             out=out if as_json else None,
+            verbose=bool((ctx.obj or {}).get("verbose")),
         )
 
 
@@ -282,6 +290,7 @@ def _run_apply(
     drafted_by: str | None,
     manual_mode: bool,
     out: dict[str, Any] | None,
+    verbose: bool = False,
 ) -> None:
     """Selection, drafting and the `add` nudge: everything `apply` does
     after its options are validated, run inside the `--json` envelope."""
@@ -321,6 +330,7 @@ def _run_apply(
                     conn,
                     min_score=effective_min_score,
                     include_borderline=include_borderline,
+                    verbose=verbose,
                 )
         finally:
             conn.close()
@@ -329,11 +339,7 @@ def _run_apply(
         typer.echo("nothing to apply to.")
         return
 
-    typer.echo(f"\nselected {len(jobs)} job(s):")
-    for j in jobs:
-        score = j["score"] if j["score"] is not None else "—"
-        suffix = "" if str(j["source"]) == "manual" else f" — {j['id']}"
-        typer.echo(f"  • [{score}] {j['title']} @ {j['company']}{suffix}")
+    _print_selected(jobs, verbose=verbose)
 
     asyncio.run(
         _apply_each(cfg, jobs, no_browser=no_browser, drafted_by=drafted_by, out=out)
@@ -407,6 +413,7 @@ def _run_lifecycle(
                 err=True,
             )
             raise typer.Exit(code=1)
+        label = _lifecycle_label(conn, job_id)
         with conn:
             if set_status is not None:
                 upsert_application(
@@ -419,7 +426,7 @@ def _run_lifecycle(
                     fill_plan_path=None,
                     applied_week=None,
                 )
-                typer.echo(f"{job_id}: status {row['status']} → {set_status}")
+                typer.echo(f"{label}: status {row['status']} → {set_status}")
             if mark_response is not None:
                 try:
                     mark_response_received(conn, job_id, mark_response, recruiter_type)
@@ -427,17 +434,17 @@ def _run_lifecycle(
                     typer.echo(f"error: {e}", err=True)
                     raise typer.Exit(code=2) from e
                 type_note = f" (type: {recruiter_type})" if recruiter_type else ""
-                typer.echo(f"{job_id}: response received {mark_response}{type_note}")
+                typer.echo(f"{label}: response received {mark_response}{type_note}")
             if mark_interview is not None:
                 mark_interview_scheduled(conn, job_id, mark_interview)
-                typer.echo(f"{job_id}: interview scheduled {mark_interview}")
+                typer.echo(f"{label}: interview scheduled {mark_interview}")
             if set_outcome is not None:
                 try:
                     db_set_outcome(conn, job_id, set_outcome)
                 except ValueError as e:
                     typer.echo(f"error: {e}", err=True)
                     raise typer.Exit(code=2) from e
-                typer.echo(f"{job_id}: outcome set to {set_outcome}")
+                typer.echo(f"{label}: outcome set to {set_outcome}")
 
         effective_status = set_status or row["status"]
         if effective_status == "interviewing" or mark_interview is not None:
@@ -576,11 +583,67 @@ def _resolve_top_n(conn: sqlite3.Connection, *, n: int, min_score: int) -> list[
     return list(conn.execute(sql, params))
 
 
+def _lifecycle_label(conn: sqlite3.Connection, job_id: str) -> str:
+    """'Title · Company' for lifecycle messages, the id when neither is
+    stored (Phase O5)."""
+    row = conn.execute("SELECT title, company FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    label = job_line_label(row["title"], row["company"]) if row else ""
+    return label or job_id
+
+
+def _print_selected(jobs: list[Any], *, verbose: bool = False) -> None:
+    """The jobs about to be drafted, one line each (Phase O3)."""
+    typer.echo(f"\nselected {len(jobs)} job(s):")
+    width = shutil.get_terminal_size((100, 24)).columns - len(_PICK_BULLET)
+    for j in jobs:
+        line = job_line(
+            title=j["title"], company=j["company"], score=j["score"],
+            location=j["location"], width=width,
+        )
+        typer.echo(_PICK_BULLET + line)
+        if verbose and str(j["source"]) != "manual":
+            typer.echo(f"{_ID_INDENT}{j['id']}")
+
+
+def _job_header(job: Job) -> str:
+    """'=== Title · Company ===' before each job's progress lines (Phase O3).
+    The id is not repeated here: `jobhunt -v apply` prints it in the
+    selected list just before the run."""
+    return f"\n=== {job_line_label(job.title, job.company)} ==="
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def _audit_sentence(result: AuditResult) -> str:
+    """'audit: revise · 72% keywords · 3 missing keywords', zero counts left
+    out (Phase O3). The full detail stays in audit.json."""
+    cov = result.keyword_coverage_pct
+    parts = [result.verdict, f"{cov}% keywords" if cov is not None else "coverage n/a"]
+    for n, word in (
+        (len(result.missing_must_haves), "missing keyword"),
+        (len(result.cover_letter_violations), "cover-letter issue"),
+        (len(result.alignment_flags), "alignment flag"),
+        (len(result.specificity_flags), "specificity flag"),
+    ):
+        if n:
+            parts.append(_plural(n, word))
+    return "    audit: " + " · ".join(parts)
+
+
+def _warning_summary(topics: Counter[str]) -> str:
+    """'most common warnings: coverage (2), specificity (1)' (Phase O3)."""
+    top = ", ".join(f"{topic} ({n})" for topic, n in topics.most_common(5))
+    return f"most common warnings: {top}"
+
+
 def _resolve_interactive(
     conn: sqlite3.Connection,
     *,
     min_score: int,
     include_borderline: bool = False,
+    verbose: bool = False,
 ) -> list[sqlite3.Row]:
     from jobhunt.commands import require_tty
 
@@ -605,11 +668,21 @@ def _resolve_interactive(
 
     if not rows and not borderline:
         return rows
+    width = shutil.get_terminal_size((100, 24)).columns - len("  [ 1] ")
+
+    def pick_line(i: int, r: sqlite3.Row, tags: str = "") -> None:
+        line = job_line(
+            title=r["title"], company=r["company"], score=r["score"],
+            location=r["location"], tags=tags, width=width,
+        )
+        typer.echo(f"  [{i:>2}] {line}")
+        if verbose:
+            typer.echo(f"{_ID_INDENT}{r['id']}")
+
     if rows:
         typer.echo(f"top {len(rows)} unapplied job(s) with score >= {min_score}:\n")
         for i, r in enumerate(rows, start=1):
-            typer.echo(f"  [{i:>2}] {r['score']:>3}  {r['title']} @ {r['company']}")
-            typer.echo(f"        {r['location']} — {r['id']}")
+            pick_line(i, r)
     if borderline:
         offset = len(rows)
         typer.echo(
@@ -617,10 +690,7 @@ def _resolve_interactive(
             f"{len(borderline)} job(s):\n"
         )
         for i, r in enumerate(borderline, start=offset + 1):
-            typer.echo(
-                f"  [{i:>2}] {r['score']:>3}  {r['title']} @ {r['company']}  (stretch)"
-            )
-            typer.echo(f"        {r['location']} — {r['id']}")
+            pick_line(i, r, "stretch")
     typer.echo("")
     raw = typer.prompt(
         "Pick numbers to apply to (e.g. '1,3,7' or '1-5'); blank to cancel",
@@ -781,10 +851,7 @@ async def _apply_each(
             f"{ship} ship, {revise} revise, {block} block ==="
         )
         if violation_topics:
-            top = ", ".join(
-                f"{topic}×{n}" for topic, n in violation_topics.most_common(5)
-            )
-            typer.echo(f"top warning categories: {top}")
+            typer.echo(_warning_summary(violation_topics))
 
 
 @dataclass(frozen=True)
@@ -864,7 +931,7 @@ async def _apply_llm_phase(
     out_dir = cfg.paths.data_dir / "applications" / _safe_id(job.id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    echo(f"\n=== {job.title} @ {job.company} — {job.id} ===")
+    echo(_job_header(job))
     job = await _deepen_thin_adzuna(cfg, job, echo=echo)
     echo("    … tailoring resume (LLM, ~30–60s)")
     try:
@@ -919,16 +986,7 @@ async def _apply_llm_phase(
         ),
         encoding="utf-8",
     )
-    coverage = audit_result.keyword_coverage_pct
-    coverage_label = f"{coverage}%" if coverage is not None else "n/a"
-    echo(
-        f"    audit: verdict={audit_result.verdict} "
-        f"keyword_coverage={coverage_label} "
-        f"missing={len(audit_result.missing_must_haves)} "
-        f"cover_violations={len(audit_result.cover_letter_violations)} "
-        f"alignment={len(audit_result.alignment_flags)} "
-        f"specificity={len(audit_result.specificity_flags)}"
-    )
+    echo(_audit_sentence(audit_result))
 
     topics = _audit_topics(audit_result)
     early_exit = audit_result.verdict == "block"

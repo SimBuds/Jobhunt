@@ -251,3 +251,38 @@ def test_analyze_response_rate_no_applications(
     result = runner.invoke(app, ["analyze", "response-rate"])
     assert result.exit_code == 0
     assert "no submitted applications" in result.output
+
+
+def test_analyze_employers_groups_aggregator_postings_by_company(
+    tmp_config_dir: Path, tmp_path: Path
+) -> None:
+    """Phase O4 (2026-11-10): an Adzuna id (`adzuna_ca:5959381580`) carries no
+    employer slug, so each posting used to appear as its own "employer" named
+    by its posting number. Two-part ids now group by company."""
+    db_path = tmp_path / "jobhunt.db"
+    _seed_minimal_config(tmp_config_dir, db_path)
+    c = connect(db_path)
+    migrate(c, Path(__file__).resolve().parent.parent / "migrations")
+    postings = (
+        ("5959381580", "Insight Global"),
+        ("5957065217", "Insight Global"),
+        ("5954051790", ""),
+    )
+    for ext, company in postings:
+        upsert_job(c, Job(
+            id=f"adzuna_ca:{ext}", source="adzuna_ca", external_id=ext, company=company,
+            title="Dev", location="Toronto, ON", description="x",
+            url=f"https://example.com/{ext}",
+        ))
+    upsert_job(c, _job("1", company="live-co"))
+    c.commit()
+    c.close()
+
+    result = CliRunner().invoke(app, ["analyze", "employers", "--window-days", "365"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert any(line.split() == ["adzuna_ca", "Insight", "Global", "2"] for line in lines)
+    assert any(line.split() == ["adzuna_ca", "unknown", "company", "1"] for line in lines)
+    assert any(line.split() == ["greenhouse", "live-co", "1"] for line in lines)
+    assert "5959381580" not in result.output
+    assert "Employer" in lines[3]

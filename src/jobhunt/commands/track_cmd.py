@@ -22,6 +22,7 @@ from datetime import date
 
 import typer
 
+from jobhunt.commands._job_line import job_line_label
 from jobhunt.commands._manual_intake import synth_manual_job
 from jobhunt.commands._refs import resolve_job_ref
 from jobhunt.config import Config, load_config
@@ -243,7 +244,10 @@ def applied(
                     "UPDATE applications SET applied_at = ? WHERE job_id = ?",
                     (applied_on, job_id),
                 )
-        typer.echo(f"tracked: {job_id} applied via {channel} on {applied_on}")
+        from jobhunt.commands.apply_cmd import _lifecycle_label
+
+        label = _lifecycle_label(conn, job_id)
+        typer.echo(f"tracked: {label} applied via {channel} on {applied_on}")
         typer.echo(f"  when they reply: jobhunt track response {job_id}")
     finally:
         conn.close()
@@ -365,8 +369,7 @@ def sweep(
     typer.echo(f"no response in {older_than} ({len(rows)}):")
     for r in rows:
         applied = str(r["applied_at"])[:10]
-        typer.echo(f"  {applied}  {r['company']} — {r['title']}")
-        typer.echo(f"              {r['job_id']}")
+        typer.echo(f"  {applied}  {job_line_label(r['title'], r['company'])}")
 
     if not apply_:
         typer.echo("\nsweep: dry run — pass --apply to mark these ghosted.")

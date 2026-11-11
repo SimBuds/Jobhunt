@@ -190,3 +190,155 @@ def test_list_footer_is_plain_words_without_zero_counts(migrations_dir: Path) ->
     assert re.fullmatch(r"This week \(\d{4}-W\d\d\): 2 scanned, 0 declined\.", footer)
     week = _invoke(["list", "--week", "1"]).stdout.splitlines()[-1]
     assert re.fullmatch(r"Week \d{4}-W\d\d: 0 scanned, 0 declined, 1 applied\.", week)
+
+
+# --- Phase O3: `apply` picker, selection, header, audit line ------------------
+
+
+def _picker_conn(migrations_dir: Path):
+    from jobhunt.config import Config
+    from jobhunt.db import connect, upsert_job, write_score
+    from jobhunt.models import Job
+
+    _harness._seed(migrations_dir)
+    conn = connect(Config().paths.db_path)
+    with conn:
+        upsert_job(
+            conn,
+            Job(
+                id="lever:globex:9",
+                source="lever",
+                external_id="9",
+                company="Globex",
+                title="Web Developer",
+                location="Remote, Canada",
+                description="x",
+                url="https://example.com/9",
+            ),
+        )
+        write_score(
+            conn,
+            job_id="lever:globex:9",
+            score=50,
+            reasons=[],
+            red_flags=[],
+            must_clarify=[],
+            model="t",
+            prompt_hash="t",
+        )
+    return conn
+
+
+def _pick(conn, monkeypatch, capsys, *, verbose: bool) -> list[str]:
+    import jobhunt.commands as commands
+    from jobhunt.commands import apply_cmd
+
+    monkeypatch.setenv("COLUMNS", "100")
+    monkeypatch.setattr(commands, "require_tty", lambda *_: None)
+    monkeypatch.setattr(apply_cmd.typer, "prompt", lambda *a, **k: "")
+    apply_cmd._resolve_interactive(conn, min_score=55, include_borderline=True, verbose=verbose)
+    return capsys.readouterr().out.splitlines()
+
+
+def test_picker_rows_are_one_line_without_id(migrations_dir: Path, monkeypatch, capsys) -> None:
+    lines = _pick(_picker_conn(migrations_dir), monkeypatch, capsys, verbose=False)
+    assert "  [ 1]  80  Developer 1 · Acme · Toronto, ON" in lines
+    assert "  [ 2]  50  Web Developer · Globex · Remote, Canada  stretch" in lines
+    assert not any("greenhouse:acme:1" in line or "lever:globex:9" in line for line in lines)
+
+
+def test_picker_verbose_adds_the_id_line(migrations_dir: Path, monkeypatch, capsys) -> None:
+    lines = _pick(_picker_conn(migrations_dir), monkeypatch, capsys, verbose=True)
+    i = lines.index("  [ 1]  80  Developer 1 · Acme · Toronto, ON")
+    assert lines[i + 1] == "        greenhouse:acme:1"
+
+
+def test_selected_list_is_one_line_per_job(capsys, monkeypatch) -> None:
+    from jobhunt.commands.apply_cmd import _print_selected
+
+    monkeypatch.setenv("COLUMNS", "100")
+    jobs = [
+        {
+            "id": "greenhouse:acme:1",
+            "source": "greenhouse",
+            "score": 80,
+            "title": "Developer 1",
+            "company": "Acme",
+            "location": "Toronto, ON",
+        }
+    ]
+    _print_selected(jobs, verbose=False)
+    _print_selected(jobs, verbose=True)
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        "",
+        "selected 1 job(s):",
+        "  •  80  Developer 1 · Acme · Toronto, ON",
+        "",
+        "selected 1 job(s):",
+        "  •  80  Developer 1 · Acme · Toronto, ON",
+        "        greenhouse:acme:1",
+    ]
+
+
+def test_job_header_drops_the_id() -> None:
+    """The id is not repeated in each job's header; `-v` shows it in the
+    selected list printed just before the run."""
+    from jobhunt.commands.apply_cmd import _job_header
+    from jobhunt.models import Job
+
+    job = Job(
+        id="lever:acme:230b8d92",
+        source="lever",
+        external_id="1",
+        title="Shopify Developer",
+        company="Acme",
+    )
+    assert _job_header(job) == "\n=== Shopify Developer · Acme ==="
+
+
+def _audit(**kw):
+    from jobhunt.pipeline.audit import AuditResult
+
+    base = dict(
+        keyword_coverage_pct=72,
+        matched_keywords=[],
+        missing_must_haves=[],
+        fabrication_flags=[],
+        cover_letter_violations=[],
+        alignment_flags=[],
+        verdict="revise",
+    )
+    base.update(kw)
+    return AuditResult(**base)
+
+
+def test_audit_sentence_names_only_nonzero_counts() -> None:
+    from jobhunt.commands.apply_cmd import _audit_sentence
+
+    full = _audit(
+        missing_must_haves=["a", "b", "c"],
+        cover_letter_violations=["x"],
+        alignment_flags=["y"],
+        specificity_flags=["z", "w"],
+    )
+    assert _audit_sentence(full) == (
+        "    audit: revise · 72% keywords · 3 missing keywords · 1 cover-letter issue"
+        " · 1 alignment flag · 2 specificity flags"
+    )
+    assert _audit_sentence(_audit(verdict="ship", keyword_coverage_pct=100)) == (
+        "    audit: ship · 100% keywords"
+    )
+    assert _audit_sentence(_audit(keyword_coverage_pct=None)) == (
+        "    audit: revise · coverage n/a"
+    )
+
+
+def test_warning_summary_reads_as_words() -> None:
+    from collections import Counter
+
+    from jobhunt.commands.apply_cmd import _warning_summary
+
+    assert _warning_summary(Counter({"coverage": 2, "specificity": 1})) == (
+        "most common warnings: coverage (2), specificity (1)"
+    )

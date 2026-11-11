@@ -25,6 +25,7 @@ import sqlite3
 
 import typer
 
+from jobhunt.commands._job_line import job_line_label
 from jobhunt.errors import InputError
 
 # Cap the candidate list on an ambiguous match. A bare company fragment can hit
@@ -84,14 +85,15 @@ def resolve_job_ref(
             )
         else:
             typer.echo(
-                f"error: no job matches {ref!r}. Try `jobhunt list` for ids.",
+                f"error: no job matches {ref!r}. Try `jobhunt -v list` for ids.",
                 err=True,
             )
         raise typer.Exit(code=InputError.exit_code)
     if len(hits) > 1:
         typer.echo(f"error: {ref!r} is ambiguous — matches:", err=True)
         for h in hits[:_MAX_CANDIDATES]:
-            typer.echo(f"  {h['id']}  {h['company']} — {h['title']}", err=True)
+            label = job_line_label(h["title"], h["company"])
+            typer.echo(f"  {label}  ({h['id']})", err=True)
         extra = len(hits) - _MAX_CANDIDATES
         if extra > 0:
             typer.echo(f"  … +{extra} more", err=True)
