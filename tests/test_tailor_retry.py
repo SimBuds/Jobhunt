@@ -396,3 +396,69 @@ async def test_tailor_keeps_only_each_projects_first_bullet(
     monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
     tailored, _, _ = await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=1)
     assert [p.bullets for p in tailored.projects] == [["Scores postings with a local LLM."], []]
+
+
+# --- Phase D7 (2026-11-11): each rejected attempt is reported as it happens --
+#
+# The loop was silent: up to three rejected attempts at 30 to 60 seconds each
+# printed nothing until it resolved, which read as a hang.
+
+
+def _recorder() -> tuple[list[tuple[int, int, list[str]]], Any]:
+    calls: list[tuple[int, int, list[str]]] = []
+
+    def on_retry(attempt: int, total: int, violations: list[FabricationViolation]) -> None:
+        calls.append((attempt, total, [v.kind for v in violations]))
+
+    return calls, on_retry
+
+
+@pytest.mark.asyncio
+async def test_on_retry_reports_a_rejected_attempt_before_the_next(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    responses = [_redux_payload(), _clean_payload()]
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return responses.pop(0)
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    calls, on_retry = _recorder()
+    await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=3, on_retry=on_retry)
+    assert calls == [(1, 3, ["unverified-skill"])]
+
+
+@pytest.mark.asyncio
+async def test_on_retry_is_quiet_on_a_clean_first_attempt(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return _clean_payload()
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    calls, on_retry = _recorder()
+    await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=3, on_retry=on_retry)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_on_retry_skips_the_final_attempt_which_raises(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return _redux_payload()
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    calls, on_retry = _recorder()
+    with pytest.raises(FabricationError):
+        await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=3, on_retry=on_retry)
+    assert [(a, t) for a, t, _ in calls] == [(1, 3), (2, 3)]
+
+
+def test_retry_line_names_the_first_violation() -> None:
+    from jobhunt.pipeline.tailor import retry_line
+
+    v = [FabricationViolation("unverified-skill", "robots.txt")]
+    assert retry_line(1, 3, v) == (
+        "    tailor: attempt 1 of 3 rejected (unverified skill: 'robots.txt'), retrying"
+    )

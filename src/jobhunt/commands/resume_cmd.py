@@ -28,7 +28,7 @@ import typer
 from jobhunt.config import Config, load_config
 from jobhunt.errors import JobHuntError, PipelineError
 from jobhunt.models import Job
-from jobhunt.pipeline.tailor import tailor_resume_with_retry
+from jobhunt.pipeline.tailor import retry_line, tailor_resume_with_retry
 from jobhunt.resume.render_docx import render
 
 app = typer.Typer(
@@ -168,6 +168,7 @@ async def _render_lane(
     typer.echo("    … tailoring resume (LLM, ~30–60s)")
     tailored, violations, attempts = await tailor_resume_with_retry(
         cfg, lane_job(brief), max_attempts=cfg.pipeline.tailor_retry_attempts,
+        on_retry=lambda a, t, v: typer.echo(retry_line(a, t, v)),
     )
     if attempts > 1:
         n = len(violations)

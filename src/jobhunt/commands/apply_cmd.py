@@ -59,7 +59,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline.audit import AuditResult, audit, write_audit
 from jobhunt.pipeline.cover import CoverLetter, write_cover_with_retry
 from jobhunt.pipeline.score import ScoreResult, prompt_hash, score_job
-from jobhunt.pipeline.tailor import TailoredResume, tailor_resume_with_retry
+from jobhunt.pipeline.tailor import TailoredResume, retry_line, tailor_resume_with_retry
 from jobhunt.pipeline.tailor_diff import build_tailor_diff
 from jobhunt.resume.render_cover_docx import render_cover
 from jobhunt.resume.render_docx import render
@@ -937,6 +937,7 @@ async def _apply_llm_phase(
     try:
         tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
             cfg, job, max_attempts=cfg.pipeline.tailor_retry_attempts,
+            on_retry=lambda a, t, v: echo(retry_line(a, t, v)),
         )
     except JobHuntError as e:
         if stops_batch(e):

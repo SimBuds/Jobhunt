@@ -305,14 +305,12 @@ in eight places, not just the prompt:
    job. Recovery, not relaxation. It mirrors the cover-validator retry
    pattern in `pipeline.cover.write_cover_with_retry`.
 
-   **Known gap: the retry loop is silent.** `apply` prints one
-   "tailoring resume" line, then nothing until the loop resolves. Three
-   failing attempts at 30 to 60 seconds each is up to three minutes of no
-   output followed by a single error line, which reads as a hang rather than
-   as work in progress. This is what made the July 2026 empty-`skills_familiar`
-   failure look like a freeze. Per-attempt progress output in `apply_cmd` is
-   the fix and is not yet implemented. `apply` does now print the attempt
-   count (`tailor: N attempts`), but only after the loop has finished.
+   **Progress while retrying (2026-11-11).** The loop used to be silent for
+   up to three minutes, which read as a hang. `tailor_resume_with_retry`
+   now takes an `on_retry` callback, and `apply` and `resume` print one
+   line per rejected attempt before the next starts, for example
+   `tailor: attempt 1 of 3 rejected (unverified skill: 'Lighthouse'),
+   retrying`. The library itself never prints, so `--json` stays clean.
 4. **Deterministic score (rewritten July 2026).** The LLM does not pick the
    number. It extracts the posting's requirements into two tiers
    (`must_haves` = hard requirements, `nice_to_haves` = wish list),

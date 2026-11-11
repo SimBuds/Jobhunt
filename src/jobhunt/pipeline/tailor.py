@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -145,6 +146,7 @@ async def tailor_resume_with_retry(
     job: Job,
     *,
     max_attempts: int = 3,
+    on_retry: Callable[[int, int, list[FabricationViolation]], None] | None = None,
 ) -> tuple[TailoredResume, list[FabricationViolation], int]:
     """Tailor a resume with deterministic retry on fabrication violations.
 
@@ -159,6 +161,12 @@ async def tailor_resume_with_retry(
 
     Returns `(tailored, [], attempts_used)` on success. The empty-violations
     list mirrors the cover-retry signature so call-site logging stays uniform.
+
+    `on_retry(attempt, total, violations)` runs after each rejected attempt
+    that will be retried, so a caller can show progress (2026-11-11: the loop
+    was silent for up to three minutes, which read as a hang). The final
+    rejected attempt raises instead. The library never prints itself, so
+    `--json` output stays clean.
     """
     attempts = max(1, max_attempts)
     last_violations: list[FabricationViolation] = []
@@ -174,12 +182,24 @@ async def tailor_resume_with_retry(
             revisions = _format_tailor_revision_hint(
                 last_violations, attempt, candidate_name=candidate_name
             )
+            if on_retry is not None and attempt < attempts:
+                on_retry(attempt, attempts, last_violations)
             continue
         return tailored, [], attempt
     # Final attempt failed — re-raise the last error so apply_cmd skips this
     # job cleanly. Never ship an unverified resume; retry is recovery only.
     assert last_error is not None
     raise last_error
+
+
+def retry_line(attempt: int, total: int, violations: list[FabricationViolation]) -> str:
+    """'    tailor: attempt 1 of 3 rejected (unverified skill: 'X'), retrying'.
+    Shared by `apply` and `resume` so both print the same progress line."""
+    reason = ""
+    if violations:
+        v = violations[0]
+        reason = f" ({v.kind.replace('-', ' ')}: {v.detail!r})"
+    return f"    tailor: attempt {attempt} of {total} rejected{reason}, retrying"
 
 
 def _format_tailor_revision_hint(
