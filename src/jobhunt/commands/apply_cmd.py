@@ -950,6 +950,9 @@ async def _apply_llm_phase(
 
     echo(_job_header(job))
     job = await _deepen_thin_adzuna(cfg, job, echo=echo)
+    # Loaded before tailoring so the summary cannot claim the posting's gaps
+    # (2026-11-12). The audit below reads the same result.
+    score_result = _load_score(cfg, job.id)
     echo("    … tailoring resume (LLM, ~30–60s)")
     try:
         tailored, tailor_violations, tailor_attempts = await tailor_resume_with_retry(
@@ -957,6 +960,7 @@ async def _apply_llm_phase(
             job,
             max_attempts=cfg.pipeline.tailor_retry_attempts,
             on_retry=lambda a, t, v: echo(retry_line(a, t, v)),
+            gaps=score_result.gaps if score_result else None,
         )
     except JobHuntError as e:
         if stops_batch(e):
@@ -988,7 +992,6 @@ async def _apply_llm_phase(
         tag = "clean" if not n else f"{n} {'violation' if n == 1 else 'violations'} remain"
         echo(f"    cover: {cover_attempts} attempts ({tag})")
 
-    score_result = _load_score(cfg, job.id)
     try:
         audit_result = audit(
             tailored=tailored,

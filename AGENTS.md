@@ -1717,6 +1717,14 @@ missing. Fix the resume or the parser first.
      "Contentful Certified Professional  |  Oct 2025" but never invent one.
      The line was unchecked before, and two test fixtures rendered
      certifications their verified profiles did not hold.
+   - **Summary vs the posting's gaps (2026-11-12).** `apply` passes the
+     score's gaps into `tailor_resume_with_retry`, and
+     `_check_summary_gaps` rejects a summary that names one
+     (`summary-unverified-tech`). Matching mirrors `score._headline_gaps`:
+     brackets and bridges stripped, 3+ chars, whole word, and a disclaimed
+     mention is not a claim. It closes the gap the watchlist leaves, since a
+     posting's own unverified asks are what a summary echoes. Lane renders
+     (`jobhunt resume`) pass no gaps and keep the watchlist check only.
    - **Strip before retry (2026-11-12).** When every violation is
      `unverified-skill`, `_tailor_once` removes the named items from the
      skills list (dropping a category left empty) and runs the full guard
@@ -2266,6 +2274,12 @@ which stay:
   tailor invariants, keyword matching) are unit-tested directly.
 - Pipeline integration against the real llama-server is manual and not in CI. Run it by
   hand after prompt changes.
+- `tests/test_prompt_variables.py` renders every real `kb/prompts/` file
+  through its real caller, with the model call stubbed (2026-11-12). Unit
+  fixtures write their own small prompts, which drifted and hid a missing
+  `candidate_name` in interview-prep for 3.5 months. A new prompt file must
+  get a case there, and `test_every_real_prompt_has_a_case` fails until it
+  does.
 - Browser autofill is manual. Run `apply --no-browser` first to verify the
   documents, then re-run with the browser.
 - When adding an ingest adapter, capture a sample API response under

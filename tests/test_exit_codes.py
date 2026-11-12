@@ -404,6 +404,9 @@ async def test_apply_llm_phase_raises_only_run_wide_failures(
     monkeypatch.setattr(apply_cmd, "_deepen_thin_adzuna", deepen)
     monkeypatch.setattr(apply_cmd, "tailor_resume_with_retry", tailor)
     monkeypatch.setattr(apply_cmd, "write_cover_with_retry", cover)
+    # Since 2026-11-12 the score is read before tailoring (its gaps guard the
+    # summary). This test has no database, so stub it like the others.
+    monkeypatch.setattr(apply_cmd, "_load_score", lambda cfg, job_id: None)
     cfg = Config()
     if stops:
         with pytest.raises(type(exc)):

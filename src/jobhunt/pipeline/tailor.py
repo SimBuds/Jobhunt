@@ -12,12 +12,17 @@ from jobhunt.config import Config
 from jobhunt.errors import PipelineError
 from jobhunt.gateway import complete_json, load_prompt
 from jobhunt.models import Job
-from jobhunt.pipeline._keywords import phrase_present
+from jobhunt.pipeline._keywords import _strip_parenthetical, phrase_present
 from jobhunt.pipeline._profile import candidate_name as _candidate_name
 from jobhunt.pipeline._profile import render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
-from jobhunt.pipeline.cover_validate import unverified_tech_claims
-from jobhunt.pipeline.score import MAX_DESC_CHARS, MAX_POLICY_CHARS, truncate
+from jobhunt.pipeline.cover_validate import _NEGATION_PRECEDES_RE, unverified_tech_claims
+from jobhunt.pipeline.score import (
+    MAX_DESC_CHARS,
+    MAX_POLICY_CHARS,
+    _requirement_identity,
+    truncate,
+)
 
 
 @dataclass
@@ -74,7 +79,9 @@ async def tailor_resume(cfg: Config, job: Job) -> TailoredResume:
     return await _tailor_once(cfg, job, revisions="")
 
 
-async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResume:
+async def _tailor_once(
+    cfg: Config, job: Job, *, revisions: str, gaps: list[str] | None = None
+) -> TailoredResume:
     """One pass through the tailor LLM + post-processing checks. Raises
     `FabricationError` (a `PipelineError`) on any fabrication violation;
     the caller decides whether to retry or surface."""
@@ -129,6 +136,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     )
     tailored = _parse(raw, model)
     _strip_unverified_skills(tailored, verified)
+    _check_summary_gaps(tailored.summary, gaps or [])
     _mark_earlier_career(tailored, verified)
     _dedupe_education(tailored)
     _ensure_education(tailored, verified)
@@ -139,6 +147,30 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     _keep_lead_project_bullet(tailored)
     _shrink_to_one_page(tailored)
     return tailored
+
+
+def _check_summary_gaps(summary: str, gaps: list[str]) -> None:
+    """Reject a summary that names one of the posting's gaps.
+
+    The summary check (`_check_summary`) only knows watchlisted tech, so a
+    term nobody listed in advance could be claimed. The score already knows
+    which of the posting's asks the profile lacks, and those are exactly what
+    a summary is tempted to echo (2026-11-12). Matching mirrors
+    `score._headline_gaps`: identity with brackets stripped, 3+ chars, whole
+    word. A disclaimed mention ("however, I haven't...") is not a claim.
+    """
+    text = summary.lower()
+    for gap in gaps:
+        key = " ".join(_strip_parenthetical(_requirement_identity(gap)).split())
+        if len(key) < 3:
+            continue
+        pattern = re.compile(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])")
+        for m in pattern.finditer(text):
+            if not _NEGATION_PRECEDES_RE.search(text[max(0, m.start() - 40) : m.start()]):
+                raise FabricationError(
+                    [FabricationViolation("summary-unverified-tech", gap)],
+                    f"summary names a gap from the posting: {gap!r}",
+                )
 
 
 def _strip_unverified_skills(tailored: TailoredResume, verified: dict[str, Any]) -> None:
@@ -173,6 +205,7 @@ async def tailor_resume_with_retry(
     *,
     max_attempts: int = 3,
     on_retry: Callable[[int, int, list[FabricationViolation]], None] | None = None,
+    gaps: list[str] | None = None,
 ) -> tuple[TailoredResume, list[FabricationViolation], int]:
     """Tailor a resume with deterministic retry on fabrication violations.
 
@@ -201,7 +234,7 @@ async def tailor_resume_with_retry(
     candidate_name = _verified_candidate_name(cfg)
     for attempt in range(1, attempts + 1):
         try:
-            tailored = await _tailor_once(cfg, job, revisions=revisions)
+            tailored = await _tailor_once(cfg, job, revisions=revisions, gaps=gaps)
         except FabricationError as e:
             last_violations = list(e.violations)
             last_error = e

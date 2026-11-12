@@ -530,3 +530,76 @@ async def test_violation_surfacing_after_the_strip_still_raises(
     with pytest.raises(FabricationError) as exc_info:
         await _once(kb_dir, monkeypatch, p)
     assert [v.kind for v in exc_info.value.violations] == ["familiar-promoted"]
+
+
+# --- Phase U1 (2026-11-12): the summary may not claim the posting's gaps ----
+#
+# The summary check only knew watchlisted tech, so anything not listed in
+# advance could be claimed (Brafton's "Gutenberg blocks" shipped this way).
+# The score already knows which of the posting's asks the profile lacks.
+# Those gaps are exactly what a summary is tempted to echo. Cases use
+# Sitecore, which is not watchlisted, so only the new check can catch it.
+
+
+async def _summary(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch, summary: str, gaps: list[str] | None
+):
+    p = _clean_payload()
+    p["summary"] = summary
+
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return p
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    kwargs = {} if gaps is None else {"gaps": gaps}
+    return await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=1, **kwargs)
+
+
+BASE = "Full-stack JavaScript developer with 2+ years of professional client work."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("summary", "gap"),
+    [
+        (BASE + " Builds Sitecore sites.", "Sitecore"),
+        (BASE + " Ships Sitecore XM Cloud sites.", "Sitecore XM Cloud (headless or MVC)"),
+    ],
+)
+async def test_summary_naming_a_gap_raises(kb_dir, monkeypatch, summary, gap) -> None:
+    with pytest.raises(FabricationError) as e:
+        await _summary(kb_dir, monkeypatch, summary, [gap])
+    assert [(v.kind, v.detail) for v in e.value.violations] == [("summary-unverified-tech", gap)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("summary", "gaps"),
+    [
+        # A disclaimer is not a claim.
+        (BASE + " However, I haven't worked with Sitecore.", ["Sitecore"]),
+        # Gaps under 3 chars are skipped: "Go" would match the English word.
+        (BASE + " Ready to go further.", ["Go"]),
+        # Whole word: a "Java" gap is not found inside "JavaScript".
+        (BASE, ["Java"]),
+        # A skill the profile has is not a gap.
+        (BASE + " Builds React interfaces.", ["Sitecore"]),
+    ],
+)
+async def test_summary_without_a_gap_claim_passes(kb_dir, monkeypatch, summary, gaps) -> None:
+    tailored, _, _ = await _summary(kb_dir, monkeypatch, summary, gaps)
+    assert tailored.summary == summary
+
+
+@pytest.mark.asyncio
+async def test_no_gaps_passed_is_unchanged(kb_dir, monkeypatch) -> None:
+    summary = BASE + " Builds Sitecore sites."
+    tailored, _, _ = await _summary(kb_dir, monkeypatch, summary, None)
+    assert tailored.summary == summary
+
+
+def test_summary_gap_has_a_revision_hint() -> None:
+    hint = _format_tailor_revision_hint(
+        [FabricationViolation("summary-unverified-tech", "Sitecore")], 2
+    )
+    assert "Sitecore" in hint
