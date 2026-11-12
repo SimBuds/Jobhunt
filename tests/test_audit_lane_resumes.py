@@ -135,5 +135,11 @@ def test_no_projects_parses_to_empty_list(tmp_path: Path) -> None:
 
 def test_parsed_resume_passes_the_fabrication_guard(tmp_path: Path) -> None:
     got = _round_trip(tmp_path, "Shopify Developer  Toronto, ON | 555 | a@b.com")
-    verified = {**VERIFIED, "skills_core": [*VERIFIED["skills_core"], "SQLite", "Python"]}
+    # The render lists this certification, so the profile must hold it. The
+    # guard did not check certifications before 2026-11-12 (Phase C1).
+    verified = {
+        **VERIFIED,
+        "skills_core": [*VERIFIED["skills_core"], "SQLite", "Python"],
+        "certifications": ["Example Certified Professional  |  Oct 2025"],
+    }
     _enforce_no_fabrication(got, verified)

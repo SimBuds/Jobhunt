@@ -908,3 +908,76 @@ def test_all_quantified_drops_the_last_as_before():
 
 def test_none_quantified_drops_the_last_and_keeps_the_lead():
     assert _drop(["Lead.", "Second.", "Third."]) == ["Lead.", "Second."]
+
+
+# --- Phase C1 (2026-11-12): certifications must be verified -----------------
+#
+# The guard checked roles, projects and skills, but never the certifications
+# line, so a tailored resume could list a certification the profile does not
+# hold. The profile stores the date after a "|", and a render may drop it.
+
+CERT_VERIFIED = {**VERIFIED, "certifications": ["Contentful Certified Professional  |  Oct 2025"]}
+
+
+def _with_certs(certs: list[str]) -> TailoredResume:
+    t = _make()
+    t.certifications = certs
+    return t
+
+
+@pytest.mark.parametrize(
+    "cert",
+    [
+        "Contentful Certified Professional  |  Oct 2025",
+        "Contentful Certified Professional",
+        "contentful certified   professional | oct 2025",
+    ],
+)
+def test_verified_certification_passes(cert: str) -> None:
+    _enforce_no_fabrication(_with_certs([cert]), CERT_VERIFIED)
+
+
+@pytest.mark.parametrize(
+    "cert",
+    [
+        "Shopify Developer Certification",
+        "Contentful Certified Professional | Oct 2024",
+    ],
+)
+def test_unverified_certification_raises(cert: str) -> None:
+    from jobhunt.pipeline.tailor import FabricationError
+
+    with pytest.raises(FabricationError) as e:
+        _enforce_no_fabrication(_with_certs([cert]), CERT_VERIFIED)
+    assert [v.kind for v in e.value.violations] == ["unverified-certification"]
+
+
+def test_no_tailored_certifications_passes() -> None:
+    _enforce_no_fabrication(_with_certs([]), CERT_VERIFIED)
+
+
+def test_any_certification_raises_when_profile_has_none() -> None:
+    with pytest.raises(PipelineError):
+        _enforce_no_fabrication(_with_certs(["Contentful Certified Professional"]), VERIFIED)
+
+
+def test_unverified_certification_has_a_revision_hint() -> None:
+    from jobhunt.pipeline.tailor import FabricationViolation, _format_tailor_revision_hint
+
+    hint = _format_tailor_revision_hint(
+        [FabricationViolation("unverified-certification", "Shopify Developer Certification")], 2
+    )
+    assert "Shopify Developer Certification" in hint
+    assert "certifications" in hint
+
+
+def test_certification_shortened_before_brackets_passes() -> None:
+    verified = {**VERIFIED, "certifications": ["Contentful Certified Professional (2025) — CMS"]}
+    _enforce_no_fabrication(_with_certs(["Contentful Certified Professional"]), verified)
+
+
+def test_certification_prefix_must_end_on_a_word() -> None:
+    from jobhunt.pipeline.tailor import FabricationError
+
+    with pytest.raises(FabricationError):
+        _enforce_no_fabrication(_with_certs(["Contentful Cert"]), CERT_VERIFIED)

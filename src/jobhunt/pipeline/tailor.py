@@ -322,6 +322,12 @@ def _violation_hint_line(v: FabricationViolation, *, candidate_name: str | None 
             "REMOVE it from the summary, even if the JD asks for it. Describe "
             "only technology the verified skills, roles or projects contain."
         )
+    if v.kind == "unverified-certification":
+        return (
+            f"- The certification {v.detail!r} is NOT in verified_facts.certifications. "
+            "REMOVE it. List only certifications that appear in "
+            "verified_facts.certifications, never one the job posting asks for."
+        )
     if v.kind == "unverified-project":
         return (
             f"- The project {v.detail!r} is NOT in verified_facts.projects. "
@@ -1124,6 +1130,24 @@ def _enforce_no_fabrication(tailored: TailoredResume, verified: dict[str, Any]) 
             raise FabricationError(
                 [FabricationViolation("project-url-divergence", f"{tp.name}: {tp.url}")],
                 f"project url diverged from verified: {tp.name!r} -> {tp.url!r}",
+            )
+
+    # Certifications (2026-11-12): the line was never checked, so a resume
+    # could list one the profile does not hold. The profile stores the date
+    # after a "|" ("Contentful Certified Professional  |  Oct 2025"), other
+    # profiles in brackets or after a dash, and a render may drop that tail.
+    # A tailored entry passes when it is a verified entry or the start of one
+    # at a word boundary: a prefix can shorten a claim but never invent one.
+    def _norm(text: str) -> str:
+        return " ".join(text.lower().split())
+
+    verified_certs = [_norm(vc) for vc in verified.get("certifications", []) or []]
+    for cert in tailored.certifications:
+        c = _norm(cert)
+        if not c or not any(vc == c or vc.startswith(c + " ") for vc in verified_certs):
+            raise FabricationError(
+                [FabricationViolation("unverified-certification", cert)],
+                f"certification not in verified facts: {cert!r}",
             )
 
     verified_skills = [

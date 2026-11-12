@@ -1711,6 +1711,12 @@ missing. Fix the resume or the parser first.
      (default 3). After the final failed attempt it re-raises so `apply_cmd`
      skips the job. Retry is recovery, not relaxation. Use this entry point in
      `apply_cmd`; tests and one-shot tooling may still call `tailor_resume`.
+   - **Certifications (2026-11-12).** Each tailored certification must be
+     a verified entry or the start of one at a word boundary (case and
+     spacing ignored), else `unverified-certification`. A prefix can shorten
+     "Contentful Certified Professional  |  Oct 2025" but never invent one.
+     The line was unchecked before, and two test fixtures rendered
+     certifications their verified profiles did not hold.
    - **Strip before retry (2026-11-12).** When every violation is
      `unverified-skill`, `_tailor_once` removes the named items from the
      skills list (dropping a category left empty) and runs the full guard
