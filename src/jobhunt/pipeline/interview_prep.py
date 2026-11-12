@@ -169,6 +169,7 @@ async def draft_prep_sections(
     recruiter_type = ctx.recruiter_type or "unknown"
     recruiter_bias = _RECRUITER_BIAS_BLURB.get(recruiter_type, _RECRUITER_BIAS_BLURB["unknown"])
     user = prompt.render_user(
+        candidate_name=_name(_verified),
         verified_facts=verified_text,
         stage=ctx.stage,
         job_title=ctx.job_title or "(unknown)",

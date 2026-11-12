@@ -487,3 +487,39 @@ async def test_full_jd_keeps_ungrounded_match(tmp_path, monkeypatch) -> None:
     )
     assert bd["tier1"]["matched"] == 2
     assert not any(c.startswith("ungrounded") for c in bd["caps_applied"])
+
+
+# --- Phase H1 (2026-11-12): the profile is hashed from profile_dir ----------
+#
+# `prompt_hash` read `kb_dir/profile/verified.json`, which stopped existing
+# when the profile moved to `profile_dir` on 2026-11-02. The missing file was
+# skipped silently, so a resume edit never re-scored the backlog.
+
+
+def _hash_with(tmp_path: Path, profile: dict | None, score_prompt: str = "score v1") -> str:
+    kb = tmp_path / "kb"
+    (kb / "prompts").mkdir(parents=True, exist_ok=True)
+    (kb / "prompts" / "score.md").write_text(score_prompt)
+    prof = tmp_path / "profile"
+    prof.mkdir(exist_ok=True)
+    target = prof / "verified.json"
+    if profile is None:
+        target.unlink(missing_ok=True)
+    else:
+        target.write_text(json.dumps(profile))
+    return prompt_hash(Config(paths=PathsConfig(kb_dir=kb, profile_dir=prof)))
+
+
+def test_profile_change_moves_the_hash(tmp_path: Path) -> None:
+    before = _hash_with(tmp_path, {"skills_cms": ["WordPress"]})
+    after = _hash_with(tmp_path, {"skills_cms": ["WordPress", "Gutenberg blocks (ACF)"]})
+    assert before != after
+
+
+def test_missing_profile_still_hashes(tmp_path: Path) -> None:
+    assert len(_hash_with(tmp_path, None)) > 0
+
+
+def test_score_prompt_change_still_moves_the_hash(tmp_path: Path) -> None:
+    profile = {"skills_cms": ["WordPress"]}
+    assert _hash_with(tmp_path, profile, "score v1") != _hash_with(tmp_path, profile, "score v2")

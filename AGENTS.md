@@ -1711,6 +1711,17 @@ missing. Fix the resume or the parser first.
      (default 3). After the final failed attempt it re-raises so `apply_cmd`
      skips the job. Retry is recovery, not relaxation. Use this entry point in
      `apply_cmd`; tests and one-shot tooling may still call `tailor_resume`.
+   - **Strip before retry (2026-11-12).** When every violation is
+     `unverified-skill`, `_tailor_once` removes the named items from the
+     skills list (dropping a category left empty) and runs the full guard
+     again, through `_strip_unverified_skills`. Removing a skill can never
+     fabricate. Any other kind, or a name not found in the list, raises as
+     before. Brafton's run failed 3 times on "Gutenberg blocks" because the
+     posting named it 3 times and `lite` ignored the removal hint. The live
+     run after the change passed on attempt 1, but its summary still claimed
+     "Gutenberg blocks": the summary check only flags
+     `_FABRICATION_WATCHLIST` terms, so a strip can let a summary claim
+     through that a failed run used to stop.
    - **Retry temperature.** `_tailor_once` forces `temperature=0` when a
      `revisions` hint is non-empty (attempts 2+). At 0.3 qwen kept re-sampling
      the same JD-mirrored skill despite the corrective hint. The first attempt
@@ -1743,7 +1754,11 @@ globals, so a score is reproducible from its inputs alone. The module-level
 `prompt_hash`**, which takes the whole `Config` rather than a `kb_dir` precisely
 so a weight cannot be omitted at a call site: a weight change that did not move
 the hash would leave old-coefficient scores mixed into the queue, sorted on two
-scales at once.
+scales at once. The hash also covers the score prompt, the tailoring policy and
+`<profile_dir>/verified.json`. From 2026-11-02 to 2026-11-12 it read the
+profile from `kb_dir/profile/`, which no longer exists, and skipped it
+silently, so resume edits never re-scored anything.
+`test_profile_change_moves_the_hash` pins the fix.
 
 **Cap and bonus ladder**, applied in `pipeline.score` after the arithmetic.
 Every cap only lowers.
@@ -1797,6 +1812,24 @@ Every cap only lowers.
   real ask and dropping it would raise the score. Full JDs are exempt
   (Casey, 2026-11-11), because they paraphrase often and pad rarely. A live
   replay of 54 thin undeclined jobs moved 9 and cut their queue from 7 to 5.
+- **Headline-gap cap (2026-11-12).** A tier-1 gap named at least
+  `headline_gap_mentions` (3) times in the description, as a whole word with
+  brackets stripped, caps the score at `headline_gap_score_cap` (50, below
+  `min_score`). Recorded as `headline_gap`. Brafton scored 78 with Drupal and
+  Gutenberg blocks as its tier-1 gaps, carried by HTML, CSS and JavaScript
+  (Casey: "Just because I am missing one skill doesn't mean this job should
+  be highly scored"). Three limits came from a live replay over the 56
+  undeclined jobs at 45+:
+  - 2 mentions fired on passing asks (GraphQL, FastAPI, "Logging").
+  - Squared tier-1 coverage was rejected: it cut the queue from 17 to 6 and
+    left Brafton at 69.
+  - The title is not a trigger. Its only effect was a false cap on "AI
+    Automation Specialist", from a gap the model wrote as "automation" while
+    the profile says "automates".
+  With all three, the cap moved 2 of 15 queue jobs (Brafton on Drupal, Capco
+  Java Backend on Java). A frequency rule cannot tell a main platform from a
+  secondary one named often. The model could, and that option was declined.
+  Both settings feed `prompt_hash`.
 - **Familiar-only-fit cap.** When every matched must-have resolves into
   `verified.skills_familiar` and not into any Core bucket
   (`_all_matched_are_familiar`), the cap splits by title band. Senior title:
@@ -2007,7 +2040,11 @@ call to it without explicit discussion.
      lets "google tag manager" pass when the profile lists "GTM"
      (2026-11-10). The table moved out of `cover_validate` on 2026-11-11 so
      scoring shares it (`cover.py` imports `score.py`, so `score.py` cannot
-     import `cover_validate`).
+     import `cover_validate`). Gutenberg, Drupal and Symfony joined on
+     2026-11-12, after a tailored Brafton summary claimed "Gutenberg blocks"
+     that the profile did not list. The watch also stops a cover from naming
+     these terms when describing the employer's own stack, the same trade
+     every watchlisted term makes.
      `unverified_tech_claims` is the one implementation of the check, shared
      with `tailor._check_summary`.
    - `_NEGATION_PRECEDES_RE` suppresses the watchlist under legitimate

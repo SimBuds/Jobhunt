@@ -121,6 +121,16 @@ def _redux_payload() -> dict[str, Any]:
     return p
 
 
+def _role_payload() -> dict[str, Any]:
+    """A violation the strip in `_tailor_once` cannot repair (a changed
+    employer), so it still forces a retry. The retry-loop tests below used
+    `_redux_payload` until 2026-11-12, when an unverified skill became
+    strippable on the first attempt (Phase T2)."""
+    p = _clean_payload()
+    p["roles"][0]["employer"] = "Invented Corp"
+    return p
+
+
 # --- success-path tests ----------------------------------------------------
 
 
@@ -151,7 +161,7 @@ async def test_returns_first_attempt_when_clean(
 async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Attempt 1 leaks Redux; attempt 2 returns a clean payload. Retry loop
     must surface the clean result with attempts=2 and no Redux in output."""
-    responses = [_redux_payload(), _clean_payload()]
+    responses = [_role_payload(), _clean_payload()]
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return responses.pop(0)
@@ -168,19 +178,21 @@ async def test_retries_until_clean(kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 
 @pytest.mark.asyncio
 async def test_falls_back_after_max_attempts(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """When every attempt leaks Redux, the loop must re-raise rather than
-    ship a fabricated resume. apply_cmd's `except JobHuntError` will then
-    surface the failure and skip the job — matches today's UX exactly."""
+    """When every attempt changes an employer, the loop must re-raise rather
+    than ship a fabricated resume. (Until 2026-11-12 the trigger was a leaked
+    unverified skill, which Phase T2 now strips instead.) apply_cmd's
+    `except JobHuntError` will then surface the failure and skip the job —
+    matches today's UX exactly."""
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
-        return _redux_payload()
+        return _role_payload()
 
     monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
     with pytest.raises(FabricationError) as exc_info:
         await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=3)
     # The retry layer never weakens the check.
-    assert any(v.kind == "unverified-skill" for v in exc_info.value.violations)
-    assert "Redux" in str(exc_info.value)
+    assert any(v.kind == "role-divergence" for v in exc_info.value.violations)
+    assert "Invented Corp" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -192,7 +204,7 @@ async def test_retry_attempts_use_temperature_zero(
     the second attempt deterministic enough to obey the 'REMOVE Redux' hint.
     First attempt still uses the frontmatter temperature (typically 0.3)."""
     temps: list[float] = []
-    responses = [_redux_payload(), _clean_payload()]
+    responses = [_role_payload(), _clean_payload()]
 
     async def fake_complete_json(**kwargs: Any) -> dict[str, Any]:
         temps.append(kwargs["temperature"])
@@ -408,7 +420,7 @@ def _recorder() -> tuple[list[tuple[int, int, list[str]]], Any]:
 async def test_on_retry_reports_a_rejected_attempt_before_the_next(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    responses = [_redux_payload(), _clean_payload()]
+    responses = [_role_payload(), _clean_payload()]
 
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
         return responses.pop(0)
@@ -416,7 +428,7 @@ async def test_on_retry_reports_a_rejected_attempt_before_the_next(
     monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
     calls, on_retry = _recorder()
     await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=3, on_retry=on_retry)
-    assert calls == [(1, 3, ["unverified-skill"])]
+    assert calls == [(1, 3, ["role-divergence"])]
 
 
 @pytest.mark.asyncio
@@ -437,7 +449,7 @@ async def test_on_retry_skips_the_final_attempt_which_raises(
     kb_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def fake_complete_json(**_: Any) -> dict[str, Any]:
-        return _redux_payload()
+        return _role_payload()
 
     monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
     calls, on_retry = _recorder()
@@ -453,3 +465,68 @@ def test_retry_line_names_the_first_violation() -> None:
     assert retry_line(1, 3, v) == (
         "    tailor: attempt 1 of 3 rejected (unverified skill: 'robots.txt'), retrying"
     )
+
+
+# --- Phase T2 (2026-11-12): strip an unverified skill, then re-check ---------
+#
+# Brafton's tailor run failed 3 times on "Gutenberg blocks": the hint said to
+# remove it, and `lite` re-added it each time because the posting named it 3
+# times. Removing a skill can never fabricate, so `_tailor_once` now strips
+# the named items and runs the full guard again. Any other violation, or one
+# that surfaces after the strip, still raises.
+
+
+async def _once(kb_dir: Path, monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]):
+    async def fake_complete_json(**_: Any) -> dict[str, Any]:
+        return payload
+
+    monkeypatch.setattr(tailor_mod, "complete_json", fake_complete_json)
+    return await tailor_resume_with_retry(_cfg(kb_dir), _job(), max_attempts=1)
+
+
+def _items(tailored: Any) -> list[str]:
+    return [i for c in tailored.skills_categories for i in c.items]
+
+
+@pytest.mark.asyncio
+async def test_unverified_skill_is_stripped_on_first_attempt(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tailored, violations, attempts = await _once(kb_dir, monkeypatch, _redux_payload())
+    assert attempts == 1
+    assert violations == []
+    assert "Redux" not in _items(tailored)
+    assert "React" in _items(tailored)
+
+
+@pytest.mark.asyncio
+async def test_category_left_empty_by_the_strip_is_dropped(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p = _clean_payload()
+    p["skills_categories"].insert(1, {"name": "CMS", "items": ["Gutenberg blocks", "Drupal"]})
+    tailored, _, _ = await _once(kb_dir, monkeypatch, p)
+    assert "CMS" not in [c.name for c in tailored.skills_categories]
+    assert all(c.items for c in tailored.skills_categories)
+
+
+@pytest.mark.asyncio
+async def test_summary_violation_is_not_stripped(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p = _redux_payload()
+    p["summary"] = "Expert full-stack JavaScript developer with 2+ years of client work."
+    with pytest.raises(FabricationError) as exc_info:
+        await _once(kb_dir, monkeypatch, p)
+    assert all(v.kind != "unverified-skill" for v in exc_info.value.violations)
+
+
+@pytest.mark.asyncio
+async def test_violation_surfacing_after_the_strip_still_raises(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p = _redux_payload()
+    p["skills_categories"][0]["items"].append("Java")  # Familiar in a Core category
+    with pytest.raises(FabricationError) as exc_info:
+        await _once(kb_dir, monkeypatch, p)
+    assert [v.kind for v in exc_info.value.violations] == ["familiar-promoted"]

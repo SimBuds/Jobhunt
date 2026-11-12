@@ -1083,3 +1083,106 @@ def test_bracket_examples_and_aliases(phrase: str, expected: float) -> None:
 
 def test_bracket_example_only_in_familiar_earns_nothing() -> None:
     assert _credit("Frontend framework (React)", familiar="react") == pytest.approx(0.0)
+
+
+# --- Phase T1 (2026-11-12): headline-gap cap --------------------------------
+#
+# Brafton scored 78 with Gutenberg blocks and Drupal as its tier-1 gaps,
+# carried by generic matches (HTML, CSS, JavaScript, WordPress, PHP). Casey:
+# "Just because I am missing one skill doesn't mean this job should be highly
+# scored." A tier-1 gap named 3+ times in the description caps the score below
+# min_score. The title is not a trigger (Casey, after a live replay capped
+# "AI Automation Specialist" on a false "automation" gap).
+
+PAD = " Filler sentence about the team and the work." * 25  # keeps the JD > 800 chars
+
+
+@pytest.mark.parametrize(
+    ("gaps", "description", "expected"),
+    [
+        (["Drupal"], "Drupal sites. Drupal modules. Drupal themes.", ["Drupal"]),
+        (["Drupal"], "Drupal sites. Drupal modules.", []),
+        (["Java"], "JavaScript. JavaScript. JavaScript.", []),
+        (
+            ["Gutenberg blocks (ACF or React-based)"],
+            "Gutenberg blocks daily. Gutenberg blocks again. More Gutenberg blocks.",
+            ["Gutenberg blocks (ACF or React-based)"],
+        ),
+        (["Go"], "go go go", []),
+        ([], "Drupal Drupal Drupal", []),
+    ],
+)
+def test_headline_gaps(gaps, description, expected) -> None:
+    assert score_mod._headline_gaps(gaps, description, 3) == expected
+
+
+@pytest.mark.asyncio
+async def test_gap_named_only_in_title_does_not_cap(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        score_mod, "complete_json", _extraction(["React", "TypeScript", "automation"])
+    )
+    job = _full_jd_job(title="AI Automation Specialist", description="React work." + PAD)
+    result = await score_job(_cfg(kb_dir), job)
+    assert result.breakdown is not None
+    assert "headline_gap" not in json.loads(result.breakdown.to_json())["caps_applied"]
+
+
+async def _capped(kb_dir: Path, monkeypatch: pytest.MonkeyPatch, must, nice=None, desc=""):
+    monkeypatch.setattr(score_mod, "complete_json", _extraction(must, nice))
+    result = await score_job(_cfg(kb_dir), _full_jd_job(description=desc + PAD))
+    assert result.breakdown is not None
+    return result, json.loads(result.breakdown.to_json())
+
+
+@pytest.mark.asyncio
+async def test_tier1_headline_gap_caps_score(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result, bd = await _capped(
+        kb_dir,
+        monkeypatch,
+        ["React", "TypeScript", "Drupal"],
+        desc="Drupal. Drupal. Drupal. React.",
+    )
+    assert bd["computed"] > 50
+    assert result.score == 50
+    assert "headline_gap" in bd["caps_applied"]
+
+
+@pytest.mark.asyncio
+async def test_tier2_gap_does_not_cap(kb_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result, bd = await _capped(
+        kb_dir, monkeypatch, ["React", "TypeScript"], ["Drupal"], desc="Drupal " * 5
+    )
+    assert result.score > 50
+    assert "headline_gap" not in bd["caps_applied"]
+
+
+@pytest.mark.asyncio
+async def test_matched_phrase_named_often_does_not_cap(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, bd = await _capped(
+        kb_dir, monkeypatch, ["React", "TypeScript", "Kubernetes"], desc="React " * 5
+    )
+    assert "headline_gap" not in bd["caps_applied"]
+    assert result.score == bd["computed"]
+
+
+@pytest.mark.asyncio
+async def test_cap_never_raises_a_lower_score(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, bd = await _capped(kb_dir, monkeypatch, ["Drupal", "Laravel"], desc="Drupal " * 5)
+    assert result.score == bd["computed"] < 50
+    assert "headline_gap" not in bd["caps_applied"]
+
+
+@pytest.mark.parametrize("override", [{"headline_gap_score_cap": 40}, {"headline_gap_mentions": 2}])
+def test_headline_settings_move_the_hash(kb_dir: Path, override: dict) -> None:
+    from jobhunt.config import PipelineConfig
+    from jobhunt.pipeline.score import prompt_hash
+
+    base = Config(paths=PathsConfig(kb_dir=kb_dir, profile_dir=kb_dir / "profile"))
+    changed = base.model_copy(update={"pipeline": PipelineConfig(**override)})
+    assert prompt_hash(base) != prompt_hash(changed)

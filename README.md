@@ -624,6 +624,8 @@ answer_max_words      = 200  # `answer` default word cap
 min_score             = 55   # apply / list default floor
 thin_jd_score_cap     = 70   # confidence ceiling for signal-poor (short) JDs
 thin_jd_chars         = 800  # a JD shorter than this is treated as signal-poor
+headline_gap_score_cap = 50  # ceiling when a must-have you lack is the posting's
+headline_gap_mentions  = 3   #   headline skill: named this many times or more
 senior_score_cap      = 60   # ceiling for senior titles. Set below min_score
                              # (e.g. 45) to keep them out of the ranked queue
 junior_score_bonus    = 5    # added for explicit junior/mid/intern titles
@@ -641,8 +643,9 @@ junior_score_bonus    = 5    # added for explicit junior/mid/intern titles
 # its weight into tier-1, so a posting can't score higher for omitting one.
 # Defaults: perfect fit + AI bonus = 95, full core stack with wish-list gaps
 # = 80, half the hard requirements = 60, nothing matched = 30.
-# These five, plus senior_score_cap and junior_score_bonus, feed the score
-# prompt hash, so changing one re-scores the backlog
+# These five, plus senior_score_cap, junior_score_bonus and the two
+# headline_gap settings, feed the score prompt hash, so changing one re-scores
+# the backlog
 # on the next `scan` — deliberate, since old scores are otherwise incomparable.
 score_base                = 30
 score_tier1_weight        = 50

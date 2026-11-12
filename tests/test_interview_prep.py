@@ -1063,3 +1063,35 @@ def test_patch_table_inserts_no_claims() -> None:
         }
     )
     assert hits == []
+
+
+# --- Phase I1 (2026-11-12): the real prompt renders -------------------------
+#
+# The `kb_dir` fixture writes a hand-made prompt "mirroring the real one's
+# variables", and it drifted: since f30a68a (2026-07-26) the real USER section
+# uses {candidate_name}, which `draft_prep_sections` never passed, so every
+# live run failed with "missing variable: 'candidate_name'" while this suite
+# stayed green. This test renders the real file.
+
+REAL_PROMPT = Path(__file__).resolve().parents[1] / "kb" / "prompts" / "interview-prep.md"
+
+
+@pytest.mark.asyncio
+async def test_real_prompt_renders_with_candidate_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kb = tmp_path / "kb"
+    (kb / "profile").mkdir(parents=True)
+    (kb / "prompts").mkdir()
+    (kb / "profile" / "verified.json").write_text(json.dumps({**VERIFIED, "name": "Robin Vale"}))
+    (kb / "prompts" / "interview-prep.md").write_text(REAL_PROMPT.read_text(encoding="utf-8"))
+    seen: dict[str, Any] = {}
+
+    async def fake_complete_json(**kw: Any) -> dict[str, Any]:
+        seen.update(kw)
+        return _clean_payload()
+
+    monkeypatch.setattr(ip_mod, "complete_json", fake_complete_json)
+    await ip_mod.draft_prep_sections(_cfg(kb), ctx=_ctx())
+    assert "Robin" in seen["user"]
+    assert "{candidate_name}" not in seen["user"]

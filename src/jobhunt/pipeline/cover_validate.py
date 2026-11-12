@@ -313,6 +313,7 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "fastapi",
     "php",
     "laravel",
+    "symfony",
     "c#",
     "dotnet",
     # Frontend frameworks not in verified (React is Familiar)
@@ -362,6 +363,10 @@ _FABRICATION_WATCHLIST: tuple[str, ...] = (
     "kv-cache",
     "flash attention",
     "quantized",
+    # CMS asks the profile does not back (2026-11-12): Brafton's tailored
+    # summary claimed Gutenberg blocks once T2 stripped them from the skills.
+    "gutenberg",
+    "drupal",
     # Analytics and tag management
     "google tag manager",
     # Enterprise platforms

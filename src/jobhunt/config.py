@@ -177,6 +177,16 @@ class PipelineConfig(BaseModel):
     # "short JD signals Adzuna" threshold the audit must-have fallback already
     # uses, and exempts full-JD `apply --url` fetches.
     thin_jd_chars: int = 800
+    # Headline-gap cap (2026-11-12). A tier-1 gap named at least
+    # `headline_gap_mentions` times in the description caps the score here
+    # (the title is not a trigger: it caused a false cap on a live replay).
+    # Brafton scored 78 with its core skills (Gutenberg blocks, Drupal) as
+    # gaps, carried by HTML, CSS and JavaScript. Default sits below
+    # min_score so such roles leave the queue. 3 mentions, not 2: at 2 the
+    # cap fired on passing asks (GraphQL, FastAPI, "Logging").
+    # See pipeline.score._headline_gaps.
+    headline_gap_score_cap: int = 50
+    headline_gap_mentions: int = 3
 
     # --- Score weights (2026-07-28) -------------------------------------
     # The model extracts the posting's requirements into two tiers; the score

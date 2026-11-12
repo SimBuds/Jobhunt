@@ -128,7 +128,7 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
         temperature=temperature,
     )
     tailored = _parse(raw, model)
-    _enforce_no_fabrication(tailored, verified)
+    _strip_unverified_skills(tailored, verified)
     _mark_earlier_career(tailored, verified)
     _dedupe_education(tailored)
     _ensure_education(tailored, verified)
@@ -139,6 +139,32 @@ async def _tailor_once(cfg: Config, job: Job, *, revisions: str) -> TailoredResu
     _keep_lead_project_bullet(tailored)
     _shrink_to_one_page(tailored)
     return tailored
+
+
+def _strip_unverified_skills(tailored: TailoredResume, verified: dict[str, Any]) -> None:
+    """Run the fabrication guard, removing unverified skills it names.
+
+    `lite` re-added "Gutenberg blocks" on every retry although the hint said
+    to remove it, because the posting named it 3 times (Brafton, 2026-11-12).
+    Removing a skill can never fabricate, so the item is dropped and the full
+    guard runs again. The guard raises on its first violation, so this loops
+    until it passes. Any other kind, or a name not found in the skills list,
+    raises exactly as before: retry is recovery, never relaxation.
+    """
+    while True:
+        try:
+            _enforce_no_fabrication(tailored, verified)
+            return
+        except FabricationError as e:
+            if not e.violations or any(v.kind != "unverified-skill" for v in e.violations):
+                raise
+            names = {v.detail for v in e.violations}
+            before = sum(len(c.items) for c in tailored.skills_categories)
+            for cat in tailored.skills_categories:
+                cat.items = [i for i in cat.items if i not in names]
+            if sum(len(c.items) for c in tailored.skills_categories) == before:
+                raise
+            tailored.skills_categories = [c for c in tailored.skills_categories if c.items]
 
 
 async def tailor_resume_with_retry(

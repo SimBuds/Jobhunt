@@ -583,3 +583,42 @@ def test_google_tag_manager_is_verified_by_gtm(verified: dict) -> None:
 
     with_gtm = {**verified, "skills_cms": [*verified.get("skills_cms", []), "GTM"]}
     assert unverified_tech_claims("Set up Google Tag Manager and GA4.", with_gtm) == []
+
+
+# --- Phase W1 (2026-11-12): CMS asks the profile does not back --------------
+#
+# After Phase T2 stripped "Gutenberg blocks" from Brafton's skills list, the
+# tailored summary still claimed "WordPress internals including Gutenberg
+# blocks and ACF". The summary check only knows watchlisted terms, and
+# Brafton's unverified asks (Gutenberg, Drupal, Symfony) were not listed.
+
+BRAFTON_SUMMARY = (
+    "Solid experience in PHP and WordPress internals including Gutenberg blocks and ACF."
+)
+WP_PROFILE = {"skills_cms": ["WordPress", "PHP", "ACF"]}
+
+
+def test_gutenberg_claim_flags_without_profile_backing() -> None:
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    assert unverified_tech_claims(BRAFTON_SUMMARY, WP_PROFILE) == ["gutenberg"]
+
+
+def test_gutenberg_claim_passes_once_the_profile_lists_it() -> None:
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    profile = {"skills_cms": [*WP_PROFILE["skills_cms"], "Gutenberg blocks (ACF)"]}
+    assert unverified_tech_claims(BRAFTON_SUMMARY, profile) == []
+
+
+def test_drupal_and_symfony_flag() -> None:
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    text = "I extend Drupal sites and Symfony services."
+    assert set(unverified_tech_claims(text, WP_PROFILE)) == {"drupal", "symfony"}
+
+
+def test_disclaimed_drupal_does_not_flag() -> None:
+    from jobhunt.pipeline.cover_validate import unverified_tech_claims
+
+    assert unverified_tech_claims("However, I haven't worked with Drupal.", WP_PROFILE) == []

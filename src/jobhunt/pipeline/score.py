@@ -15,7 +15,13 @@ from jobhunt.pipeline._decline_guards import (
     DECLINE_GUARDS_VERSION,
     decline_is_unsupported,
 )
-from jobhunt.pipeline._keywords import _PAREN_RE, TECH_ALIASES, peer_match, phrase_present
+from jobhunt.pipeline._keywords import (
+    _PAREN_RE,
+    TECH_ALIASES,
+    _strip_parenthetical,
+    peer_match,
+    phrase_present,
+)
 from jobhunt.pipeline._profile import candidate_name, render_policy
 from jobhunt.pipeline._untrusted import scrub_jd
 
@@ -328,6 +334,14 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
         if cfg.pipeline.thin_jd_score_cap < score:
             caps_applied.append("thin_jd")
         score = min(score, cfg.pipeline.thin_jd_score_cap)
+
+    # Headline-gap ceiling (2026-11-12): a tier-1 gap the posting leads with
+    # means generic matches (HTML, CSS, JavaScript) are carrying the score.
+    # Only lowers.
+    if _headline_gaps(tier1.gaps, job.description, cfg.pipeline.headline_gap_mentions):
+        if cfg.pipeline.headline_gap_score_cap < score:
+            caps_applied.append("headline_gap")
+        score = min(score, cfg.pipeline.headline_gap_score_cap)
 
     # Junior-title override (2026-05-22): qwen3.5:9b sometimes emits the
     # YoE-aware "Senior-band title" decline when the JD body uses senior-
@@ -841,6 +855,32 @@ def _collapse_bridge_duplicates(
     return tiers[0], tiers[1]
 
 
+def _headline_gaps(gaps: list[str], description: str, min_mentions: int) -> list[str]:
+    """Tier-1 gaps the posting leads with: named at least `min_mentions`
+    times in the description.
+
+    The title is deliberately not a trigger (Casey, 2026-11-12). On a live
+    replay its only effect was a false cap: "AI Automation Specialist" was
+    capped on a gap the model wrote as "automation", although the profile
+    describes automation work ("automates").
+
+    Matching is whole-word, so a "Java" gap is not found inside "JavaScript".
+    Brackets and transferable annotations are stripped first, because the
+    posting names "Gutenberg blocks", not the model's "(ACF or React-based)".
+    Gaps under 3 chars are skipped: "Go" counts the English word "go".
+    """
+    desc_l = description.lower()
+    out: list[str] = []
+    for gap in gaps:
+        key = " ".join(_strip_parenthetical(_requirement_identity(gap)).split())
+        if len(key) < 3:
+            continue
+        pattern = re.compile(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])")
+        if len(pattern.findall(desc_l)) >= min_mentions:
+            out.append(gap)
+    return out
+
+
 def _drop_ungrounded_matches(
     phrases: list[str],
     jd_blob: str,
@@ -985,8 +1025,14 @@ def prompt_hash(cfg: Config) -> str:
     import hashlib
 
     h = hashlib.sha256()
-    for rel in ("prompts/score.md", "profile/verified.json", "policies/tailoring-rules.md"):
-        p = cfg.paths.kb_dir / rel
+    # The profile lives in `profile_dir`, outside the repo, since 2026-11-02.
+    # Reading it from `kb_dir/profile/` found nothing and skipped it silently,
+    # so a resume edit never re-scored the backlog (fixed 2026-11-12).
+    for p in (
+        cfg.paths.kb_dir / "prompts" / "score.md",
+        cfg.paths.profile_dir / "verified.json",
+        cfg.paths.kb_dir / "policies" / "tailoring-rules.md",
+    ):
         if p.is_file():
             h.update(p.read_bytes())
         h.update(b"\0")
@@ -996,7 +1042,9 @@ def prompt_hash(cfg: Config) -> str:
     h.update(
         f"base={w.base};t1={w.tier1};t2={w.tier2};"
         f"ai={w.ai_bonus};transfer={w.transferable_credit:.6f};"
-        f"senior_cap={w.senior_cap};junior_bonus={w.junior_bonus}".encode()
+        f"senior_cap={w.senior_cap};junior_bonus={w.junior_bonus};"
+        f"headline_cap={cfg.pipeline.headline_gap_score_cap};"
+        f"headline_mentions={cfg.pipeline.headline_gap_mentions}".encode()
     )
     # Same resolution `score_job` uses, so the hash names the model that ran.
     model = cfg.gateway.tasks.get("score", "")
