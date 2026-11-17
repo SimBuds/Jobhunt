@@ -1508,6 +1508,16 @@ missing. Fix the resume or the parser first.
    `is_non_engineering_title` will drop, so hospital tenants do not cost a
    request per clinical role), Workable widget API (no key), Recruitee offers
    API (no key), generic RSS.
+   - **Remote-board RSS (2026-11-17).** Feeds under `[ingest] rss_remote`
+     (remote-only or Canada-filtered boards) pass an item that is
+     GTA-eligible or that names no region outside Canada, matched over the
+     whole description by `rss_generic._REMOTE_RESTRICTION`. "US", "USA",
+     "U.S." and "US-based" match only in capitals, because the pronoun "us"
+     would veto almost every posting. A body mention such as "our US
+     customers" still vetoes, which is accepted: a dropped posting costs
+     less than a scoring call on a US-only role. Feeds in `rss` keep the
+     strict GTA rule, because an employer feed's bare "Remote" can mean
+     any country.
    - **Job Bank Canada (HTML-scrape carve-out, 2026-06).** Job Bank's public
      RSS is dead, so `ingest/job_bank_ca.py` parses the HTML search-results
      page. Sanctioned because Job Bank is a Govt-of-Canada public job-search

@@ -571,6 +571,10 @@ job_bank_ca          = []     # full jobbank.gc.ca HTML *search* URLs, one per r
                               # the adapter scrapes results + GTA-filters client-side, and
                               # honors the site's Crawl-delay: 5)
 rss                  = []     # generic employer career-page RSS/Atom URLs
+rss_remote           = []     # remote-only or Canada-filtered board feeds. Items pass
+                              # unless the text names a region outside Canada (US, UK,
+                              # Europe, EMEA, LATAM, APAC, Asia, Australia, India).
+                              # Feeds in `rss` keep the strict GTA rule.
 discover_backlog_ceiling = 40 # skip the post-ingest discovery probe while this
                               # many scored, unapplied, non-declined jobs are
                               # already queued (the "ready to apply" count on

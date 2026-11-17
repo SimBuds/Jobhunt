@@ -492,6 +492,10 @@ async def _ingest_all(
             adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, jobbank_limiter, url)))
         for url in cfg.ingest.rss:
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
+        for url in cfg.ingest.rss_remote:
+            adapters.append(
+                ("rss", url, rss_generic.fetch(client, limiter, url, remote_board=True))
+            )
         adzuna_queries = cfg.ingest.adzuna.queries
         if not adzuna_queries:
             import json as _json
