@@ -242,14 +242,14 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     # decline never persists and the job is re-scored on every scan forever.
     if not tier1_phrases and not tier2_phrases and not decline_reason:
         raise PipelineError(f"job {job.id}: model extracted no requirements from the posting")
-    # Drop tenure-only asks AFTER the extraction check above, so a model that
+    # Drop tenure-only and logistics-only asks AFTER the extraction check above, so a model that
     # read the posting but found only a years bar is not misreported as having
     # extracted nothing. An emptied tier-1 falls through to the promotion
     # below; if both tiers empty out, every coverage is 0.0 and the job scores
     # at the base, which is the right floor for a posting whose only stated
     # requirement was time served.
-    tier1_phrases = _drop_pure_tenure_asks(tier1_phrases)
-    tier2_phrases = _drop_pure_tenure_asks(tier2_phrases)
+    tier1_phrases = _drop_logistics_asks(_drop_pure_tenure_asks(tier1_phrases))
+    tier2_phrases = _drop_logistics_asks(_drop_pure_tenure_asks(tier2_phrases))
 
     # A posting whose requirements all read as optional still has a real bar.
     # Promote rather than score it out of the queue on a phrasing quirk.
@@ -685,6 +685,108 @@ def _is_pure_tenure_ask(phrase: str) -> bool:
 def _drop_pure_tenure_asks(phrases: list[str]) -> list[str]:
     """Strip tenure-only requirements from one extracted tier list."""
     return [p for p in phrases if not _is_pure_tenure_ask(p)]
+
+
+# Logistics asks (2026-11-17, Phase S4): where, how long and on what terms the
+# job runs. A resume keyword can never satisfy them, and `lite` lists them as
+# requirements on snippets: Akkodis "Shopify Developer" scored 47 with "Remote
+# within Canada", "6-month contract duration" and "Senior Software Developer
+# (IC role)" as gaps. A phrase drops only when it names a marker below and every
+# other word is logistics or title filler, so "Remote collaboration with Git"
+# and "Hybrid cloud" stay. Seniority alone ("Senior-level experience") has no
+# marker and stays: the senior cap owns seniority.
+_LOGISTICS_MARKER_RE = re.compile(
+    r"\b(?:remote|hybrid|on-?site|in-office|office|contract|contractor|duration|"
+    r"full-?time|part-?time|permanent|temporary|ic|individual contributor|"
+    r"canada|ontario|toronto|gta)\b"
+)
+_LOGISTICS_WORDS = frozenset(
+    {
+        "remote",
+        "hybrid",
+        "onsite",
+        "on-site",
+        "in-office",
+        "office",
+        "contract",
+        "contractor",
+        "duration",
+        "full-time",
+        "fulltime",
+        "part-time",
+        "parttime",
+        "full",
+        "part",
+        "time",
+        "permanent",
+        "temporary",
+        "ic",
+        "individual",
+        "contributor",
+        "canada",
+        "ontario",
+        "toronto",
+        "gta",
+        "within",
+        "in",
+        "at",
+        "from",
+        "based",
+        "home",
+        "anywhere",
+        "work",
+        "working",
+        "location",
+        "preferred",
+        "required",
+        "must",
+        "be",
+        "the",
+        "a",
+        "an",
+        "of",
+        "or",
+        "and",
+        "to",
+        "month",
+        "months",
+        "week",
+        "weeks",
+        "day",
+        "days",
+        "per",
+        "term",
+        "fixed",
+        "employment",
+        "type",
+        "position",
+        "role",
+        "senior",
+        "intermediate",
+        "junior",
+        "software",
+        "developer",
+        "engineer",
+    }
+)
+_DURATION_RE = re.compile(r"\d+\s*[-–]?\s*")
+
+
+def _is_logistics_ask(phrase: str) -> bool:
+    """True when the phrase states only location, arrangement, contract terms or
+    the IC framing of the role. The marker may sit in parentheses ("(IC role)"),
+    but every word outside them must be logistics or title filler."""
+    low = phrase.lower()
+    if not _LOGISTICS_MARKER_RE.search(low):
+        return False
+    body = _DURATION_RE.sub(" ", re.sub(r"\([^)]*\)", " ", low))
+    words = [t for t in re.findall(r"[a-z0-9+#./-]+", body) if any(c.isalnum() for c in t)]
+    return bool(words) and all(w in _LOGISTICS_WORDS for w in words)
+
+
+def _drop_logistics_asks(phrases: list[str]) -> list[str]:
+    """Strip logistics-only requirements from one extracted tier list."""
+    return [p for p in phrases if not _is_logistics_ask(p)]
 
 
 _TRANSFER_BRIDGE_RE = re.compile(r"\(\s*transferable\b[:\s—–-]*([^)]+)\)", re.IGNORECASE)

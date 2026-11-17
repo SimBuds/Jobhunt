@@ -1534,6 +1534,17 @@ missing. Fix the resume or the parser first.
      less than a scoring call on a US-only role. Feeds in `rss` keep the
      strict GTA rule, because an employer feed's bare "Remote" can mean
      any country.
+   - **Himalayas (2026-11-17).** `ingest/himalayas.py` reads the key-less
+     search API (`himalayas.app/jobs/api/search`, `country=CA`), one
+     request per `[ingest] himalayas` term, cached in `data/cache/himalayas/`
+     for 24 hours because unkeyed calls share one public allowance and the
+     data refreshes daily. A job restricted to countries passes only when
+     Canada is listed, and a worldwide job passes unless the remote-board
+     rule finds a non-Canada region. Terms checked that day: robots.txt
+     allows `/jobs/api`, Apply must use the API's `applicationLink` (stored
+     as the job URL), jobs show Himalayas credit, and none are passed on to
+     other boards. Remotive was checked the same day and dropped: its
+     robots.txt disallows `/api/*`.
    - **Job Bank Canada (HTML-scrape carve-out, 2026-06).** Job Bank's public
      RSS is dead, so `ingest/job_bank_ca.py` parses the HTML search-results
      page. Sanctioned because Job Bank is a Govt-of-Canada public job-search
@@ -1919,6 +1930,19 @@ Every cap only lowers.
   initiatives"). Keeping a phrase is the conservative direction, since a kept
   phrase can only lower a score. Do not widen `_TENURE_FILLER` with domain
   words.
+
+- **Logistics asks never enter the denominator either** (2026-11-17, Phase
+  S4). `score._is_logistics_ask` drops a phrase that names a marker (remote,
+  hybrid, on-site, office, contract, duration, full/part-time, permanent,
+  temporary, IC, Canada, Ontario, Toronto, GTA, which may sit in brackets)
+  and whose other words are all logistics or title filler. Akkodis "Shopify
+  Developer" scored 47 with "Remote within Canada", "6-month contract
+  duration" and "Senior Software Developer (IC role)" as gaps. The replay
+  dropped 16 phrases on 13 undeclined jobs, all location, arrangement,
+  contract length or "(IC role)" echoes. "Remote collaboration with Git",
+  "Hybrid cloud" and "Senior-level experience" stay: seniority has no
+  marker, and the senior cap owns it. Code-only, so it does not move
+  `prompt_hash`.
 
 **Auto-decline triggers are YoE-aware.** The score prompt receives
 `cfg.applicant.years_experience` and drives decisions from that single value:

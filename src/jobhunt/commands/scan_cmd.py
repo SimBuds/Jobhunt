@@ -41,6 +41,7 @@ from jobhunt.ingest import (
     adzuna_ca,
     ashby,
     greenhouse,
+    himalayas,
     job_bank_ca,
     lever,
     recruitee,
@@ -492,6 +493,14 @@ async def _ingest_all(
             adapters.append(("job_bank_ca", url, job_bank_ca.fetch(client, jobbank_limiter, url)))
         for url in cfg.ingest.rss:
             adapters.append(("rss", url, rss_generic.fetch(client, limiter, url)))
+        for query in cfg.ingest.himalayas:
+            adapters.append(
+                (
+                    "himalayas",
+                    query,
+                    himalayas.fetch(client, limiter, query, cache_dir=cfg.paths.data_dir / "cache"),
+                )
+            )
         for url in cfg.ingest.rss_remote:
             adapters.append(
                 ("rss", url, rss_generic.fetch(client, limiter, url, remote_board=True))

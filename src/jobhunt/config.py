@@ -112,6 +112,9 @@ class IngestConfig(BaseModel):
     # Remote-only or Canada-filtered boards: items pass unless they name a
     # region outside Canada (ingest.rss_generic._REMOTE_RESTRICTION).
     rss_remote: list[str] = Field(default_factory=list)
+    # Himalayas search terms (ingest.himalayas), one cached request per term
+    # per day. Remote jobs open to Canada.
+    himalayas: list[str] = Field(default_factory=list)
     adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
     # After ingest, probe public ATS APIs for slugs of newly-seen companies
     # and append hits to config.toml so the next scan pulls deep JDs natively.

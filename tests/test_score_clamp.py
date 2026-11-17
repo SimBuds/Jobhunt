@@ -1186,3 +1186,49 @@ def test_headline_settings_move_the_hash(kb_dir: Path, override: dict) -> None:
     base = Config(paths=PathsConfig(kb_dir=kb_dir, profile_dir=kb_dir / "profile"))
     changed = base.model_copy(update={"pipeline": PipelineConfig(**override)})
     assert prompt_hash(base) != prompt_hash(changed)
+
+
+# --- Phase S4 (2026-11-17): logistics asks leave the denominator ------------
+# Akkodis "Shopify Developer" scored 47 with "Remote within Canada", "6-month
+# contract duration" and "Senior Software Developer (IC role)" counted as skill
+# gaps. A resume keyword can never satisfy where, how long or on what terms.
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Remote within Canada (Ontario preferred)",
+        "6-month contract duration",
+        "Senior Software Developer (IC role)",
+        "Remote work",
+        "Hybrid (3 days in office)",
+        "On-site in Toronto",
+        "Full-time permanent position",
+        "Contract role",
+        "Must be based in the GTA",
+    ],
+)
+def test_logistics_asks_are_dropped(phrase: str) -> None:
+    assert score_mod._is_logistics_ask(phrase)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Remote collaboration with Git",
+        "Hybrid cloud architecture",
+        "Contract management systems",
+        "Bachelor's degree in Computer Science",
+        "Insurance domain experience",
+        "Senior-level experience",
+        "Software Developer",
+        "Shopify",
+    ],
+)
+def test_real_asks_are_kept(phrase: str) -> None:
+    assert not score_mod._is_logistics_ask(phrase)
+
+
+def test_drop_logistics_asks_preserves_order_and_keeps_the_rest() -> None:
+    phrases = ["Shopify", "Remote within Canada", "Liquid", "6-month contract duration"]
+    assert score_mod._drop_logistics_asks(phrases) == ["Shopify", "Liquid"]
