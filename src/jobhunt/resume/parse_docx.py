@@ -530,6 +530,9 @@ _CERT_RE = re.compile(
 )
 
 
+_CREDENTIAL_TAB_RE = re.compile(r"\s*\t\s*")
+
+
 def _classify_credential(text: str) -> str | None:
     """Classify a CERTIFICATIONS & EDUCATION line as ``"education"`` or
     ``"cert"`` by generic credential keywords. Returns ``None`` when neither
@@ -639,8 +642,14 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             f"{sorted(SECTION_HEADERS)} or a known alias); nothing below the "
             "contact block was parsed"
         )
+    # The first header line is the headline, kept apart by two spaces (the
+    # renderer's tagline marker). Later lines are contact items and join with
+    # " | ", so a header listing one item per line (2026-11-17 two-column
+    # layout) still reads as one contact row.
+    header = [_paragraph_text_with_links(p).strip() for p in non_empty[1:_first_section]]
+    rest = [h.strip(" |") for h in header[1:]]
     contact_line = "  ".join(
-        _paragraph_text_with_links(p) for p in non_empty[1:_first_section]
+        part for part in (header[0] if header else "", " | ".join(r for r in rest if r)) if part
     ).strip()
 
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
@@ -756,7 +765,10 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     education: list[str] = []
     coursework: list[str] = []
     awaiting_school = False
-    for _, text in sections["CERTIFICATIONS & EDUCATION"]:
+    for _, raw in sections["CERTIFICATIONS & EDUCATION"]:
+        # A tab before right-aligned dates becomes " | ": entries are rendered
+        # verbatim (tailor rule 5), so a raw tab would ship in every resume.
+        text = _CREDENTIAL_TAB_RE.sub(" | ", raw)
         # A split degree header ("Degree | dates", school on the next line) is
         # joined into one entry. Kept apart, the tailor's education backfill
         # copies only the first entry, and the resume would print a degree

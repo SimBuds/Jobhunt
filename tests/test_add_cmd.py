@@ -13,7 +13,7 @@ from jobhunt.discover.probe import ProbeOutcome
 
 
 def _seed_config(config_dir: Path, **overrides: list[str]) -> Path:
-    """Write a minimal config.toml under the redirected XDG_CONFIG_HOME."""
+    """Write a minimal config.toml in the tmp app folder (`tmp_config_dir`)."""
     jh_dir = config_dir / "jobhunt"
     jh_dir.mkdir(parents=True, exist_ok=True)
     cfg_path = jh_dir / "config.toml"

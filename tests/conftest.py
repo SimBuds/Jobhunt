@@ -49,17 +49,15 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
 
 @pytest.fixture(autouse=True)
 def _isolate_user_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every test runs against tmp XDG directories and no JOBHUNT_* overrides.
+    """Every test runs against a tmp app folder and no other JOBHUNT_* overrides.
 
-    Private-path defaults resolve under XDG_DATA_HOME, and the real
-    config.toml (under XDG_CONFIG_HOME) names the real database. Without this,
-    a test that loads config without `tmp_config_dir` reads or writes Casey's
-    data (2026-11-02).
+    Config, secrets and data defaults resolve under `JOBHUNT_HOME`, and the
+    real config.toml names the real database. Without this, a test that loads
+    config without `tmp_config_dir` reads or writes Casey's data (2026-11-02).
     """
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
     for key in [k for k in os.environ if k.startswith("JOBHUNT_")]:
         monkeypatch.delenv(key)
+    monkeypatch.setenv("JOBHUNT_HOME", str(tmp_path / "app"))
 
 
 @pytest.fixture(autouse=True)
@@ -92,10 +90,11 @@ def _restore_umask():
 
 @pytest.fixture
 def tmp_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redirect XDG_CONFIG_HOME to a tmp dir so config writes don't escape."""
+    """A tmp app folder at `<returned>/jobhunt`, so tests write config to
+    `tmp_config_dir / "jobhunt" / "config.toml"` and config writes stay in tmp."""
     config_home = tmp_path / "config"
     config_home.mkdir()
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.setenv("JOBHUNT_HOME", str(config_home / "jobhunt"))
     return config_home
 
 

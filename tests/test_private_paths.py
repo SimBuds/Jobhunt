@@ -1,10 +1,10 @@
-"""Private data lives outside the repo, and tests can never reach the real copy.
+"""Private data lives in the app folder, and tests can never reach the real copy.
 
-Phase 17a (2026-11-02). The data, database, profile and browser-profile
-defaults resolve under the XDG data directory instead of the working
-directory. `conftest._isolate_user_dirs` points both XDG directories at tmp
-and drops every `JOBHUNT_*` variable, because the real `config.toml` names the
-real database and a test that loads config without isolation would use it.
+Phase PV1 (2026-11-17). Config, secrets, data, database, profile and
+browser-profile defaults resolve under `app_root()`. `conftest._isolate_user_dirs`
+points `JOBHUNT_HOME` at tmp and drops every other `JOBHUNT_*` variable,
+because the real `config.toml` names the real database and a test that loads
+config without isolation would use it.
 """
 
 from __future__ import annotations
@@ -34,28 +34,70 @@ def test_defaults_resolve_inside_the_test_tmp_dir(tmp_path: Path) -> None:
         assert not path.is_relative_to(REPO), (name, path)
 
 
-def test_no_jobhunt_env_var_reaches_a_test() -> None:
-    assert [k for k in os.environ if k.startswith("JOBHUNT_")] == []
+def test_only_the_tmp_jobhunt_home_reaches_a_test(tmp_path: Path) -> None:
+    leaked = [k for k in os.environ if k.startswith("JOBHUNT_") and k != "JOBHUNT_HOME"]
+    assert leaked == []
+    assert Path(os.environ["JOBHUNT_HOME"]).is_relative_to(tmp_path)
 
 
-def test_falls_back_to_home_local_share(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    paths = Config().paths
-    base = tmp_path / "home" / ".local" / "share" / "jobhunt"
-    assert (paths.data_dir, paths.db_path, paths.profile_dir) == (
-        base,
-        base / "jobhunt.db",
-        base / "profile",
+# --- Phase PV1 (2026-11-17): every default lives in the app folder ---------
+
+
+def test_defaults_live_under_jobhunt_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.config import config_path
+    from jobhunt.secrets import secrets_path
+
+    home = tmp_path / "app"
+    monkeypatch.setenv("JOBHUNT_HOME", str(home))
+    cfg = Config()
+    assert config_path() == home / "config.toml"
+    assert secrets_path() == home / "secrets.toml"
+    assert (
+        cfg.paths.data_dir,
+        cfg.paths.db_path,
+        cfg.paths.profile_dir,
+        cfg.browser.user_data_dir,
+    ) == (
+        home / "data",
+        home / "data" / "jobhunt.db",
+        home / "data" / "profile",
+        home / "data" / "browser-profile",
     )
+
+
+def test_app_root_without_env_is_this_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.config import app_root
+
+    monkeypatch.delenv("JOBHUNT_HOME", raising=False)
+    assert app_root() == REPO
+
+
+def test_app_root_falls_back_to_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt import config
+
+    monkeypatch.delenv("JOBHUNT_HOME", raising=False)
+    monkeypatch.setattr(config, "_find_app_root", lambda start: None)
+    monkeypatch.chdir(tmp_path)
+    assert config.app_root() == tmp_path
+
+
+def test_xdg_dirs_are_never_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from jobhunt.config import config_path
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    for path in [config_path(), *_private_defaults(Config()).values()]:
+        assert not path.is_relative_to(tmp_path / "xdg-config"), path
+        assert not path.is_relative_to(tmp_path / "xdg-data"), path
 
 
 def test_config_toml_beats_defaults_and_env_beats_both(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config_home = Path(os.environ["XDG_CONFIG_HOME"])
-    (config_home / "jobhunt").mkdir(parents=True, exist_ok=True)
-    (config_home / "jobhunt" / "config.toml").write_text(
+    from jobhunt.config import config_path
+
+    config_path().parent.mkdir(parents=True, exist_ok=True)
+    config_path().write_text(
         "[paths]\n"
         f'data_dir = "{tmp_path / "toml-data"}"\n'
         f'profile_dir = "{tmp_path / "toml-profile"}"\n'

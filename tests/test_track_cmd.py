@@ -135,7 +135,7 @@ def test_resolve_ref_no_match_errors(conn, capsys) -> None:
 
 @pytest.fixture
 def isolated_env(tmp_config_dir: Path, tmp_path: Path) -> Path:
-    """Seed a scratch config.toml under the redirected XDG_CONFIG_HOME so the
+    """Seed a scratch config.toml in the tmp app folder (`tmp_config_dir`) so the
     CLI runs against a tmp DB (same pattern as test_add_cmd)."""
     jh_dir = tmp_config_dir / "jobhunt"
     jh_dir.mkdir(parents=True, exist_ok=True)

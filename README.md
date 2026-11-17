@@ -155,7 +155,7 @@ playwright install chromium
 Default model in config is `lite` — the router's name for unsloth
 Qwen3.5-9B-MTP Q4_K_M. The gateway supplies its own task prompt and its own
 sampler settings, so behavior is defined in-repo rather than by the router
-preset. Then point the gateway at the router in `~/.config/jobhunt/config.toml`
+preset. Then point the gateway at the router in `config.toml` in the app folder
 (see [Configuration](#configuration) below for the full file):
 
 ```toml
@@ -195,8 +195,8 @@ gateway sends its own on every request.
 
 The day-to-day is **scan → list → apply**. Everything else is occasional. Put
 your baseline resume in the profile directory (`profile_dir`, default
-`~/.local/share/jobhunt/profile`) before the first run. It is personal, so it
-never goes in the checkout. Any `.docx` there with "resume" in the filename is
+`data/profile` in the app folder) before the first run. It is personal, and
+the app folder's `.gitignore` keeps it out of commits. Any `.docx` there with "resume" in the filename is
 picked up, so `Baseline_Resume.docx` and `Jane_Dev_Resume.docx` both work. Put
 "baseline" in the name when the directory holds more than one, because that is
 what wins the tie. The search is non-recursive on purpose, so a generated copy
@@ -223,7 +223,7 @@ Manual equivalent, if you'd rather not use the wizard:
 jobhunt config show            # writes a default config and prints it
 jobhunt db init                # creates SQLite schema at data/jobhunt.db
 jobhunt convert-resume         # generates <profile_dir>/* from your baseline resume
-# check ~/.config/jobhunt/config.toml — convert-resume backfills [applicant]
+# check config.toml in the app folder: convert-resume backfills [applicant]
 # from the resume contact line, but only fills fields that are still empty
 jobhunt config seed --apply    # primes config with verified GTA-employer slugs
 ```
@@ -509,7 +509,7 @@ check) prints no object: read the exit code and stderr.
 
 ## Configuration
 
-`~/.config/jobhunt/config.toml` (abridged, full schema in
+`config.toml` in the app folder (abridged, full schema in
 [src/jobhunt/config.py](src/jobhunt/config.py), run `jobhunt config show`
 for your live values).
 
@@ -541,11 +541,12 @@ refused.
 
 ```toml
 [paths]
-# Defaults shown. Private data lives in the XDG data directory
-# ($XDG_DATA_HOME/jobhunt, else ~/.local/share/jobhunt), never in the repo.
-data_dir       = "/home/you/.local/share/jobhunt"
-db_path        = "/home/you/.local/share/jobhunt/jobhunt.db"
-profile_dir    = "/home/you/.local/share/jobhunt/profile"
+# Defaults shown, relative to the app folder (the checkout or unzipped
+# download, or $JOBHUNT_HOME). Personal data lives there, kept out of
+# commits by .gitignore. Same layout on Linux and Windows.
+data_dir       = "<app>/data"
+db_path        = "<app>/data/jobhunt.db"
+profile_dir    = "<app>/data/profile"
 # Public material stays in the repo checkout. These two are not written to a
 # new config.toml: unset, they resolve from the working dir, so jobhunt must
 # run from the repo root (anywhere else it exits 10 before doing anything).
@@ -659,7 +660,7 @@ score_transferable_credit = 0.7
 
 [browser]
 headed        = true
-user_data_dir = "/home/you/.local/share/jobhunt/browser-profile"
+user_data_dir = "<app>/data/browser-profile"
 
 [applicant]
 full_name              = "Your Name"
@@ -688,7 +689,7 @@ the ATS slug lists.
 The full Pydantic schema with every default lives in
 [src/jobhunt/config.py](src/jobhunt/config.py).
 
-API keys live in `~/.config/jobhunt/secrets.toml` (chmod 0600) or env vars:
+API keys live in `secrets.toml` in the app folder (mode 0600 on Linux) or env vars:
 
 ```toml
 adzuna_app_id  = "..."
@@ -709,8 +710,8 @@ adzuna_app_key = "..."
 | `kb/prompts/{score,tailor,cover,answer}.md` | Prompts with JSON-schema frontmatter.                                                                                                                                                                                                                                                    |
 | `kb/lanes/*.md`                             | One pseudo-JD brief per lane, discovered at runtime. Currently CMS and e-commerce (Shopify, WordPress, HubSpot), AI automation and infrastructure, technical SEO. Briefs are generic postings with no personal claims, and they name only skills `verified.json` holds because the tailor echoes brief wording. |
 | `kb/seeds/gta-employers.toml`               | Curated verified ATS slugs (imported by `config seed`).                                                                                                                                                                                                                                |
-| `~/.config/jobhunt/config.toml`             | Sources, models, applicant profile, paths.                                                                                                                                                                                                                                               |
-| `~/.config/jobhunt/secrets.toml`            | API keys (Adzuna), mode 0600.                                                                                                                                                                                                                                                            |
+| `config.toml`                               | Sources, models, applicant profile, paths.                                                                                                                                                                                                                                               |
+| `secrets.toml`                              | API keys (Adzuna), mode 0600.                                                                                                                                                                                                                                                            |
 | `data/jobhunt.db`                           | SQLite: jobs, scores, applications, slug_probes.                                                                                                                                                                                                                                         |
 | `data/applications/<job-id>/`               | Tailored resume, cover letter, `audit.json`, `fill-plan.json`, `answers/`.                                                                                                                                                                                                         |
 | `data/answers/<sha1>.md`                    | Standalone (non-job-scoped) answer artifacts.                                                                                                                                                                                                                                            |
@@ -738,7 +739,7 @@ real resume and run only when asked, reading that one file and writing only
 to pytest's temp dir:
 
 ```bash
-uv run pytest tests/test_parse_docx.py --live-resume ~/.local/share/jobhunt/profile/Your_Resume.docx
+uv run pytest tests/test_parse_docx.py --live-resume data/profile/Your_Resume.docx
 ```
 
 Without the option they skip, and the run ends with "2 live-resume test(s)

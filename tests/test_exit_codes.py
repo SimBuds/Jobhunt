@@ -104,7 +104,7 @@ def test_installed_script_routes_through_run(tmp_path: Path) -> None:
     (config_home / "jobhunt").mkdir(parents=True)
     (config_home / "jobhunt" / "config.toml").write_text("[paths\nbroken =\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("JOBHUNT_")}
-    env |= {"XDG_CONFIG_HOME": str(config_home), "XDG_DATA_HOME": str(tmp_path / "data")}
+    env |= {"JOBHUNT_HOME": str(config_home / "jobhunt")}
     proc = subprocess.run(
         [str(script), "list"],
         cwd=REPO,

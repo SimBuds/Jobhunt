@@ -1,4 +1,4 @@
-"""Load API keys from ~/.config/jobhunt/secrets.toml or JOBHUNT_* env vars."""
+"""Load API keys from secrets.toml in the app folder or JOBHUNT_* env vars."""
 
 from __future__ import annotations
 

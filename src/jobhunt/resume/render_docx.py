@@ -261,17 +261,21 @@ def _add_bullet(doc: Any, lead: str, rest: str) -> None:
 def _split_contact(contact_line: str) -> tuple[str, list[str]]:
     """('Headline', ['City', 'phone', ...]) from a verified contact line.
 
-    `parse_docx` joins the resume's header lines with two spaces, so a
-    headline sits before the first item separated by 2+ spaces. A line
-    without that prefix has no headline."""
+    `parse_docx` separates the headline from the contact items by two
+    spaces. The headline is found before splitting on "|", because a
+    headline may itself contain one ("Developer | CMS and AI Automation").
+    A gap touching a "|" is separator padding ("a  |  b"), not that marker,
+    so a line without a headline has none."""
+    headline = ""
+    gap = _HEADLINE_GAP_RE.search(contact_line)
+    if gap is not None and contact_line[: gap.start()].strip():
+        headline = contact_line[: gap.start()].strip()
+        contact_line = contact_line[gap.end() :]
     items = [part.strip() for part in contact_line.split("|") if part.strip()]
-    if not items:
-        return "", []
-    first = re.split(r"\s{2,}", items[0], maxsplit=1)
-    if len(first) == 2:
-        items[0] = first[1]
-        return first[0], items
-    return "", items
+    return headline, items
+
+
+_HEADLINE_GAP_RE = re.compile(r"(?<![|\s])\s{2,}(?![|\s])")
 
 
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", re.IGNORECASE)

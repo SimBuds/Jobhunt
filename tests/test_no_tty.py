@@ -27,12 +27,12 @@ TIMEOUT = 10
 
 def _env(tmp_path: Path) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("JOBHUNT_")}
-    env |= {"XDG_CONFIG_HOME": str(tmp_path / "cfg"), "XDG_DATA_HOME": str(tmp_path / "data")}
+    env |= {"JOBHUNT_HOME": str(tmp_path / "app")}
     return env
 
 
 def _profile(tmp_path: Path) -> None:
-    profile = tmp_path / "data" / "jobhunt" / "profile"
+    profile = tmp_path / "app" / "data" / "profile"
     profile.mkdir(parents=True)
     (profile / "verified.json").write_text("{}")
 

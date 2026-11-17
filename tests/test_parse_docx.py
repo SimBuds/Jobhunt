@@ -1165,3 +1165,80 @@ class TestProjectsHeadingGuard:
         facts, _ = parse_baseline(path)
         assert facts.projects
         _assert_projects_parsed_if_heading(path, facts)
+
+
+# --- Phase H1 (2026-11-17): two-column header, tabbed credential dates -------
+
+
+def _header_doc(tmp_path: Path, *header: str, education: tuple[str, ...] = ()) -> Path:
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Jane Dev")
+    for line in header:
+        doc.add_paragraph(line)
+    doc.add_paragraph("Summary")
+    doc.add_paragraph("A developer.")
+    if education:
+        doc.add_paragraph("Education and Certification")
+        for line in education:
+            doc.add_paragraph(line)
+    path = tmp_path / "r.docx"
+    doc.save(path)
+    return path
+
+
+def test_headline_then_one_contact_line_is_unchanged(tmp_path: Path):
+    path = _header_doc(tmp_path, "Web Developer", "Toronto, ON | 555-010-0000 | jane@example.com")
+    facts, _ = parse_baseline(path)
+    assert facts.contact_line == "Web Developer  Toronto, ON | 555-010-0000 | jane@example.com"
+
+
+def test_one_contact_item_per_line_joins_with_pipes(tmp_path: Path):
+    path = _header_doc(
+        tmp_path,
+        "Web Developer | CMS and AI Automation",
+        "555-010-0000",
+        "Toronto, ON",
+        "jane@example.com",
+        "github.com/jane",
+    )
+    facts, _ = parse_baseline(path)
+    assert facts.contact_line == (
+        "Web Developer | CMS and AI Automation  "
+        "555-010-0000 | Toronto, ON | jane@example.com | github.com/jane"
+    )
+
+
+def test_wrapped_pipe_lines_do_not_double_the_separator(tmp_path: Path):
+    path = _header_doc(
+        tmp_path, "Web Developer", "Toronto, ON | jane@example.com |", "| github.com/jane"
+    )
+    facts, _ = parse_baseline(path)
+    assert facts.contact_line == "Web Developer  Toronto, ON | jane@example.com | github.com/jane"
+
+
+def test_tab_before_credential_dates_becomes_a_pipe(tmp_path: Path):
+    path = _header_doc(
+        tmp_path,
+        "Toronto, ON",
+        education=(
+            "Advanced Diploma, Computer Programming | Example College | Dean's List"
+            "\tSep 2021 – Apr 2024",
+            "Example Cloud Certified Practitioner\tOct 2024",
+        ),
+    )
+    facts, _ = parse_baseline(path)
+    assert facts.education == [
+        "Advanced Diploma, Computer Programming | Example College | Dean's List"
+        " | Sep 2021 – Apr 2024"
+    ]
+    assert facts.certifications == ["Example Cloud Certified Practitioner | Oct 2024"]
+
+
+def test_untabbed_credential_lines_are_unchanged(tmp_path: Path):
+    path = _header_doc(
+        tmp_path, "Toronto, ON", education=("Example Cloud Certified Practitioner  |  Oct 2024",)
+    )
+    facts, _ = parse_baseline(path)
+    assert facts.certifications == ["Example Cloud Certified Practitioner  |  Oct 2024"]

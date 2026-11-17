@@ -1,4 +1,4 @@
-"""Config loading. Single source of truth: ~/.config/jobhunt/config.toml.
+"""Config loading. Single source of truth: config.toml in the app folder.
 
 Env vars override (prefix JOBHUNT_, double-underscore for nested keys).
 Example: JOBHUNT_GATEWAY__BASE_URL overrides config.gateway.base_url.
@@ -23,22 +23,37 @@ WorkArrangement = Literal["onsite", "hybrid", "remote"]
 EmploymentType = Literal["full_time", "part_time", "contract", "internship", "temporary"]
 
 
+def _find_app_root(start: Path) -> Path | None:
+    """The nearest ancestor of `start` holding a `pyproject.toml`: the app
+    folder of a clone or an unzipped download run with `uv run`. None for an
+    installed copy."""
+    for parent in start.resolve().parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def app_root() -> Path:
+    """The folder that holds every user file (2026-11-17).
+
+    Config, secrets and personal data live inside the app folder so the app
+    behaves the same on Linux and Windows, and `.gitignore` keeps them out of
+    commits. `JOBHUNT_HOME` overrides it. Resolved from the package location,
+    not the current directory, so running from another folder never starts a
+    second, empty data set.
+    """
+    env = os.environ.get("JOBHUNT_HOME")
+    if env:
+        return Path(env)
+    return _find_app_root(Path(__file__)) or Path.cwd()
+
+
 def _default_config_path() -> Path:
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "jobhunt" / "config.toml"
+    return app_root() / "config.toml"
 
 
 def _default_data_dir() -> Path:
-    """Private data lives in the XDG data directory, never the working tree.
-
-    It defaulted to `Path.cwd() / "data"` until 2026-11-02, so the database,
-    tailored documents and browser profile landed inside the repo whenever the
-    CLI ran from it. Mirrors `_default_config_path`.
-    """
-    xdg = os.environ.get("XDG_DATA_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "jobhunt"
+    return app_root() / "data"
 
 
 def _default_work_arrangements() -> list[WorkArrangement]:

@@ -459,3 +459,21 @@ def _padded(target: int) -> TailoredResume:
 def test_budget_accepts_estimate_50_and_rejects_51():
     assert fits_one_page(_padded(50))
     assert not fits_one_page(_padded(51))
+
+
+# --- Phase H1 (2026-11-17): a headline may itself contain "|" ---------------
+
+
+def test_headline_with_a_pipe_stays_whole(tailored, tmp_path):
+    contact = (
+        "Shopify and WordPress Developer | CMS and AI Automation  "
+        "416-500-2939 | Toronto, ON | casey-hsu@outlook.com"
+    )
+    doc = _doc(tailored, tmp_path, contact=contact)
+    assert doc.paragraphs[1].text == "SHOPIFY AND WORDPRESS DEVELOPER | CMS AND AI AUTOMATION"
+    assert doc.paragraphs[2].text == "416-500-2939  |  Toronto, ON  |  casey-hsu@outlook.com"
+
+
+def test_padded_pipes_without_headline_render_no_tagline(tailored, tmp_path):
+    doc = _doc(tailored, tmp_path, contact="me@example.com  |  555-010-0000  |  site.com")
+    assert doc.paragraphs[1].text == "me@example.com  |  555-010-0000  |  site.com"
