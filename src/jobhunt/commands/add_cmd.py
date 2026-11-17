@@ -2,7 +2,7 @@
 
 Parses an employer's ATS URL (Greenhouse, Lever, Ashby, SmartRecruiters,
 Workday), confirms the slug via a single live probe where applicable, and
-appends it to ~/.config/jobhunt/config.toml. Replaces hand-editing config
+appends it to config.toml in the app folder. Replaces hand-editing config
 as the daily-driver workflow for expanding ingestion coverage."""
 
 from __future__ import annotations

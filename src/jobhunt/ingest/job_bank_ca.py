@@ -10,7 +10,7 @@ public service; its robots.txt has no Disallow and requests `Crawl-delay: 5`, so
 `scan_cmd` passes a dedicated 5 s-spaced RateLimiter to this adapter. See the
 sanctioned-exception note in AGENTS.md §"Ingestion rules" rule 1.
 
-The user puts full Job Bank search URLs in `~/.config/jobhunt/config.toml` under
+The user puts full Job Bank search URLs in `config.toml` (app folder) under
 `[ingest] job_bank_ca = [...]`, e.g.:
 
     https://www.jobbank.gc.ca/jobsearch/jobsearch?searchstring=software+developer

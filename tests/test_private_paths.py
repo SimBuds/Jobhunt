@@ -154,127 +154,124 @@ def test_existing_file_mode_is_left_alone(tmp_path: Path) -> None:
     assert _mode(existing) == 0o644
 
 
-# --- Phase 19a (2026-11-03): refuse to run with private data in the repo ----
+# --- Phase PV2 (2026-11-17): a managed .gitignore keeps personal files out --
 #
-# conftest's autouse `_fake_repo_root` points `privacy.repo_root()` at an empty
-# tmp "checkout", so these tests build their own leftovers there and no CLI
-# test ever sees the real repo.
+# Personal files live in the app folder (PV1). The app keeps `.gitignore`
+# covering them and refuses only when git already tracks one. These tests run
+# real git in tmp folders, staging with `git add` only, never committing.
 
 
-def _repo(tmp_path: Path) -> Path:
-    from jobhunt import privacy
+def _git(root: Path, *args: str) -> None:
+    import subprocess
 
-    root = privacy.repo_root()
-    assert root is not None and root.is_relative_to(tmp_path)
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "checkout"
+    root.mkdir()
+    _git(root, "init", "-q")
     return root
 
 
-@pytest.mark.parametrize("field", ["data_dir", "db_path", "profile_dir"])
-def test_private_path_inside_the_repo_is_refused(tmp_path: Path, field: str) -> None:
-    from jobhunt.errors import PrivacyError
-    from jobhunt.privacy import check_private_paths
+def test_fresh_folder_gets_every_entry(tmp_path: Path) -> None:
+    from jobhunt.privacy import IGNORED, ensure_gitignore
 
-    root = _repo(tmp_path)
-    cfg = Config()
-    setattr(cfg.paths, field, root / "data" / field)
+    added = ensure_gitignore(tmp_path)
+    lines = (tmp_path / ".gitignore").read_text().splitlines()
+    assert added == list(IGNORED)
+    for entry in ("config.toml", "secrets.toml", "data/", "*.docx", "*.pdf"):
+        assert entry in lines
+
+
+def test_existing_file_gains_only_missing_lines(tmp_path: Path) -> None:
+    from jobhunt.privacy import IGNORED, ensure_gitignore
+
+    original = "# mine\n.venv/\n*.docx\ndata/\n"
+    (tmp_path / ".gitignore").write_text(original)
+    added = ensure_gitignore(tmp_path)
+    text = (tmp_path / ".gitignore").read_text()
+    assert text.startswith(original)
+    assert added == [e for e in IGNORED if e not in ("*.docx", "data/")]
+    assert text.count("*.docx") == 1
+
+
+def test_second_run_changes_nothing(tmp_path: Path) -> None:
+    from jobhunt.privacy import ensure_gitignore
+
+    ensure_gitignore(tmp_path)
+    before = (tmp_path / ".gitignore").read_text()
+    assert ensure_gitignore(tmp_path) == []
+    assert (tmp_path / ".gitignore").read_text() == before
+
+
+def test_file_without_trailing_newline_is_not_glued(tmp_path: Path) -> None:
+    from jobhunt.privacy import ensure_gitignore
+
+    (tmp_path / ".gitignore").write_text(".venv/")
+    ensure_gitignore(tmp_path)
+    assert ".venv/" in (tmp_path / ".gitignore").read_text().splitlines()
+
+
+@pytest.mark.parametrize("name", ["config.toml", "secrets.toml", "notes/Jane_Resume.docx"])
+def test_tracked_private_file_refuses_with_the_fix(tmp_path: Path, name: str) -> None:
+    from jobhunt.errors import PrivacyError
+    from jobhunt.privacy import check_tracked
+
+    root = _git_repo(tmp_path)
+    (root / name).parent.mkdir(parents=True, exist_ok=True)
+    (root / name).write_text("x")
+    _git(root, "add", "-f", name)
     with pytest.raises(PrivacyError) as exc:
-        check_private_paths(cfg, root)
-    assert field in str(exc.value)
-    assert str(root) in str(exc.value)
+        check_tracked(root)
+    assert name in str(exc.value)
+    assert "git rm --cached" in str(exc.value)
 
 
-def test_browser_profile_inside_the_repo_is_refused(tmp_path: Path) -> None:
-    from jobhunt.errors import PrivacyError
-    from jobhunt.privacy import check_private_paths
+def test_ignored_untracked_files_pass(tmp_path: Path) -> None:
+    from jobhunt.privacy import check_tracked, ensure_gitignore
 
-    root = _repo(tmp_path)
-    cfg = Config()
-    cfg.browser.user_data_dir = root / "browser-profile"
-    with pytest.raises(PrivacyError, match="user_data_dir"):
-        check_private_paths(cfg, root)
-
-
-def test_symlink_into_the_repo_is_refused(tmp_path: Path) -> None:
-    from jobhunt.errors import PrivacyError
-    from jobhunt.privacy import check_private_paths
-
-    root = _repo(tmp_path)
-    (root / "hidden").mkdir()
-    link = tmp_path / "looks-outside"
-    link.symlink_to(root / "hidden")
-    cfg = Config()
-    cfg.paths.profile_dir = link
-    with pytest.raises(PrivacyError, match="profile_dir"):
-        check_private_paths(cfg, root)
+    root = _git_repo(tmp_path)
+    ensure_gitignore(root)
+    (root / "config.toml").write_text("x")
+    (root / "data").mkdir()
+    (root / "data" / "jobhunt.db").write_text("x")
+    _git(root, "add", "-A")
+    check_tracked(root)
 
 
-def test_paths_outside_the_repo_pass(tmp_path: Path) -> None:
-    from jobhunt.privacy import check_private_paths
+def test_folder_without_git_passes(tmp_path: Path) -> None:
+    from jobhunt.privacy import check_tracked
 
-    check_private_paths(Config(), _repo(tmp_path))  # defaults live under tmp XDG
-
-
-@pytest.mark.parametrize("leftover", ["kb/profile", "data"])
-def test_leftover_private_dir_in_the_repo_is_refused(tmp_path: Path, leftover: str) -> None:
-    from jobhunt.errors import PrivacyError
-    from jobhunt.privacy import check_private_paths
-
-    root = _repo(tmp_path)
-    (root / leftover).mkdir(parents=True)
-    with pytest.raises(PrivacyError) as exc:
-        check_private_paths(Config(), root)
-    assert str(root / leftover) in str(exc.value)
+    (tmp_path / "config.toml").write_text("x")
+    check_tracked(tmp_path)
 
 
-def test_resume_in_the_repo_root_is_refused_and_named(tmp_path: Path) -> None:
-    from jobhunt.errors import PrivacyError
-    from jobhunt.privacy import check_private_paths
+def test_cli_writes_gitignore_in_the_app_folder() -> None:
+    from typer.testing import CliRunner
 
-    root = _repo(tmp_path)
-    (root / "Jane_Dev_Resume.docx").write_bytes(b"")
-    with pytest.raises(PrivacyError) as exc:
-        check_private_paths(Config(), root)
-    message = str(exc.value)
-    assert "Jane_Dev_Resume.docx" in message
-    assert "--docx" in message
-    assert str(Config().paths.profile_dir) in message
+    from jobhunt.cli import app
+    from jobhunt.config import app_root
+
+    CliRunner().invoke(app, ["list"])
+    assert "config.toml" in (app_root() / ".gitignore").read_text().splitlines()
 
 
-def test_no_checkout_passes() -> None:
-    """An installed copy has no repo root, so there is nothing to protect."""
-    from jobhunt.privacy import check_private_paths
-
-    check_private_paths(Config(), None)
-
-
-def test_real_finder_returns_this_checkout() -> None:
-    """The autouse fixture replaces `repo_root()`, so the production finder is
-    tested here directly. Without this, the fixture would hide a broken one."""
-    from jobhunt import privacy
-
-    assert privacy._find_repo_root(Path(privacy.__file__)) == REPO
-
-
-def test_real_finder_outside_a_checkout_returns_none(tmp_path: Path) -> None:
-    from jobhunt.privacy import _find_repo_root
-
-    fake = tmp_path / "site-packages" / "jobhunt" / "privacy.py"
-    fake.parent.mkdir(parents=True)
-    fake.write_text("")
-    assert _find_repo_root(fake) is None
-
-
-def test_cli_refuses_but_config_show_path_and_help_still_run(tmp_path: Path) -> None:
+def test_cli_refuses_tracked_config_but_config_show_path_and_help_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from typer.testing import CliRunner
 
     from jobhunt.cli import app
 
-    root = _repo(tmp_path)
-    (root / "kb" / "profile").mkdir(parents=True)
+    root = _git_repo(tmp_path)
+    monkeypatch.setenv("JOBHUNT_HOME", str(root))
+    (root / "config.toml").write_text("")
+    _git(root, "add", "-f", "config.toml")
     runner = CliRunner()
     refused = runner.invoke(app, ["list"])
-    assert refused.exit_code != 0
-    assert str(root / "kb" / "profile") in refused.output
+    assert refused.exit_code == 10
+    assert "config.toml" in refused.output
     for argv in (["config", "show"], ["config", "path"], ["list", "--help"]):
         result = runner.invoke(app, argv)
         assert result.exit_code == 0, (argv, result.output)

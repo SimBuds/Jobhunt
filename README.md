@@ -472,7 +472,7 @@ problem: `convert-resume`, `answer`, `interview-prep`, `add`, `resume`,
 | 0    | Success, including nothing to do                                                                                                                                                                             |
 | 1    | Unhandled bug (a traceback, worth reporting)                                                                                                                                                                 |
 | 2    | Usage error: a bad option or argument                                                                                                                                                                        |
-| 10   | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, private data inside the checkout                             |
+| 10   | Config or input problem you can fix: a broken `config.toml`, an unknown model name, a missing profile, an unknown or ambiguous job reference, a personal file tracked by git                                 |
 | 11   | Needs a person: a prompting command ran without a terminal. `setup` and `apply --best` always need one. `db reset`, `db gc --prune` and `config reprobe --prune` need one unless given `--force` |
 | 12   | A pipeline stage failed (ingest, scoring, tailoring, audit, render)                                                                                                                                          |
 | 13   | The llama-server router is unreachable or could not load the model                                                                                                                                           |
@@ -518,26 +518,25 @@ setting `data_dir` alone moves neither `db_path`, `profile_dir` nor the
 browser `user_data_dir`. Set each one you want elsewhere. Every command and
 script reads the profile from `profile_dir`.
 
-Every file jobhunt creates is mode 0600 and every directory 0700. Existing
-files keep their mode: they are tightened only by the one-time migration that
-moves private data out of the repo.
+Every file jobhunt creates is mode 0600 and every directory 0700 on Linux.
+Existing files keep their mode.
 
 ### Private data
 
-Personal data never lives inside the repository checkout, even gitignored.
-Every command except `config show`, `config path` and `--help` refuses to run,
-naming each problem, when it finds:
+Everything personal lives in the app folder (the checkout or unzipped
+download): `config.toml` and `secrets.toml` at its root, and the database,
+profile, resume, tailored documents and browser profile under `data/`. The
+layout is the same on Linux and Windows. Set `JOBHUNT_HOME` to keep them
+somewhere else.
 
-- `data_dir`, `db_path`, `profile_dir` or the browser `user_data_dir`
-  resolving inside the checkout (symlinks are followed),
-- a leftover `kb/profile/` or `data/` in the checkout,
-- a `.docx` or `.pdf` with "resume" in its name in the repo root.
-
-To fix it, move the files into the private data directory (`profile_dir` for
-the profile and the resume, `data_dir` for the rest), keep them mode 0600, and
-delete any `[paths]` override in `config.toml` that points into the checkout.
-An installed copy with no checkout has nothing to protect and is never
-refused.
+They stay out of git automatically. Every command except `config show`,
+`config path` and `--help` first makes sure the app folder's `.gitignore`
+covers `config.toml` (and its `.bak` and `.tmp` copies), `secrets.toml`,
+`data/`, `*.docx`, `*.pdf` and `*.db`, adding any missing line and never
+changing yours. It then refuses to run (exit 10) if git already tracks one of
+those files, because an ignore rule cannot untrack it, and prints the
+`git rm --cached` command that stops tracking it without deleting it. A
+folder without git just gets the `.gitignore`.
 
 ```toml
 [paths]

@@ -26,7 +26,7 @@ from jobhunt.commands import (
     setup_cmd,
     track_cmd,
 )
-from jobhunt.config import Config, load_config
+from jobhunt.config import Config, app_root, load_config
 from jobhunt.errors import InputError, JobHuntError, PrivacyError
 
 
@@ -104,13 +104,14 @@ def main(
     os.umask(0o077)
     ctx.obj = {"debug": debug, "verbose": verbose}
     if not privacy.is_exempt(ctx.meta.get("jobhunt_argv", [])):
-        cfg = load_config()
+        root = app_root()
         try:
-            privacy.check_private_paths(cfg, privacy.repo_root())
+            privacy.ensure_gitignore(root)
+            privacy.check_tracked(root)
         except PrivacyError as e:
             typer.echo(f"error: {e}", err=True)
             raise typer.Exit(code=e.exit_code) from e
-        _check_working_dir(cfg)
+        _check_working_dir(load_config())
 
 
 def _run() -> None:

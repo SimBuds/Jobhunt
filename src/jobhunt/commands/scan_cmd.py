@@ -26,7 +26,7 @@ from rich.progress import (
 
 from jobhunt.commands._job_line import job_line, job_line_label
 from jobhunt.commands._json_out import json_output
-from jobhunt.config import Config, load_config
+from jobhunt.config import Config, config_path, load_config
 from jobhunt.db import (
     connect,
     jobs_to_score,
@@ -555,7 +555,7 @@ async def _ingest_all(
 
         if not adapters:
             typer.echo(
-                "ingest: no sources configured. Edit ~/.config/jobhunt/config.toml — "
+                f"ingest: no sources configured. Edit {config_path()}: "
                 "set ingest.greenhouse/lever/ashby slugs.",
                 err=True,
             )
@@ -566,7 +566,7 @@ async def _ingest_all(
             typer.echo(
                 "ingest: only adzuna_ca is configured — your scan will be biased toward "
                 "one source. Add greenhouse/lever/ashby/smartrecruiters slugs to "
-                "~/.config/jobhunt/config.toml under [ingest]. See README §Configure "
+                f"{config_path()} under [ingest]. See README §Configure "
                 "ingest sources for how to find slugs.",
                 err=True,
             )

@@ -1270,17 +1270,22 @@ file: the one-time migration owns tightening existing private data, and
 check. Tests that run the CLI rely on conftest's autouse `_restore_umask`,
 because umask is process-wide.
 
-**Private data stays out of the checkout (2026-11-03).** `privacy.check_private_paths`
-runs in the CLI callback and refuses (exit 1 until the exit-code work maps it
-to 10) when a private path resolves into the repo, when `kb/profile/` or
-`data/` exists there, or when a resume file sits in the repo root. `config
-show`, `config path` and `--help` are exempt so a refused user can still see
-why. The callback learns the subcommand from argv recorded by
+**Personal files stay out of git (2026-11-17).** They live in the app folder
+(see **App folder**), and `privacy` keeps them uncommittable. The CLI callback
+calls `ensure_gitignore(app_root())`, which appends any missing entry of
+`privacy.IGNORED` (config, its `.bak`/`.tmp`, secrets, `data/`, `*.docx`,
+`*.pdf`, `*.db`) and never edits the user's lines, then `check_tracked`, which
+runs read-only `git ls-files` and refuses (exit 10) when git tracks one,
+printing the `git rm --cached` fix. No `.git` or no git binary skips the
+check. The write is silent: stderr carries only `error:` lines (README
+"Automation"). `config show`, `config path` and `--help` are exempt. The
+callback learns the subcommand from argv recorded by
 `cli._ArgvRecordingGroup.parse_args`, because click clears those arguments
-before the group callback runs. Tests never see the real checkout: conftest's
-autouse `_fake_repo_root` points the guard at an empty tmp dir, and
-`test_real_finder_returns_this_checkout` covers the production finder that
-fixture would otherwise hide.
+before the group callback runs. This replaced the 2026-11-03 guard that
+refused personal data anywhere in the checkout, because the app is shared
+with friends on Linux and Windows and Casey wanted the data beside the app
+(Casey, 2026-11-17). Tests point `JOBHUNT_HOME` at tmp, and the git cases
+stage with `git add` in tmp repos only.
 
 **Database.** SQLite at `data/jobhunt.db`. Migrations are numbered SQL files in
 `migrations/`, run by `jobhunt db migrate`. Plain parameterized SQL only.

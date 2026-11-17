@@ -5,10 +5,15 @@
 .venv/
 __pycache__/
 
-# Personal & PII
+# Personal & PII (the app also adds these to .gitignore on every run)
 kb/profile/
+config.toml
+config.toml.bak
+config.toml.tmp
+secrets.toml
 data/
 *.docx
 *.pdf
+*.db
 IMPLEMENT.md
 Brafton-Interview-Prep.md
