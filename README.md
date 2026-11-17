@@ -129,7 +129,10 @@ confident output for it is a regression, not a success.
 - **No LinkedIn / Indeed / Glassdoor scraping.** Public ATS APIs only.
 - **No bot-submitted applications.** Human-in-the-loop on every submission.
 - **No auto-account creation** on employer sites.
-- **No stored employer credentials.** If a site needs login, you log in manually.
+- **No stored employer credentials.** If a site needs login, you log in
+  manually. Autofill keeps watching the browser while you do: when you sign in
+  or click Apply, it fills each form step as it appears, in any tab, and stops
+  when you close the browser. `fill-plan.json` lists every step it filled.
 
 ## Requirements
 

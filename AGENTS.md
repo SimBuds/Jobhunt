@@ -1981,7 +1981,14 @@ substring, so `phrase_present("Java", ...)` used to match "JavaScript".
 unless the text being matched names it too. It holds only java/javascript.
 Add an entry when a real case appears. A blanket word-boundary rule was
 rejected because it breaks "SQL" against SQLite, "LLM" against LLMs and "API"
-against APIs. `peer_match` takes a different fix (2026-11-11): each peer
+against APIs. Short names are the exception (2026-11-17,
+Phase S3): a phrase, token or `/` part of 3 characters or fewer matches only
+as a whole word, its plural, or a listed longer form
+(`_keywords._SHORT_PREFIXES`: SQL inside SQLite, PostgreSQL, MySQL), through
+`_keywords._contains`. Raw substrings had credited Go from "Google" (9 live
+jobs), RAG from "average", ML from "HTML" and Pub/Sub from "submit". The
+replay flipped only true to false, all on skills the profile lacks. Known
+trade: a profile listing only "GitHub" no longer matches "Git". `peer_match` takes a different fix (2026-11-11): each peer
 must be a whole word, with no letter or digit touching it, because "bun"
 (Node.js family) matched inside "ubuntu" and gave Node.js credit to a profile
 without it. A dot or space is a boundary, so "react.js" still matches. Known

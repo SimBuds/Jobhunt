@@ -14,6 +14,8 @@ as alternatives (token-level and whole-phrase-level).
 
 from __future__ import annotations
 
+import pytest
+
 from jobhunt.pipeline._keywords import phrase_present
 from jobhunt.pipeline.audit import keyword_coverage
 from jobhunt.pipeline.tailor import TailoredCategory, TailoredResume, TailoredRole
@@ -270,3 +272,43 @@ def test_peer_with_a_dot_or_space_boundary_still_matches() -> None:
     assert peer_match("Node.js", "built services on node.js and express")
     assert peer_match("Vue", "react.js front ends")
     assert peer_match("GitLab CI", "ci runs in github actions")
+
+
+# --- Phase S3 (2026-11-17): short phrases match whole words only ------------
+#
+# A raw substring test credited "Go" from "Google", "RAG" from "average" and
+# "Pub/Sub" from "submit" on live scores.
+
+
+@pytest.mark.parametrize(
+    ("phrase", "blob"),
+    [
+        ("Go", "moved average google position"),
+        ("Golang/Go", "good results"),
+        ("RAG", "moved average google position"),
+        ("Pub/Sub", "stops before submit"),
+        ("AI", "maintain the site"),
+        ("ML", "html/css"),
+        ("C", "c# and c++"),
+    ],
+)
+def test_short_phrase_inside_another_word_is_not_present(phrase: str, blob: str) -> None:
+    assert phrase_present(phrase, blob) is False
+
+
+@pytest.mark.parametrize(
+    ("phrase", "blob"),
+    [
+        ("Go", "built services in go and python"),
+        ("SQL", "python, sqlite, docker"),
+        ("SQL", "postgresql and redis"),
+        ("LLM", "local llms"),
+        ("API", "rest apis"),
+        ("AI", "first website for a new ai company"),
+        ("AWS", "aws, docker, linux"),
+        ("CI/CD", "git, github actions, ci/cd"),
+        ("RAG", "rag pipelines over docs"),
+    ],
+)
+def test_short_phrase_as_a_whole_word_is_present(phrase: str, blob: str) -> None:
+    assert phrase_present(phrase, blob) is True

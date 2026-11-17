@@ -52,6 +52,7 @@ class FakePage:
         first_match: dict[str, FakeEl] | None = None,
         has_form: bool = True,
     ):
+        self._all_inputs = all_inputs or []
         self._form_inputs = form_inputs or []
         self._file_inputs_in_form = file_inputs_in_form or []
         self._textareas = textareas or []
@@ -68,6 +69,8 @@ class FakePage:
             return self._file_inputs_in_form
         if selector == "textarea":
             return self._textareas
+        if selector == "input":
+            return self._all_inputs
         if selector.startswith("form "):
             return self._form_inputs
         return []
@@ -94,6 +97,41 @@ async def test_detects_cover_letter_textarea():
 @pytest.mark.asyncio
 async def test_rejects_listing_page_with_search_inputs_only():
     page = FakePage()  # no resume input, no autocomplete, no cover-letter textarea
+    assert await looks_like_application_page(page) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {"id": "firstName"},
+        {"name": "first_name"},
+        {"aria-label": "Last Name"},
+        {"id": "last-name"},
+    ],
+)
+async def test_detects_plain_first_or_last_name_input(attrs):
+    """Oracle-style forms carry no autocomplete hints (Phase B1, 2026-11-17)."""
+    page = FakePage(all_inputs=[FakeEl(attrs=attrs)])
+    assert await looks_like_application_page(page) is True
+
+
+@pytest.mark.asyncio
+async def test_sign_in_page_is_not_an_application():
+    page = FakePage(
+        all_inputs=[
+            FakeEl(attrs={"id": "email", "name": "username"}),
+            FakeEl(attrs={"id": "password", "name": "password"}, type_="password"),
+        ]
+    )
+    assert await looks_like_application_page(page) is False
+
+
+@pytest.mark.asyncio
+async def test_name_inside_another_word_does_not_count():
+    page = FakePage(
+        all_inputs=[FakeEl(attrs={"id": "username"}), FakeEl(attrs={"id": "lastnameless"})]
+    )
     assert await looks_like_application_page(page) is False
 
 

@@ -301,6 +301,26 @@ def _mask_distinct_superstrings(text: str, blob: str) -> str:
     return blob
 
 
+# Phrases of this many characters or fewer match only as a whole word (plus a
+# plural "s"), because a raw substring test credited "Go" from "Google", "RAG"
+# from "average" and "Pub/Sub" from "submit" (2026-11-17). A blanket
+# word-boundary rule stays rejected: longer names rely on substring matching.
+_SHORT_MAX = 3
+# Longer words a short name may still match inside, where the longer word
+# really is that technology (SQL inside SQLite or PostgreSQL).
+_SHORT_PREFIXES: dict[str, tuple[str, ...]] = {"sql": ("sqlite", "postgresql", "mysql")}
+
+
+def _contains(needle: str, blob: str) -> bool:
+    """`needle in blob`, except a short needle must be a whole word."""
+    if len(needle) > _SHORT_MAX:
+        return needle in blob
+    if any(long in blob for long in _SHORT_PREFIXES.get(needle, ())):
+        return True
+    word = rf"(?<![a-z0-9+#]){re.escape(needle)}s?(?![a-z0-9+#])"
+    return re.search(word, blob) is not None
+
+
 def _token_present(token: str, blob: str) -> bool:
     """Substring presence with '/'-compound handling: a token like
     'css3/sass' names alternatives, but a resume lists the parts as separate
@@ -309,10 +329,10 @@ def _token_present(token: str, blob: str) -> bool:
 
     `.js`/`js` spelling variants are folded first via `_surface_variants`."""
     blob = _mask_distinct_superstrings(token, blob)
-    if any(v in blob for v in _surface_variants(token)):
+    if any(_contains(v, blob) for v in _surface_variants(token)):
         return True
     if "/" in token:
-        return any(p in blob for p in token.split("/") if len(p) >= _MIN_ALT_LEN)
+        return any(_contains(p, blob) for p in token.split("/") if len(p) >= _MIN_ALT_LEN)
     return False
 
 
@@ -334,14 +354,14 @@ def phrase_present(phrase: str, blob: str) -> bool:
     p = phrase.lower().strip()
     if not p:
         return False
-    if p in _mask_distinct_superstrings(p, blob):
+    if _contains(p, _mask_distinct_superstrings(p, blob)):
         return True
     p = _strip_parenthetical(p)
-    if p in _mask_distinct_superstrings(p, blob) or _all_tokens_present(p, blob):
+    if _contains(p, _mask_distinct_superstrings(p, blob)) or _all_tokens_present(p, blob):
         return True
     if "/" in p:
         return any(
-            alt in _mask_distinct_superstrings(alt, blob) or _all_tokens_present(alt, blob)
+            _contains(alt, _mask_distinct_superstrings(alt, blob)) or _all_tokens_present(alt, blob)
             for alt in (a.strip() for a in p.split("/"))
             if len(alt) >= _MIN_ALT_LEN
         )
