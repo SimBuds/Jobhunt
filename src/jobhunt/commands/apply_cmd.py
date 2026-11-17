@@ -1310,6 +1310,10 @@ async def _run_browser_step(
 
     while True:
         typer.echo("    … launching browser autofill")
+        typer.echo(
+            "    sign in or click Apply in the browser if needed. Each form step "
+            "fills as it appears. Close the browser when done."
+        )
         try:
             plan_path = await autofill(
                 url=job.url,

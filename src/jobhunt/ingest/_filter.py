@@ -100,14 +100,6 @@ def is_gta_eligible(location: str | None) -> bool:
     return bool(_CANADA_WEAK.search(loc))
 
 
-# People-management title regex. Drops Manager/Director/Head of/VP/Vice
-# President/Chief X Officer at ingest so the score prompt doesn't have to
-# decline them. Word-boundaried to avoid false matches like "Markham" or
-# "managerial" within a longer non-management word.
-#
-# DOES NOT match Senior / Lead / Staff / Principal / Architect — those are
-# handled separately by `is_senior_title`, which is YoE-gated at ingest in
-# scan_cmd (drops them when `applicant.years_experience < 4`).
 def location_search_terms(
     *, city: str = "", region: str = "", country: str = ""
 ) -> tuple[str, ...]:
@@ -137,6 +129,13 @@ def location_search_terms(
     return tuple(terms)
 
 
+# People-management title regex. Drops Manager/Director/Head of/VP/Vice
+# President/Chief X Officer at ingest so the score prompt doesn't have to
+# decline them. Word-boundaried to avoid false matches like "Markham" or
+# "managerial" within a longer non-management word.
+#
+# DOES NOT match Senior / Lead / Staff / Principal / Architect. Those are
+# handled by `is_senior_title`, gated by `applicant.include_senior_roles`.
 _MANAGEMENT_TITLE_RE = re.compile(
     r"\b(?:manager|director|head\s+of|vp|vice\s+president|"
     r"engineering\s+manager|people\s+manager|chief\s+\w+\s+officer)\b",

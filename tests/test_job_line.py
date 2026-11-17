@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -188,7 +189,9 @@ def test_list_footer_is_plain_words_without_zero_counts(migrations_dir: Path) ->
     _harness._seed(migrations_dir)
     footer = _invoke(["list"]).stdout.splitlines()[-1]
     assert re.fullmatch(r"This week \(\d{4}-W\d\d\): 2 scanned, 0 declined\.", footer)
-    week = _invoke(["list", "--week", "1"]).stdout.splitlines()[-1]
+    # The seed applies in a fixed week, so ask for it by its distance from today.
+    weeks_ago = (date.today() - date.fromisocalendar(2026, 45, 1)).days // 7
+    week = _invoke(["list", "--week", str(weeks_ago)]).stdout.splitlines()[-1]
     assert re.fullmatch(r"Week \d{4}-W\d\d: 0 scanned, 0 declined, 1 applied\.", week)
 
 

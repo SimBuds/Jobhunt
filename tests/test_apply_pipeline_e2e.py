@@ -192,6 +192,22 @@ def test_apply_one_no_browser_skips_autofill(cfg: Config, monkeypatch: pytest.Mo
     assert calls["prompt"] == 0  # no plan_path → no submission prompt
 
 
+def test_apply_one_browser_prints_sign_in_hint(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=False))
+    assert "sign in or click Apply in the browser" in capsys.readouterr().out
+
+
+def test_apply_one_no_browser_prints_no_sign_in_hint(
+    cfg: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_pipeline(monkeypatch, audit_verdict="ship")
+    asyncio.run(apply_cmd._apply_one(cfg, _job(), verified={}, no_browser=True))
+    assert "sign in or click Apply" not in capsys.readouterr().out
+
+
 def _app_rows(db_path: Path) -> list[sqlite3.Row]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

@@ -184,6 +184,76 @@ def test_renders_docx_for_one_lane(tmp_config_dir: Path, monkeypatch: pytest.Mon
     assert tailored_json["summary"].startswith("Full-stack")
 
 
+# --- Phase C4 (2026-11-17): one failed lane does not stop the others -------
+
+
+def _three_lane_setup(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch, fail: set[str]):
+    data_dir = tmp_config_dir / "data"
+    kb_dir = tmp_config_dir / "kb"
+    jh = tmp_config_dir / "jobhunt"
+    jh.mkdir()
+    (jh / "config.toml").write_text(
+        "[paths]\n"
+        f'data_dir = "{data_dir}"\n'
+        f'kb_dir = "{kb_dir}"\n'
+        f'profile_dir = "{kb_dir / "profile"}"\n'
+    )
+    (kb_dir / "profile").mkdir(parents=True)
+    (kb_dir / "profile" / "verified.json").write_text("{}")
+    lanes = kb_dir / "lanes"
+    lanes.mkdir()
+    for slug in ("ai-automation", "cms-ecommerce", "seo-technical"):
+        (lanes / f"{slug}.md").write_text(f"---\ntitle: {slug}\ncompany: Base\n---\nbody\n")
+    rendered: list[str] = []
+
+    async def fake_render(_cfg: object, brief: resume_cmd.LaneBrief, *_: object) -> Path:
+        if brief.focus in fail:
+            from jobhunt.errors import PipelineError
+
+            raise PipelineError(f"{brief.focus} broke")
+        rendered.append(brief.focus)
+        return data_dir / f"{brief.focus}.docx"
+
+    monkeypatch.setattr(resume_cmd, "_render_lane", fake_render)
+    return rendered
+
+
+def test_all_lanes_pass_exits_0(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rendered = _three_lane_setup(tmp_config_dir, monkeypatch, fail=set())
+    result = CliRunner().invoke(app, ["resume", "--focus", "all"])
+    assert result.exit_code == 0, result.output
+    assert rendered == ["ai", "cms", "seo"]
+    assert "done — 3 resume(s)" in result.output
+
+
+def test_failed_middle_lane_still_renders_the_rest(
+    tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = _three_lane_setup(tmp_config_dir, monkeypatch, fail={"cms"})
+    result = CliRunner().invoke(app, ["resume", "--focus", "all"])
+    assert result.exit_code == 1
+    assert rendered == ["ai", "seo"]
+    assert "done — 2 resume(s)" in result.output
+    assert "cms: resume render failed: cms broke" in result.output
+    assert "1 lane(s) failed: cms" in result.output
+
+
+def test_every_lane_failing_exits_1(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rendered = _three_lane_setup(tmp_config_dir, monkeypatch, fail={"ai", "cms", "seo"})
+    result = CliRunner().invoke(app, ["resume", "--focus", "all"])
+    assert result.exit_code == 1
+    assert rendered == []
+    assert "3 lane(s) failed: ai, cms, seo" in result.output
+
+
+def test_single_failed_lane_exits_1(tmp_config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rendered = _three_lane_setup(tmp_config_dir, monkeypatch, fail={"seo"})
+    result = CliRunner().invoke(app, ["resume", "--focus", "seo"])
+    assert result.exit_code == 1
+    assert rendered == []
+    assert "1 lane(s) failed: seo" in result.output
+
+
 # --- Phase 6a.2 (2026-11-10): the resume header comes from verified.json ----
 #
 # The renderer turns verified.json's contact_line ("Headline  City | phone |

@@ -229,18 +229,25 @@ def run(
     out_dir = cfg.paths.data_dir / "resumes"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    async def _drive() -> list[Path]:
+    async def _drive() -> tuple[list[Path], list[str]]:
         # Sequential on purpose: one hot local model; parallel lanes would
-        # just contend for the one llama-server slot.
-        return [await _render_lane(cfg, b, verified, out_dir) for b in briefs]
+        # just contend for the one llama-server slot. A failed lane does not
+        # stop the others.
+        paths: list[Path] = []
+        failed: list[str] = []
+        for b in briefs:
+            try:
+                paths.append(await _render_lane(cfg, b, verified, out_dir))
+            except JobHuntError as e:
+                typer.echo(f"  ! {b.focus}: resume render failed: {e}", err=True)
+                failed.append(b.focus)
+        return paths, failed
 
-    try:
-        paths = asyncio.run(_drive())
-    except JobHuntError as e:
-        typer.echo(f"  ! resume render failed: {e}", err=True)
-        raise typer.Exit(code=1) from e
-
+    paths, failed = asyncio.run(_drive())
     typer.echo(f"\ndone — {len(paths)} resume(s) in {out_dir}")
+    if failed:
+        typer.echo(f"error: {len(failed)} lane(s) failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(code=1)
 
 
 __all__ = [

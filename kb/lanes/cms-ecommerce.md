@@ -17,7 +17,7 @@ teams from design to launch.
   and HubDB, built from Figma designs.
 - Plan and run platform migrations: URL mapping, 301 redirects, launch gates
   and testing before cutover.
-- Keep sites fast, accessible and findable: Core Web Vitals, Lighthouse,
+- Keep sites fast, accessible and findable: Core Web Vitals,
   WCAG 2.1 AA, on-page and technical SEO, JSON-LD.
 
 ## Must-haves

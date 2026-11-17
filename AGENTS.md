@@ -203,6 +203,12 @@ defined by the blast-radius tiers below. Trivial-tier work skips to Stage 4.
 - Paste the definition-of-done checklist with a pass or fail per item.
 - Paste `git diff --stat` and compare it line by line against the planned file
   list. A mismatch is a failed audit, not a footnote.
+- Paste a short recap styled as a git commit message, in a code block: a
+  summary line of 72 characters or fewer in the imperative mood, a blank
+  line, then two to four bullets on what changed and why. Follow it with one
+  line naming the next phase and its goal, or "none" on the final phase.
+  Casey may reuse the message for the commit, so it describes the diff only.
+  (2026-11-17)
 - End the turn with the literal handoff line, and **no tool calls after it**:
 
   > `Phase <N> complete. Do I have approval to begin Phase <N+1>?`

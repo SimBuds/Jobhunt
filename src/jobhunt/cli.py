@@ -1,4 +1,4 @@
-"""Typer entry point for the visible CLI. db/config are hidden internals."""
+"""Typer entry point for the CLI. Subcommand wiring only."""
 
 from __future__ import annotations
 

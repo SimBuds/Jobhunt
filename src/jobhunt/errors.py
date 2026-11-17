@@ -58,7 +58,7 @@ class BrowserError(JobHuntError):
 
 
 class PrivacyError(JobHuntError):
-    """Personal data found inside the repository checkout."""
+    """Git tracks a personal file (config, secrets, data/ or a document)."""
 
     exit_code = 10
 
