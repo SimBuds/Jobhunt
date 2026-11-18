@@ -147,11 +147,16 @@ Use these sparingly.
 - Title is people-management: Manager, Senior Manager, Director, Head of,
   VP, Engineering Manager. (Pure IC titles never trigger this.)
 - Title is a non-engineering function: Sales, Partnerships, Account
-  Executive, Account Manager, Customer Success, Marketing, Product Manager,
-  Project Manager, Program Manager, Recruiter, Designer, Analyst,
-  non-technical Consultant.
-- Domain requires regulated experience (clinical software, securities
-  trading, medical devices, defense) and verified_facts shows none.
+  Executive, Account Manager, Customer Success, Product Manager, Project
+  Manager, Program Manager, Recruiter, HR, visual Designer, content, brand
+  or social Marketing. Hands-on technical roles are NOT declined on title:
+  data, web, BI or SEO analyst or specialist, marketing technologist or
+  marketing ops, implementation or integration specialist, technical
+  consultant, solutions engineer without a sales quota. Extract and score
+  them like any other role.
+- The role requires a licence, clinical credential or security clearance
+  and verified_facts shows none. Serving clients in a regulated industry
+  (law firms, banks, clinics) is never a reason to decline on its own.
 - Location is outside Toronto/GTA + 100 km AND not Remote-Canada eligible.
 - **Every satisfied requirement resolves into a Familiar-only skill bucket.**
   Read `verified_facts.skills_familiar` from the profile, never from memory.

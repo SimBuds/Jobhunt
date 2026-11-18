@@ -29,7 +29,7 @@
 - **Category sizes**: first category 6–10 items,
   secondary categories 4–8 items, `Familiar` exactly the verified Familiar
   items. Don't cram every Core/DevOps
-  skill into the lead category — a 16-item lead reads like a keyword wall.
+  skill into the lead category.
   Split across two or three categories when the JD spans multiple stacks.
 - Split one dense bullet into two if both halves are relevant.
 - Reorder bullets within a job. Never move bullets between jobs.
@@ -59,11 +59,13 @@ If any of the following hold, mark the job `decline_reason` and skip:
 - Title is people-management or non-IC (Manager, Senior Manager, Director,
   Head of, VP, including "Engineering Manager"). {candidate_name} is an IC engineer.
 - Title is a non-engineering function (Sales, Partnerships, Account
-  Executive/Manager, Customer Success, Marketing, Product/Project/Program
-  Manager, Recruiter, Designer, Analyst, non-technical Consultant). Only
-  hands-on coding roles qualify.
-- Domain requires regulated experience {candidate_name} doesn't have (clinical, securities,
-  medical devices).
+  Executive/Manager, Customer Success, Product/Project/Program Manager,
+  Recruiter, HR, visual Designer, content/brand/social Marketing). Hands-on
+  technical roles qualify: data/web/BI/SEO analyst or specialist, marketing
+  technologist or ops, implementation/integration specialist, technical
+  consultant, non-quota solutions engineer.
+- Role requires a licence, clinical credential or security clearance
+  {candidate_name} lacks. Clients in a regulated industry never decline alone.
 - Not in Toronto/GTA + 100km and not Remote-Canada eligible.
 
 ## AI/LLM differentiator (§6)
@@ -73,7 +75,7 @@ engineering, ML, automation tooling, developer tooling, local-first tooling,
 or infrastructure work:
 
 - {candidate_name}'s baseline identity is the role label `verified_facts.summary`
-  opens with (November 2026 repositioning). Never call {candidate_name}
+  opens with. Never call {candidate_name}
   "full-stack" in any document unless that summary does. For AI/LLM/automation-lane
   JDs, the AI automation tooling work (verified `skills_ai`) may headline the
   summary label — e.g. "developer building AI automation tooling" — but never
@@ -86,8 +88,7 @@ or infrastructure work:
   tooling work concretely when the JD asks for it.
 - The **cover-letter lead paragraph** MUST surface the local LLM (llama.cpp) /
   prompt-engineering work in the hook sentence, not paragraph 3. AI-screener
-  summarizers in 2026 pull the lead first. This is a strong differentiator
-  for AI-adjacent roles and burying it costs the application.
+  summarizers pull the lead first.
 - Do not treat vague phrases like "modern stack", "modern engineering", or
   "modern tools" as an AI trigger by themselves.
 - For ordinary CMS, frontend, backend, or full-stack roles, lead with the

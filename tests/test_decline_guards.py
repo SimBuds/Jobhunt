@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from jobhunt.pipeline._decline_guards import _years_asks, decline_is_unsupported
+from jobhunt.pipeline._decline_guards import (
+    _years_asks,
+    decline_is_unsupported,
+    tier1_gaps_unsupported,
+)
 
 # --- years asks --------------------------------------------------------------
 
@@ -128,3 +132,43 @@ def test_ignores_unrelated_reason() -> None:
     assert not decline_is_unsupported(
         "4+ tier-1 requirements the candidate cannot satisfy", "Software Engineer", "", 3
     )
+
+
+# --- tier-1 gap count --------------------------------------------------------
+# 2026-11-18: 8 live jobs carried "4+ tier-1 requirements ..." with 1 to 3
+# verified tier-1 gaps, one of them a Graduate Software Engineer at 70.
+
+_TIER1_REASON = "4+ tier-1 requirements the candidate cannot satisfy by any path above"
+
+
+@pytest.mark.parametrize("gaps", [0, 1, 3])
+def test_clears_tier1_decline_below_four_gaps(gaps: int) -> None:
+    assert tier1_gaps_unsupported(_TIER1_REASON, gaps)
+
+
+@pytest.mark.parametrize("gaps", [4, 6])
+def test_keeps_tier1_decline_at_four_or_more_gaps(gaps: int) -> None:
+    assert not tier1_gaps_unsupported(_TIER1_REASON, gaps)
+
+
+@pytest.mark.parametrize("reason", ["tier1_gaps", "4+ tier 1 requirements are gaps"])
+def test_tier1_guard_reads_code_and_prose_forms(reason: str) -> None:
+    assert tier1_gaps_unsupported(reason, 1)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "4+ tier-1 gaps and years required exceed limit",
+        "4+ tier-1 gaps; domain requires regulated experience",
+        "4+ tier-1 gaps and location mismatch",
+        "Title is a non-engineering function; 4+ tier-1 gaps",
+        "people-management title and 4+ tier-1 gaps",
+    ],
+)
+def test_keeps_tier1_reason_citing_another_trigger(reason: str) -> None:
+    assert not tier1_gaps_unsupported(reason, 1)
+
+
+def test_tier1_guard_ignores_unrelated_reason() -> None:
+    assert not tier1_gaps_unsupported("years_required_exceeds_cushion", 0)

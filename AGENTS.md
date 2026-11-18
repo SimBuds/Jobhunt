@@ -1121,7 +1121,7 @@ Beyond the four pillars, these project docs are load-bearing:
   jobs. Keep it short: it is truncated to `MAX_POLICY_CHARS` (6000) before
   it reaches a prompt, and `tests/test_policy_length.py` fails when the raw
   file exceeds that. On 2026-11-11 it was 6180 and the last tone rule was
-  silently cut. It is 5918 now, so new rules need cuts elsewhere.
+  silently cut. It is 5973 now (2026-11-18), so new rules need cuts elsewhere.
 - `kb/policies/authoring.md` — the longer agent-facing authoring policy
   (inputs, workflow, may-adjust table, pitfall audit). Deliberately **not**
   injected.
@@ -1958,6 +1958,15 @@ people-management titles (Manager / Director / Head of / VP) always decline;
 production experience with") declines, while vague nice-to-haves do not.
 Senior-band titles are treated as IC roles at any YoE and auto-decline only
 when the JD body names hard people-management responsibilities.
+
+**Model declines are checked where the posting allows (`_decline_guards`).**
+Each guard only clears a decline. Years and people-management reasons are
+checked against the JD text. A reason citing only the tier-1 trigger is
+cleared when fewer than 4 tier-1 phrases failed verification
+(`tier1_gaps_unsupported`, 2026-11-18): 14 live declines had 1 to 3, including
+a Graduate Software Engineer at 70. A reason that also cites another §8 ground
+stands. `DECLINE_GUARDS_VERSION` feeds `prompt_hash`, so a guard change
+re-scores the backlog.
 
 **Transferable crediting.** A phrase verifies through literal
 `phrase_present`, a `peer_match` against `pipeline._keywords.PEER_FAMILIES`

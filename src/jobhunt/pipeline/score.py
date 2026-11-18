@@ -14,6 +14,7 @@ from jobhunt.models import Job
 from jobhunt.pipeline._decline_guards import (
     DECLINE_GUARDS_VERSION,
     decline_is_unsupported,
+    tier1_gaps_unsupported,
 )
 from jobhunt.pipeline._keywords import (
     _PAREN_RE,
@@ -437,6 +438,8 @@ async def score_job(cfg: Config, job: Job) -> ScoreResult:
     if decline_reason and decline_is_unsupported(
         decline_reason, job.title or "", job.description, cfg.applicant.years_experience
     ):
+        decline_reason = None
+    if decline_reason and tier1_gaps_unsupported(decline_reason, len(tier1.gaps)):
         decline_reason = None
 
     if decline_reason is None and matched and _all_matched_are_familiar(matched, verified):

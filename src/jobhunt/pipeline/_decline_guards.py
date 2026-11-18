@@ -11,6 +11,9 @@ scores:
 - People management: "Sr. Solutions Engineer implies people management" and a
   "Specialist" title declined as management, against §8's rule that senior IC
   titles decline only on management duties named in the body.
+- Tier-1 gaps (2026-11-18): 8 live jobs declined on "4+ tier-1 requirements"
+  had 1 to 3 tier-1 gaps after verification, including a Graduate Software
+  Engineer at 70. The verified gap count is checkable, so it decides.
 
 Each guard only ever clears a decline; none adds one.
 """
@@ -22,7 +25,7 @@ import re
 
 # Bump whenever a guard's behaviour changes. Folded into `score.prompt_hash`,
 # so a guard fix re-scores the backlog instead of leaving stale declines.
-DECLINE_GUARDS_VERSION = 1
+DECLINE_GUARDS_VERSION = 2
 
 # A reason that also cites another §8 trigger is left alone: clearing it would
 # discard a decline that may stand on its other ground.
@@ -161,3 +164,27 @@ def decline_is_unsupported(
     if names_years and not _years_unsupported(description, years_experience):
         return False
     return not (names_management and not _management_unsupported(title, description))
+
+
+_TIER1_REASON_RE = re.compile(r"tier[-_ ]?1", re.IGNORECASE)
+# Every other §8 ground. A reason citing one may stand on it, so it is kept.
+_NON_TIER1_TRIGGER_RE = re.compile(
+    r"regulated|clinical|securities|medical|non-engineering|location|"
+    r"familiar|sales|marketing|recruit|designer|analyst",
+    re.IGNORECASE,
+)
+TIER1_DECLINE_MIN_GAPS = 4
+
+
+def tier1_gaps_unsupported(reason: str, tier1_gap_count: int) -> bool:
+    """True when `reason` cites only the "4+ tier-1 gaps" trigger and fewer
+    than four tier-1 requirements failed verification."""
+    if not _TIER1_REASON_RE.search(reason):
+        return False
+    if (
+        _NON_TIER1_TRIGGER_RE.search(reason)
+        or _YEARS_REASON_RE.search(reason)
+        or _MANAGEMENT_REASON_RE.search(reason)
+    ):
+        return False
+    return tier1_gap_count < TIER1_DECLINE_MIN_GAPS

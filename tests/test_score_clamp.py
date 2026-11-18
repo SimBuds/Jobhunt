@@ -498,6 +498,38 @@ async def test_score_job_promotes_nice_to_haves_when_no_must_haves(
     assert result.score == 90
 
 
+@pytest.mark.asyncio
+async def test_score_job_clears_tier1_decline_the_gap_count_does_not_back(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 2026-11-18 Graduate Software Engineer case: the model declined on
+    "4+ tier-1 gaps" while only one tier-1 requirement failed to verify."""
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(
+            ["React", "TypeScript", "Kubernetes"],
+            decline_reason="4+ tier-1 requirements the candidate cannot satisfy by any path above",
+        ),
+    )
+    result = await score_job(_cfg(kb_dir), _full_jd_job())
+    assert result.decline_reason is None, result.decline_reason
+
+
+@pytest.mark.asyncio
+async def test_score_job_keeps_tier1_decline_with_four_gaps(
+    kb_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reason = "4+ tier-1 requirements the candidate cannot satisfy by any path above"
+    monkeypatch.setattr(
+        score_mod,
+        "complete_json",
+        _extraction(["Kubernetes", "Rust", "Haskell", "Erlang"], decline_reason=reason),
+    )
+    result = await score_job(_cfg(kb_dir), _full_jd_job())
+    assert result.decline_reason == reason
+
+
 # --- Junior-title override on Senior-band declines (2026-05-22) ---
 
 
