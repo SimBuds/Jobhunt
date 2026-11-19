@@ -40,7 +40,7 @@ def test_derive_from_fixture_profile() -> None:
     verified = json.loads(FIXTURE_PROFILE.read_text(encoding="utf-8"))
     qs = derive_adzuna_queries(verified)
 
-    assert len(qs) <= 12
+    assert len(qs) <= 14
     for required in (
         "cms developer",
         "solutions engineer",
@@ -209,3 +209,37 @@ def test_no_location_suffix_appended() -> None:
     qs = derive_adzuna_queries(verified)
     for q in qs:
         assert not q.endswith(" Toronto"), f"unexpected Toronto suffix on {q!r}"
+
+
+_ADJACENT_ROLE_QUERIES = (
+    "technical support specialist",
+    "hubspot specialist",
+    "web content specialist",
+)
+
+
+def test_adjacent_role_queries_gated_on_skills_cms() -> None:
+    """Support, marketing-ops and web-content roles are searched for CMS
+    profiles only (2026-11-18 scope widening)."""
+    cms_less = derive_adzuna_queries({"skills_core": ["JavaScript"]}, cap=99)
+    for q in _ADJACENT_ROLE_QUERIES:
+        assert q not in cms_less
+    with_cms = derive_adzuna_queries({"skills_cms": ["Shopify"]})
+    for q in _ADJACENT_ROLE_QUERIES:
+        assert q in with_cms
+
+
+def test_adjacent_role_queries_survive_the_cap_ahead_of_languages() -> None:
+    """They are category queries, so the default cap cuts languages first."""
+    v = {
+        "skills_core": ["JavaScript", "HTML/CSS", "Python"],
+        "skills_cms": ["Shopify (Liquid)", "WordPress", "HubSpot (HubL)", "Contentful"],
+        "skills_ai": ["local LLMs"],
+        "work_history": [{"bullets": ["Did technical SEO work."]}],
+    }
+    capped = derive_adzuna_queries(v)
+    assert len(capped) <= 14
+    for q in _ADJACENT_ROLE_QUERIES:
+        assert q in capped
+    full = derive_adzuna_queries(v, cap=99)
+    assert max(full.index(q) for q in _ADJACENT_ROLE_QUERIES) < full.index("shopify developer")

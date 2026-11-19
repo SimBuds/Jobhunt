@@ -1136,6 +1136,11 @@ Beyond the four pillars, these project docs are load-bearing:
   employment types and Core moves into `verified.json` before the write
   guard. It may only rearrange skills the resume lists, never add one or
   promote a Familiar one (2026-11-01). See README "The profile supplement".
+  `convert-resume` reads the plain baseline copy in this directory. The
+  designed resume Casey submits by hand (header in a table, section labels
+  on the same line as content) parses to no skills and no roles, because
+  `parse_docx` reads `doc.paragraphs`. Casey keeps the two in step by hand
+  and the parser is not taught the designed layout (Casey, 2026-11-18).
 - `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
   `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
   on disk (currently CMS and e-commerce covering Shopify, WordPress and
@@ -1540,6 +1545,13 @@ missing. Fix the resume or the parser first.
      less than a scoring call on a US-only role. Feeds in `rss` keep the
      strict GTA rule, because an employer feed's bare "Remote" can mean
      any country.
+     Since 2026-11-18 the stored description is `content:encoded` when it
+     is longer than `<description>` (`_rss._fuller_body`), and the company
+     comes from any child element named `company`. Stored RSS jobs had
+     averaged 221 characters with no company. The filters still read
+     `<description>` only: run over the full body, the region veto dropped
+     53 of 182 items on Jobicy's Canada-filtered feed for boilerplate such
+     as "offices across EMEA".
    - **Himalayas (2026-11-17).** `ingest/himalayas.py` reads the key-less
      search API (`himalayas.app/jobs/api/search`, `country=CA`), one
      request per `[ingest] himalayas` term, cached in `data/cache/himalayas/`
@@ -1593,9 +1605,13 @@ missing. Fix the resume or the parser first.
 8. **Adzuna queries auto-derive from `verified.json`** when
    `cfg.ingest.adzuna.queries` is empty.
    `ingest._query_planner.derive_adzuna_queries` walks the skill buckets plus
-   work-history bullets and emits up to 12 role-suffixed queries (capped to
-   keep the API budget bounded at `pages=3`). Order is category umbrellas
-   (cms, solutions, `ai automation`, technical SEO), then `skills_cms`
+   work-history bullets and emits up to 14 role-suffixed queries (capped to
+   keep the API budget bounded at `pages=3`). The cap rose from 12 on
+   2026-11-18, when three adjacent-role queries (technical support
+   specialist, hubspot specialist, web content specialist) joined the
+   category umbrellas and would otherwise have cut the language queries
+   (Casey). Order is category umbrellas (cms, solutions, `ai automation`,
+   technical SEO, adjacent roles), then `skills_cms`
    platforms, then `skills_core` languages, then `skills_data_devops`, so the
    cap cuts languages before platforms. `skills_familiar` is never queried,
    and there is no baseline query, so an empty profile makes no Adzuna calls
@@ -1800,7 +1816,7 @@ the list with soft asks deflates the score.
 
 The coefficients are `[pipeline] score_base` (30), `score_tier1_weight` (50),
 `score_tier2_weight` (10), `score_ai_bonus` (5), `score_transferable_credit`
-(0.7), `senior_score_cap` (60 in code, 45 in the live config), and
+(0.7), `senior_score_cap` (60 in code and in the live config), and
 `junior_score_bonus` (5). They resolve once
 per call into `score.ScoreWeights` and are threaded explicitly through
 `_phrase_credit` / `_verify_tier` / `_compute_score` — never read from module
@@ -1824,7 +1840,7 @@ Every cap only lowers.
   Applied **before** every ceiling, so it lifts ranking within the band without
   letting a thin JD or a Familiar-only fit escape its cap. These roles were
   ranking below senior postings because nothing rewarded the band.
-- **Senior cap (code default 60, live config 45, below `min_score`)**,
+- **Senior cap (code default 60, live config 60 since 2026-11-18)**,
   unconditional on senior titles. It
   started as a conditional ceiling that was unreachable (across the 650-score
   backlog it fired 0 times on 62 undeclined senior-titled roles, and senior
@@ -1843,6 +1859,12 @@ Every cap only lowers.
   `include_senior_roles=false` only to stop ingesting them entirely. A
   model-emitted "Senior-band" decline is nullified when senior roles are opted
   in.
+  **Raised back to 60 on 2026-11-18** in `config.toml`, together with
+  `min_score` 48, so senior-titled postings reach the queue again. The same
+  edit set `max_age_days` 21, `remote_pages` 2, `headline_gap_score_cap` 55
+  and `headline_gap_mentions` 5, against code defaults of 7, 1, 50 and 3.
+  Live values drift from this file, so read `config.toml` before relying on
+  one.
 - **Thin-JD confidence cap** (`thin_jd_score_cap`, default 70) when
   `len(description) < thin_jd_chars` (default 800). Signal-poor JDs (Adzuna's
   ~500-char snippets) used to pass through unbounded, but the model cannot

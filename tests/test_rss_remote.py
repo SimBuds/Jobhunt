@@ -87,3 +87,91 @@ def test_plain_rss_keeps_the_strict_gta_rule(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_config_has_rss_remote_list() -> None:
     assert Config().ingest.rss_remote == []
+
+
+_CONTENT_NS = 'xmlns:content="http://purl.org/rss/1.0/modules/content/"'
+_JOB_NS = 'xmlns:job="https://jobs.example"'
+
+
+def _rich_feed(item_body: str) -> str:
+    return (
+        f'<?xml version="1.0"?><rss version="2.0" {_CONTENT_NS} {_JOB_NS}><channel>'
+        f"<item><title>Shopify Developer</title><link>https://x.test/1</link>"
+        f"<guid>g1</guid>{item_body}</item></channel></rss>"
+    )
+
+
+def _one(monkeypatch: pytest.MonkeyPatch, item_body: str) -> Job:
+    xml = _rich_feed(item_body)
+
+    async def fake_fetch_feed(*args: Any, **kwargs: Any) -> str:
+        return xml
+
+    monkeypatch.setattr(rss_generic, "fetch_feed", fake_fetch_feed)
+
+    async def drain() -> list[Job]:
+        gen = rss_generic.fetch(None, None, "x", remote_board=True)  # type: ignore[arg-type]
+        return [j async for j in gen]
+
+    jobs = asyncio.run(drain())
+    assert len(jobs) == 1
+    return jobs[0]
+
+
+def test_full_body_replaces_a_shorter_excerpt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Boards put a ~200-char excerpt in <description> and the posting in
+    <content:encoded>. Scoring the excerpt was scoring a headline."""
+    body = "<p>Build Liquid themes.</p><p>" + "Metafields and Online Store 2.0. " * 20 + "</p>"
+    job = _one(
+        monkeypatch,
+        f"<description>Build Liquid themes.</description>"
+        f"<content:encoded>{escape(body)}</content:encoded>",
+    )
+    assert job.description is not None
+    assert "Metafields and Online Store 2.0." in job.description
+    assert "<p>" not in job.description
+    assert len(job.description) > 500
+
+
+def test_description_kept_when_there_is_no_full_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = _one(monkeypatch, "<description>Build Liquid themes.</description>")
+    assert job.description == "Build Liquid themes."
+    assert job.company is None
+
+
+def test_description_kept_when_the_full_body_is_shorter(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = _one(
+        monkeypatch,
+        "<description>Build Liquid themes for our merchants.</description>"
+        "<content:encoded>Short.</content:encoded>",
+    )
+    assert job.description == "Build Liquid themes for our merchants."
+
+
+def test_company_element_is_read_in_any_namespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = _one(
+        monkeypatch,
+        "<description>Build Liquid themes.</description><job:company> Acme Co </job:company>",
+    )
+    assert job.company == "Acme Co"
+
+
+def test_empty_company_element_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = _one(
+        monkeypatch,
+        "<description>Build Liquid themes.</description><job:company></job:company>",
+    )
+    assert job.company is None
+
+
+def test_region_filter_still_reads_the_excerpt_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The full body is for scoring. Filtering on it vetoed 53 of 182 items on
+    a Canada-filtered feed over boilerplate such as 'offices across EMEA'."""
+    body = "Build Liquid themes. " * 30 + "We have offices across EMEA and the United States."
+    job = _one(
+        monkeypatch,
+        f"<description>Build Liquid themes.</description>"
+        f"<content:encoded>{escape(body)}</content:encoded>",
+    )
+    assert job.description is not None and "EMEA" in job.description
+    assert job.location == "Build Liquid themes."

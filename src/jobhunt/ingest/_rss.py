@@ -20,6 +20,7 @@ from jobhunt.errors import IngestError
 from jobhunt.http import RateLimiter, host_of
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
+CONTENT_ENCODED = "{http://purl.org/rss/1.0/modules/content/}encoded"
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -30,6 +31,10 @@ class RSSItem:
     description: str | None
     pub_date: datetime | None
     guid: str | None
+    company: str | None = None
+    # The fullest posting text, for scoring. `description` stays the feed's own
+    # <description>, which is what the location and region filters read.
+    body: str | None = None
 
 
 def strip_html(text: str | None) -> str | None:
@@ -38,6 +43,27 @@ def strip_html(text: str | None) -> str | None:
     cleaned = _TAG_RE.sub(" ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or None
+
+
+def _fuller_body(item: ET.Element) -> str | None:
+    """The posting text: `content:encoded` when it is longer than `description`.
+
+    Job boards put a ~200-char excerpt in `description` and the whole posting
+    in `content:encoded` (2026-11-18: 106 stored RSS jobs averaged 221 chars).
+    """
+    description = strip_html(item.findtext("description"))
+    encoded = strip_html(item.findtext(CONTENT_ENCODED))
+    if encoded and len(encoded) > len(description or ""):
+        return encoded
+    return description
+
+
+def _company(item: ET.Element) -> str | None:
+    """Text of a child element named `company`, whatever its namespace."""
+    for child in item:
+        if child.tag.rsplit("}", 1)[-1] == "company":
+            return (child.text or "").strip() or None
+    return None
 
 
 def _parse_dt(s: str | None) -> datetime | None:
@@ -68,6 +94,8 @@ def parse_feed(xml_text: str) -> Iterator[RSSItem]:
             description=strip_html(item.findtext("description")),
             pub_date=_parse_dt(item.findtext("pubDate")),
             guid=(item.findtext("guid") or "").strip() or None,
+            company=_company(item),
+            body=_fuller_body(item),
         )
 
     # Atom 1.0: <feed><entry>…</entry></feed>

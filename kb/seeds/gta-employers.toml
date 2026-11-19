@@ -17,11 +17,16 @@ greenhouse = [
     "contentful", "storyblok",
     "instacart", "mejuri", "faire", "ritual", "shakepay",
     "geotab", "hootsuite", "clutch", "thinkific",
+    # Lane employers probed 2026-11-18, each with Toronto or remote-Canada
+    # postings that day. 23 other WordPress, Shopify and HubSpot ecosystem
+    # boards probed live but listed none in Canada, and were left out.
+    "hubspotjobs", "yotpo", "pantheon",
 ]
 lever = ["achievers", "deepgenomics", "knix", "waabi", "wattpad"]
 ashby = [
     "1password", "clearco", "docebo", "float", "hopper",
     "loopio", "procurify", "wealthsimple", "sanity", "klue",
+    "gorgias",  # probed 2026-11-18, Toronto postings
 ]
 smartrecruiters = []
 workday = []

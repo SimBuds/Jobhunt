@@ -95,6 +95,14 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
     # auto-derived scan — all non-IC marketing or content roles. Narrowing
     # the query to "technical seo developer" filters to engineering postings.
     (_has_seo_signal, ["technical seo developer"]),
+    # Adjacent roles a CMS implementer is competitive for (Casey, 2026-11-18):
+    # platform support, HubSpot marketing ops, web content. Only 6% of
+    # ingested titles were in-lane, and the score prompt already admits these
+    # titles. Placed before the skill queries so the cap cuts languages first.
+    (
+        lambda v: bool(v.get("skills_cms")),
+        ["technical support specialist", "hubspot specialist", "web content specialist"],
+    ),
 ]
 
 # Phase 6 (reverted): a " Toronto" suffix was added to every derived query
@@ -109,7 +117,7 @@ _CATEGORY_TRIGGERS: list[tuple[Any, list[str]]] = [
 # queries.
 
 
-def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 12) -> list[str]:
+def derive_adzuna_queries(verified: dict[str, Any], *, cap: int = 14) -> list[str]:
     """Walk verified.json skills + bullets, return up to `cap` Adzuna queries.
 
     Order is tuned so the cap doesn't truncate high-signal queries:
