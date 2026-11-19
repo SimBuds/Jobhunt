@@ -54,14 +54,15 @@ from jobhunt.pipeline.tailor import (
     TailoredRole,
     _enforce_no_fabrication,
 )
-from jobhunt.resume.render_docx import CONTACT_SEPARATOR, SKILL_SEPARATOR
+from jobhunt.resume.render_docx import CONTACT_SEPARATOR, EXPOSURE_LABEL, ROLE_SEPARATOR
 
 REPO = Path(__file__).resolve().parent.parent
 HEADINGS = frozenset(
     {
-        "CORE EXPERTISE",
-        "WORK EXPERIENCE",
+        "SKILLS",
+        "EXPERIENCE",
         "PROJECTS",
+        "EDUCATION",
         "EDUCATION AND EARLIER CAREER",
     }
 )
@@ -91,10 +92,10 @@ def _split_skills(items: str) -> list[str]:
 def parse_rendered(path: Path, verified: dict) -> TailoredResume:
     """Rebuild a TailoredResume from what the rendered document actually says.
 
-    Keyed to `render_docx.render`'s design layout (2026-11-10): an unheaded
-    summary just above CORE EXPERTISE, one bullet-joined skills line plus an
-    "Exposure:" line, each role as a title line then "Employer  |  Dates" with
-    "List Bullet" bullets, one "Name (stack): sentence" bullet per project,
+    Keyed to `render_docx.render`'s layout: an unheaded summary just above
+    SKILLS, one "Label: a, b" row per skill category with Familiar items
+    under "Exposure", each role as "Title  ·  Employer<tab>Dates" with
+    "List Bullet" bullets, one "Name (stack): sentence" row per project,
     and "a  |  b  |  c" one-liners in the last section. Project URLs are not on
     the page and come back empty, which the fabrication guard accepts. An
     earlier-career one-liner has the same shape as an education line, so it is
@@ -112,7 +113,6 @@ def parse_rendered(path: Path, verified: dict) -> TailoredResume:
     projects: list[TailoredProject] = []
     certs: list[str] = []
     education: list[str] = []
-    awaiting_meta = False
 
     for para, text in zip(paras[first_heading:], texts[first_heading:], strict=True):
         if text in HEADINGS:
@@ -120,22 +120,18 @@ def parse_rendered(path: Path, verified: dict) -> TailoredResume:
             continue
         is_bullet = para.style.name == "List Bullet"
 
-        if section == "CORE EXPERTISE":
-            if text.startswith("Exposure:"):
-                cats.append(TailoredCategory("Familiar", _split_skills(text.split(":", 1)[1])))
-            else:
-                cats.append(TailoredCategory("Core Expertise", text.split(SKILL_SEPARATOR)))
-        elif section == "WORK EXPERIENCE":
+        if section == "SKILLS":
+            label, _, items = text.partition(":")
+            name = "Familiar" if label.strip() == EXPOSURE_LABEL else label.strip()
+            cats.append(TailoredCategory(name, _split_skills(items)))
+        elif section == "EXPERIENCE":
             if is_bullet and roles:
                 roles[-1].bullets.append(text)
-            elif awaiting_meta:
-                employer, _, dates = text.rpartition(CONTACT_SEPARATOR.strip())
-                roles[-1].employer, roles[-1].dates = employer.strip(), dates.strip()
-                awaiting_meta = False
             else:
-                roles.append(TailoredRole(text, "", "", []))
-                awaiting_meta = True
-        elif section == "PROJECTS" and is_bullet:
+                head, _, dates = text.partition("\t")
+                title, _, employer = head.partition(ROLE_SEPARATOR)
+                roles.append(TailoredRole(title.strip(), employer.strip(), dates.strip(), []))
+        elif section == "PROJECTS":
             lead, sep, sentence = text.partition(": ")
             lead = lead.rstrip(":") if sep else text
             name, _, stack = lead.partition(" (")
@@ -147,7 +143,9 @@ def parse_rendered(path: Path, verified: dict) -> TailoredResume:
                     [sentence.strip()] if sep else [],
                 )
             )
-        elif section == "EDUCATION AND EARLIER CAREER":
+        elif section in ("EDUCATION", "EDUCATION AND EARLIER CAREER"):
+            # A trailing year sits after a tab at the right margin.
+            text = text.replace("\t", CONTACT_SEPARATOR)
             cells = [c.strip() for c in text.split("|")]
             if len(cells) >= 3 and (cells[1], cells[2]) in role_keys:
                 roles.append(

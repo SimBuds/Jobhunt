@@ -1147,6 +1147,11 @@ Beyond the four pillars, these project docs are load-bearing:
   one-line projects "Name (stack): text" with no URL. The resume has no
   summary and no Exposure row, so the summary comes from the supplement
   and `skills_familiar` is empty. The plain layout still parses.
+  Export the PDF with LibreOffice (`soffice --headless --convert-to pdf`),
+  not a browser: the browser export of 2026-11-18 put 233 zero-width
+  characters in the text layer, one inside the email address, and the
+  LibreOffice export has none (2026-11-19). It substitutes Carlito for
+  Calibri, which has the same metrics.
 - `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
   `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
   on disk (currently CMS and e-commerce covering Shopify, WordPress and
@@ -2261,13 +2266,11 @@ call to it without explicit discussion.
    `applications`. Use after 20+ applications to tune `pipeline.min_score`.
 8. **One-page guarantee.** `tailor._shrink_to_one_page` enforces a hard
    single-page output via `render_docx.fits_one_page` (wrap-aware estimate,
-   usable budget 50: `LINES_PER_PAGE` 52 minus a 2-line margin). The budget
-   was re-measured on 2026-11-10 for the design layout: 60 real-profile
-   variants through LibreOffice fit one page at every estimate up to 51,
-   split at 53, and always overflowed from 54. The old layout's measured
-   budget of 46 had the ladder cutting content the denser layout fits. A
-   full real profile (estimate 62) now shrinks to 50 and renders on one page,
-   keeping 4 bullets on the current role and all 4 projects. Re-measure after
+   usable budget 52: `LINES_PER_PAGE` 54 minus a 2-line margin). The budget
+   was re-measured on 2026-11-19 for the master layout: 70 real-profile
+   variants through LibreOffice fit one page at every estimate up to 54,
+   were mixed from 55 to 59, and always overflowed from 60. Earlier layouts
+   measured 50 (2026-11-10 design) and 46. Re-measure after
    any change to margins, spacing or font sizes. The ladder runs in this
    fixed order, and new content-density features must respect it:
    1. Trim summary down to >= 3 sentences.
@@ -2329,9 +2332,38 @@ call to it without explicit discussion.
 
 ### Resume render vs design (2026-11-10)
 
-`render_docx.render` follows `Casey_Hsu_Design_2026-11-09.docx` (kept in the
-profile directory, outside the repo). Values were pulled from its XML and the
-fidelity ledger was signed off by Casey on 2026-11-10. Approved divergences,
+`render_docx.render` follows `Casey_Hsu_Design_2026-11-09.docx`. Values were
+pulled from its XML and the fidelity ledger was signed off by Casey on
+2026-11-10. The file was removed on 2026-11-19, when `Casey_Hsu_Resume.docx`
+became the one master, so the values in `render_docx.py` are now the only
+record of that design.
+
+**Re-match to the master (ledger signed off by Casey, 2026-11-19).** Values
+were read from the XML of `Casey_Hsu_Resume.docx`. Applied so far (M2a):
+0.5" side and 0.43" top and bottom margins, line spacing 250/240, 10 pt
+body in `1F2A33`, grey `4A5560`, blue accent `2F7FB5`, a 25 pt name
+tightened half a point, a 10.5 pt bold blue tagline in sentence case,
+8.5 pt grey contact items whose links are not coloured or underlined, one
+2.25 pt blue rule under the header, and 9 pt section labels with a 0.75 pt
+`B9C7D3` rule above each, SKILLS included, because the summary sits
+between it and the header rule (Casey, 2026-11-19). Signed-off divergences from the
+master: no header table and section labels on their own line (parsers
+skip tables and miss a label that shares a row), no figure callouts
+(tailored bullets are rewritten per job), the summary stays, and the header
+stays stacked (name, tagline, one contact row), because a two-column
+header without a table puts a contact item on the name's line (Casey,
+2026-11-19).
+
+Structure, applied the same day (M2c to M2e): sections are SKILLS,
+EXPERIENCE, PROJECTS and EDUCATION (the last widens to "EDUCATION AND
+EARLIER CAREER" only when an earlier-career role is listed). Skills are
+one "**Label:** a, b" row per tailored category. A role header is one
+line, "**Title**  ·  Employer" with the dates bold at a right tab stop.
+Bullets are plain list items with no bold lead clause. A project is a
+plain row, "**Name** (stack): sentence". A credential's trailing year or
+date cell sits at the right tab stop. `scripts/audit_lane_resumes.py`
+reads this layout back, so a change here changes that script in the same
+phase. Approved divergences,
 which stay:
 
 - **Summary kept, unheaded, under the contact row.** The design has none. It
@@ -2345,13 +2377,11 @@ which stay:
 - **Role descriptors stay bullet 0.** They are bullet 0 in `verified.json`
   and the tailor may rewrite them. Moving them onto the employer line needs a
   parsed descriptor field (Casey, 2026-11-10).
-- **Familiar renders as an "Exposure:" line** under Core Expertise, the
-  label the baseline resume uses. The design drops React and TypeScript
-  entirely, which would hide a keyword postings ask for.
-- **Bold lead clause by rule, not by hand.** Bold runs through the first
-  comma when it falls within `LEAD_CLAUSE_MAX_CHARS` (70), otherwise none.
-  The design's leads were chosen by hand. On the verified bullets the rule
-  bolds 5 of 9, and it also bolds a descriptor with an early comma.
+- **Familiar renders as an "Exposure:" row**, last under SKILLS. The
+  master has no such row, so it appears only for a profile that lists
+  Familiar skills.
+- **No bold lead clause** since 2026-11-19. The master has none, and the
+  2026-11-10 comma rule was retired with the ledger.
 - **Tagline is the verified headline only.** Since 2026-11-19 that is both
   header lines of the designed resume, joined as "Shopify and WordPress
   Developer | CMS, E-commerce and AI Automation".

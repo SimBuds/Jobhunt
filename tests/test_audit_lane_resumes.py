@@ -107,7 +107,8 @@ def test_rendered_lane_resume_parses_back(tmp_path: Path, contact: str) -> None:
     got = _round_trip(tmp_path, contact)
     assert got.summary == "Shopify developer since 2022 who builds CMS sites."
     assert [(c.name, c.items) for c in got.skills_categories] == [
-        ("Core Expertise", ["Shopify (Liquid)", "WordPress", "JavaScript", "HTML/CSS"]),
+        ("CMS", ["Shopify (Liquid)", "WordPress"]),
+        ("Core", ["JavaScript", "HTML/CSS"]),
         ("Familiar", ["React", "TypeScript"]),
     ]
     assert [(r.title, r.employer, r.dates, r.bullets, r.earlier_career) for r in got.roles] == [
