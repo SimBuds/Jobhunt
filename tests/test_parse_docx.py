@@ -1131,6 +1131,39 @@ class TestSupplement:
         assert "part-time" in (profile / "work-history.md").read_text(encoding="utf-8")
         assert "Source: alpha/README.md" in (profile / "projects.md").read_text(encoding="utf-8")
 
+    # --- summary (2026-11-19): the designed resume has no summary line ------
+
+    _SUMMARY = '[summary]\ntext = "Shopify developer since 2022."\nsource = "Casey, 2026-11-19"\n'
+
+    def test_summary_fills_a_resume_without_one(self, tmp_path: Path):
+        facts = self._apply(tmp_path, self._SUMMARY)
+        assert facts.summary == "Shopify developer since 2022."
+
+    def test_summary_matching_the_resume_is_accepted(self, tmp_path: Path):
+        from jobhunt.resume.parse_docx import apply_supplement
+
+        facts = self._facts()
+        facts.summary = "Shopify developer since 2022."
+        apply_supplement(facts, self._write(tmp_path, self._SUMMARY))
+        assert facts.summary == "Shopify developer since 2022."
+
+    def test_summary_differing_from_the_resume_is_an_error(self, tmp_path: Path):
+        from jobhunt.errors import ConfigError
+        from jobhunt.resume.parse_docx import apply_supplement
+
+        facts = self._facts()
+        facts.summary = "WordPress developer since 2020."
+        with pytest.raises(ConfigError, match="resume wins"):
+            apply_supplement(facts, self._write(tmp_path, self._SUMMARY))
+        assert facts.summary == "WordPress developer since 2020."
+
+    def test_summary_needs_text_and_source(self, tmp_path: Path):
+        self._rejects(tmp_path, '[summary]\ntext = "A developer."\n', "[summary]", "source")
+        self._rejects(tmp_path, '[summary]\nsource = "Casey"\n', "[summary]", "text")
+
+    def test_summary_must_be_a_table(self, tmp_path: Path):
+        self._rejects(tmp_path, 'summary = "A developer."\n', "[summary]")
+
 
 class TestProjectsHeadingGuard:
     """Phase 19c: the live round-trip's conditional Projects guard, pinned on
@@ -1242,3 +1275,167 @@ def test_untabbed_credential_lines_are_unchanged(tmp_path: Path):
     )
     facts, _ = parse_baseline(path)
     assert facts.certifications == ["Example Cloud Certified Practitioner  |  Oct 2024"]
+
+
+# --- Designed layout (2026-11-19): header in a table, labels on the row -----
+
+
+def _designed_doc(tmp_path: Path, *body: str, header: bool = True, name: str = "Jane Dev") -> Path:
+    from docx import Document
+
+    doc = Document()
+    if header:
+        table = doc.add_table(rows=1, cols=2)
+        left, right = table.rows[0].cells
+        left.paragraphs[0].text = name
+        left.add_paragraph("Shopify Developer")
+        left.add_paragraph("CMS and AI Automation")
+        right.paragraphs[0].text = "555-010-0000 | Toronto, ON"
+        right.add_paragraph("jane@example.com | github.com/jane")
+    else:
+        doc.add_paragraph(name)
+        doc.add_paragraph("Shopify Developer")
+    for line in body:
+        doc.add_paragraph(line)
+    path = tmp_path / "designed.docx"
+    doc.save(path)
+    return path
+
+
+_DESIGNED_SKILLS = (
+    "SKILLS\tCMS & E-commerce: Shopify, WordPress",
+    "Front-end: HTML, CSS",
+    "Infrastructure: Docker, Linux",
+)
+
+
+def test_header_table_gives_name_headline_and_contact(tmp_path: Path):
+    facts, warnings = parse_baseline(_designed_doc(tmp_path, *_DESIGNED_SKILLS))
+    assert facts.name == "Jane Dev"
+    assert facts.contact_line == (
+        "Shopify Developer | CMS and AI Automation  "
+        "555-010-0000 | Toronto, ON | jane@example.com | github.com/jane"
+    )
+    assert warnings == []
+
+
+def test_section_label_on_the_same_row_opens_the_section(tmp_path: Path):
+    facts, _ = parse_baseline(_designed_doc(tmp_path, *_DESIGNED_SKILLS))
+    assert facts.skills_cms == ["Shopify", "WordPress"]
+    assert facts.skills_core == ["HTML", "CSS"]
+    assert facts.skills_data_devops == ["Docker", "Linux"]
+
+
+def test_tab_row_without_a_section_label_is_left_whole(tmp_path: Path):
+    path = _designed_doc(
+        tmp_path,
+        "EDUCATION\tDiploma, Computer Programming | Harbour College\t2024",
+        "Contentful Certified Professional | Contentful\t2025",
+    )
+    facts, _ = parse_baseline(path)
+    assert facts.education == ["Diploma, Computer Programming | Harbour College | 2024"]
+    assert facts.certifications == ["Contentful Certified Professional | Contentful | 2025"]
+
+
+def test_same_row_labels_work_without_a_header_table(tmp_path: Path):
+    path = _designed_doc(tmp_path, *_DESIGNED_SKILLS, header=False)
+    facts, _ = parse_baseline(path)
+    assert facts.name == "Jane Dev"
+    assert facts.contact_line == "Shopify Developer"
+    assert facts.skills_cms == ["Shopify", "WordPress"]
+
+
+def test_table_below_the_header_does_not_change_the_headline(tmp_path: Path):
+    # Only the cell holding the name carries the headline. A plain-layout
+    # header keeps the first-line rule.
+    path = _header_doc(tmp_path, "Web Developer", "Toronto, ON | jane@example.com")
+    facts, _ = parse_baseline(path)
+    assert facts.contact_line == "Web Developer  Toronto, ON | jane@example.com"
+
+
+_DESIGNED_ROLES = (
+    "EXPERIENCE\tWeb Developer (Part-time)  ·  Harbour Loom\tApril 2023 – Present",
+    "Sole developer for a small brand",
+    "38 to 13\tMoved average position from 38 to 13 in 16 months.",
+    "Rebuilt the theme · with no callout.",
+    "Shopify Developer (Contract)  ·  Tidewater Goods\tJanuary 2022 – May 2023",
+    "20 h build\tBuilt the pipeline in 20 hours.",
+)
+
+
+def test_middle_dot_role_header_splits_title_and_employer(tmp_path: Path):
+    facts, warnings = parse_baseline(_designed_doc(tmp_path, *_DESIGNED_ROLES))
+    assert [(r.title, r.employer, r.dates) for r in facts.work_history] == [
+        ("Web Developer (Part-time)", "Harbour Loom", "April 2023 – Present"),
+        ("Shopify Developer (Contract)", "Tidewater Goods", "January 2022 – May 2023"),
+    ]
+    assert warnings == []
+
+
+def test_callout_before_a_tab_is_dropped_from_the_bullet(tmp_path: Path):
+    facts, _ = parse_baseline(_designed_doc(tmp_path, *_DESIGNED_ROLES))
+    assert facts.work_history[0].bullets == [
+        "Sole developer for a small brand",
+        "Moved average position from 38 to 13 in 16 months.",
+        "Rebuilt the theme · with no callout.",
+    ]
+    assert facts.work_history[1].bullets == ["Built the pipeline in 20 hours."]
+
+
+def test_pipe_role_header_is_unchanged_by_the_middle_dot_rule():
+    from jobhunt.resume.parse_docx import _parse_role_header
+
+    assert _parse_role_header("Dev | Acme · Labs, Toronto\tJan 2020 – Present") == (
+        "Dev",
+        "Acme · Labs, Toronto",
+        "Jan 2020 – Present",
+    )
+
+
+_DESIGNED_PROJECTS = (
+    "PROJECTS\tTidepool (Python, SQLite): Local tool that scores postings. 40 tests.",
+    "harbour.example (Astro, nginx): Portfolio site, deployed on every push.",
+)
+
+
+def test_one_line_projects_carry_stack_and_one_bullet(tmp_path: Path):
+    facts, warnings = parse_baseline(_designed_doc(tmp_path, *_DESIGNED_PROJECTS))
+    assert [(p.name, p.url, p.stack, p.bullets, p.source) for p in facts.projects] == [
+        (
+            "Tidepool",
+            "",
+            ["Python", "SQLite"],
+            ["Local tool that scores postings. 40 tests."],
+            "resume",
+        ),
+        (
+            "harbour.example",
+            "",
+            ["Astro", "nginx"],
+            ["Portfolio site, deployed on every push."],
+            "resume",
+        ),
+    ]
+    assert facts.skills_projects == ["Python", "SQLite", "Astro", "nginx"]
+    assert warnings == []
+
+
+def test_project_line_without_a_stack_bracket_still_warns(tmp_path: Path):
+    path = _designed_doc(tmp_path, "PROJECTS\tTidepool: a local tool with no stack listed.")
+    facts, warnings = parse_baseline(path)
+    assert facts.projects == []
+    assert any("bullet before any project header" in w for w in warnings)
+
+
+def test_bracketed_bullet_under_a_url_project_stays_a_bullet(tmp_path: Path):
+    path = _designed_doc(
+        tmp_path,
+        "PROJECTS",
+        "Tidepool | github.com/jane/tidepool",
+        "Gateway (one module, typed): every model call goes through it.",
+    )
+    facts, _ = parse_baseline(path)
+    assert len(facts.projects) == 1
+    assert facts.projects[0].bullets == [
+        "Gateway (one module, typed): every model call goes through it."
+    ]

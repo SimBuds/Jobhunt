@@ -266,6 +266,11 @@ file changes nothing.
 skill = "Python"
 source = "AI Automation"
 
+# The summary, for a resume that has no summary line. `source` is required.
+[summary]
+text = "Web developer since 2022 who builds and migrates CMS sites."
+source = "Written by the candidate, 2026-11-19"
+
 # A project the resume does not carry. `source` is required: the portfolio
 # entry or README that backs every bullet.
 [[projects]]
@@ -283,7 +288,8 @@ The rules, each enforced with an error that names the entry:
   skill goes on the resume first.
 - **It never promotes a Familiar skill** into Core or a project stack.
 - **The resume wins.** A project with the same name on both is kept once
-  when the content matches, and is an error when it does not.
+  when the content matches, and is an error when it does not. A summary on
+  both must match word for word.
 - An employer key that matches no resume role, an unknown type, a missing
   `source`, an unknown section, or malformed TOML is an error.
 

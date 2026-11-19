@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
+from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from jobhunt.errors import ConfigError, PipelineError
@@ -420,6 +422,7 @@ def _parse_role_header(text: str) -> tuple[str, str, str] | None:
         Title | Employer<TAB>Dates
         Employer — Descriptor  Dates          (title-less; title comes back "")
         Title | Dates                         (split; employer comes back "")
+        Title  ·  Employer<TAB>Dates          (designed layout)
 
     A title-less header is preserved rather than rejected: dropping it discards
     the whole role and every bullet under it. The caller can see the empty title
@@ -437,7 +440,10 @@ def _parse_role_header(text: str) -> tuple[str, str, str] | None:
     head = text[: m.start()].strip()
     if not head:
         return None
-    parts = [p.strip() for p in head.split("|") if p.strip()]
+    # The designed layout writes "Title  ·  Employer" (2026-11-19). A pipe
+    # wins when both appear, so a "·" inside an employer name stays there.
+    separator = "|" if "|" in head else "·"
+    parts = [p.strip() for p in head.split(separator) if p.strip()]
     if not parts:
         return None
     if len(parts) == 1:
@@ -501,6 +507,12 @@ def _split_project_header(text: str) -> tuple[str, str] | None:
         name, url = text.rsplit("—", 1)
         return name.strip(), url.strip()
     return None
+
+
+# "Name (stack, stack): description", the designed layout's whole project on
+# one line (2026-11-19). The name holds no space-separated prose, so a
+# sentence that happens to contain a bracket and a colon does not match.
+_ONE_LINE_PROJECT_RE = re.compile(r"^(?P<name>[^\s():]+) \((?P<stack>[^()]+)\):\s+(?P<text>.+)$")
 
 
 def _project_display_name(name_cell: str) -> str:
@@ -605,13 +617,49 @@ def _paragraph_text_with_links(p: Paragraph) -> str:
     return "".join(parts).strip()
 
 
+def _paragraphs_in_order(doc: DocxDocument) -> list[tuple[Paragraph, int | None]]:
+    """Every paragraph in reading order, each with the table cell it sits in.
+
+    `doc.paragraphs` skips tables, and a designed resume keeps its name and
+    contact block in one (2026-11-19). The cell key is None for a body
+    paragraph. It is what tells the headline lines, which share the name's
+    cell, from the contact lines in the cell beside it.
+    """
+    out: list[tuple[Paragraph, int | None]] = []
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            out.append((Paragraph(child, doc), None))
+        elif child.tag == qn("w:tbl"):
+            seen: set[int] = set()
+            for row in Table(child, doc).rows:
+                for cell in row.cells:
+                    # A merged cell is reported once per grid column.
+                    key = id(cell._tc)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.extend((p, key) for p in cell.paragraphs)
+    return out
+
+
+def _split_section_label(text: str) -> tuple[str, str] | None:
+    """('SKILLS', 'CMS: Shopify') for a row that opens with a section label
+    and a tab, else None. The designed layout puts the label in a left-hand
+    column on the section's first row."""
+    label, tab, rest = text.partition("\t")
+    if tab and rest.strip() and _canonical_section(label.strip()) is not None:
+        return label.strip(), rest.strip()
+    return None
+
+
 def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     if not docx_path.is_file():
         raise PipelineError(f"baseline resume not found: {docx_path}")
 
     warnings: list[str] = []
     doc = Document(str(docx_path))
-    non_empty = [p for p in doc.paragraphs if p.text.strip()]
+    ordered = [(p, cell) for p, cell in _paragraphs_in_order(doc) if p.text.strip()]
+    non_empty = [p for p, _ in ordered]
     if len(non_empty) < 2:
         raise PipelineError(f"baseline resume is empty: {docx_path}")
 
@@ -623,10 +671,18 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     # property instead of the label is what makes bullet detection survive a
     # reformat; matching on "List Paragraph" alone silently reclassified every
     # bullet as body text when this resume was restyled on 2026-07-26.
-    paras: list[tuple[str, str]] = [
-        (_LIST_STYLE if _is_list_item(p) else (p.style.name if p.style else ""), p.text.strip())
-        for p in non_empty
-    ]
+    # A row that opens with a section label becomes two entries, the label
+    # and the rest. Rows before the first section are never split, so the
+    # header indexes below still line up with `non_empty`.
+    paras: list[tuple[str, str]] = []
+    for p in non_empty:
+        style = _LIST_STYLE if _is_list_item(p) else (p.style.name if p.style else "")
+        text = p.text.strip()
+        labelled = _split_section_label(text)
+        if labelled is None:
+            paras.append((style, text))
+        else:
+            paras.extend([("", labelled[0]), (style, labelled[1])])
 
     name = non_empty[0].text.strip()
     # Contact block: every paragraph after the name up to the first section
@@ -647,9 +703,17 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
     # " | ", so a header listing one item per line (2026-11-17 two-column
     # layout) still reads as one contact row.
     header = [_paragraph_text_with_links(p).strip() for p in non_empty[1:_first_section]]
-    rest = [h.strip(" |") for h in header[1:]]
+    # In a header table, every line sharing the name's cell is headline. With
+    # no table the headline is the first line, as before.
+    name_cell = ordered[0][1]
+    in_name_cell = sum(
+        1 for _, cell in ordered[1:_first_section] if name_cell is not None and cell == name_cell
+    )
+    lead = max(in_name_cell, 1)
+    headline = " | ".join(h for h in header[:lead] if h)
+    rest = [h.strip(" |") for h in header[lead:]]
     contact_line = "  ".join(
-        part for part in (header[0] if header else "", " | ".join(r for r in rest if r)) if part
+        part for part in (headline, " | ".join(r for r in rest if r)) if part
     ).strip()
 
     sections: dict[str, list[tuple[str, str]]] = {h: [] for h in SECTION_HEADERS}
@@ -744,7 +808,11 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
                     f"PROFESSIONAL EXPERIENCE: bullet before any role header, skipped: {text!r}"
                 )
                 continue
-            current_role.bullets.append(text)
+            # The designed layout sets a figure in a left-hand column
+            # ("38 to 13<TAB>Moved average position..."). The sentence repeats
+            # it, so only the sentence is kept.
+            _, tab, sentence = text.partition("\t")
+            current_role.bullets.append(sentence.strip() if tab and sentence.strip() else text)
             continue
         if parsed is None:
             warnings.append(f"PROFESSIONAL EXPERIENCE: unparseable role header, skipped: {text!r}")
@@ -823,6 +891,19 @@ def parse_baseline(docx_path: Path) -> tuple[VerifiedFacts, list[str]]:
             )
             projects.append(current_project)
             continue
+        # A one-line project has no URL. Under a URL-headed project the same
+        # shape is one of its bullets, so the two layouts never mix.
+        one_line = _ONE_LINE_PROJECT_RE.match(text)
+        if one_line is not None and (current_project is None or not current_project.url):
+            current_project = Project(
+                name=one_line.group("name"),
+                url="",
+                stack=_split_skills(one_line.group("stack")),
+                bullets=[one_line.group("text").strip()],
+                source="resume",
+            )
+            projects.append(current_project)
+            continue
         # Otherwise a bullet. Orphan bullets before any header are skipped rather
         # than raising — projects are supplementary, a malformed line must not
         # break `convert-resume`.
@@ -882,7 +963,7 @@ def _derive_project_skills(base: list[str], projects: list[Project]) -> list[str
 
 
 EMPLOYMENT_TYPES = ("full-time", "part-time", "contract")
-_SUPPLEMENT_SECTIONS = frozenset({"employment_type", "core", "projects"})
+_SUPPLEMENT_SECTIONS = frozenset({"employment_type", "core", "projects", "summary"})
 
 
 def _supplement_tables(data: dict[str, Any], key: str, path: Path) -> list[dict[str, Any]]:
@@ -940,7 +1021,8 @@ def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
 
     It carries what the resume cannot: projects (the 2026-10 resume has no
     Projects section), each with the `source` that backs it; employment type
-    per employer; and moves of resume-listed skills into Core. It never adds a
+    per employer; a summary when the resume has none; and moves of
+    resume-listed skills into Core. It never adds a
     skill, and the resume wins any conflict, so the parsed resume stays the
     source of truth. A missing file is not an error. Every validation failure
     raises `ConfigError` naming the file and the entry, and nothing is merged
@@ -957,6 +1039,21 @@ def apply_supplement(facts: VerifiedFacts, path: Path) -> None:
         raise ConfigError(
             f"{path}: unknown section(s) {unknown}. Expected only {sorted(_SUPPLEMENT_SECTIONS)}."
         )
+
+    # The designed resume has no summary line (2026-11-19), and the tailor
+    # takes its role label and years from this field.
+    summary = data.get("summary")
+    if summary is not None:
+        if not isinstance(summary, dict):
+            raise ConfigError(f"{path}: [summary] must be a table with `text` and `source`")
+        text = _supplement_str(summary, "text", "[summary]", path)
+        _supplement_str(summary, "source", "[summary]", path)
+        if facts.summary and facts.summary != text:
+            raise ConfigError(
+                f"{path}: [summary] differs from the summary on the resume. "
+                "The resume wins: delete the supplement entry or make it match."
+            )
+        facts.summary = text
 
     for i, entry in enumerate(_supplement_tables(data, "core", path), start=1):
         where = f"[[core]] #{i}"

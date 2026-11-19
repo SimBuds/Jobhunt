@@ -1133,14 +1133,20 @@ Beyond the four pillars, these project docs are load-bearing:
   `work-long-form.md` are gitignored agent-reference only and are never fed
   to the tailor. Hand-authored `supplement.toml` (gitignored, 0600) IS an
   input: `convert-resume` merges its projects (each with a `source`),
-  employment types and Core moves into `verified.json` before the write
-  guard. It may only rearrange skills the resume lists, never add one or
+  employment types, Core moves and, since 2026-11-19, a `[summary]` into
+  `verified.json` before the write guard. It may only rearrange skills the resume lists, never add one or
   promote a Familiar one (2026-11-01). See README "The profile supplement".
-  `convert-resume` reads the plain baseline copy in this directory. The
-  designed resume Casey submits by hand (header in a table, section labels
-  on the same line as content) parses to no skills and no roles, because
-  `parse_docx` reads `doc.paragraphs`. Casey keeps the two in step by hand
-  and the parser is not taught the designed layout (Casey, 2026-11-18).
+  `convert-resume` reads `Casey_Hsu_Resume.docx` in this directory, the
+  designed resume Casey also submits by hand (Casey, 2026-11-19). The
+  plain Baseline copy was removed that day, one day after it was chosen,
+  because the two had drifted. `parse_docx` reads the designed layout:
+  a header table (the name's cell holds the headline lines, the other
+  cell the contact lines), a section label and a tab opening a section's
+  first row, "Title  ·  Employer<tab>dates" role headers, a figure callout
+  and a tab before a bullet (dropped, the sentence repeats it), and
+  one-line projects "Name (stack): text" with no URL. The resume has no
+  summary and no Exposure row, so the summary comes from the supplement
+  and `skills_familiar` is empty. The plain layout still parses.
 - `kb/lanes/*.md`: one lane brief per lane, driving `jobhunt resume`.
   `resume_cmd.discover_lanes` reads the directory, so the set is whatever is
   on disk (currently CMS and e-commerce covering Shopify, WordPress and
@@ -2330,11 +2336,11 @@ which stay:
 
 - **Summary kept, unheaded, under the contact row.** The design has none. It
   is where lane keywords and the AI hook surface for screeners.
-- **Dates verbatim from `verified.json`** ("Apr 2023 – Present",
-  "Sep 2021 – Apr 2024"), not the design's "April 2023" or year-only. The
+- **Dates verbatim from `verified.json`**, whatever form the resume uses
+  ("April 2023 – Present" since 2026-11-19). The
   fabrication guard compares `(employer, dates)` exactly, and tailor rule 5
   renders education verbatim.
-- **Employer verbatim** ("Atelier Dacko, Toronto, ON"). `employer` is half the
+- **Employer verbatim** ("Atelier Dacko"). `employer` is half the
   guard's identity key.
 - **Role descriptors stay bullet 0.** They are bullet 0 in `verified.json`
   and the tailor may rewrite them. Moving them onto the employer line needs a
@@ -2346,17 +2352,17 @@ which stay:
   comma when it falls within `LEAD_CLAUSE_MAX_CHARS` (70), otherwise none.
   The design's leads were chosen by hand. On the verified bullets the rule
   bolds 5 of 9, and it also bolds a descriptor with an early comma.
-- **Tagline is the verified headline only.** The design's second half ("CMS,
-  E-commerce and AI Automation") is not in `verified.json`. Add it to the
-  baseline resume's headline line to render it.
+- **Tagline is the verified headline only.** Since 2026-11-19 that is both
+  header lines of the designed resume, joined as "Shopify and WordPress
+  Developer | CMS, E-commerce and AI Automation".
 - **Contact items in resume order**, from `verified.json` `contact_line`,
   not the design's order. The first header line is the headline, kept
   apart by two spaces, and may contain "|". Later header lines join with
   " | ", so the 2026-11-17 master, which lists one contact item per line in
   a right-hand column, reads as one row (Phase H1). `_split_contact` finds
   the headline before splitting on "|", and a gap touching a "|" is
-  padding, not the marker. The header is a two-column section, never a
-  table: `parse_docx` reads `doc.paragraphs`, which skips tables.
+  padding, not the marker. In a header table, every line in the name's
+  cell is headline and joins with " | " (2026-11-19).
 - **Credential dates.** A tab before right-aligned dates on an education
   or certification line becomes " | " at parse time, because those entries
   render verbatim.
